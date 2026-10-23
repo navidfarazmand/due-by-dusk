@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Due by Dusk</title>
+  <link rel="stylesheet" href="/src/styles/styles.css" />
+
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 60 60" fill="none" aria-hidden="true"><circle cx="30" cy="30" r="28" fill="#e6e8ce"/><circle cx="31" cy="23" r="10" fill="#e8bd5d"/><path d="M9 38Q23 28 34 35T52 34V44Q28 53 9 44Z" fill="#9caf76"/><path d="M13 44Q31 33 49 43" stroke="#62865c" stroke-width="2"/><path d="M18 45L33 17" stroke="#4b6343" stroke-width="3" stroke-linecap="round"/><path d="M29 20Q44 19 46 31Q39 25 29 27Z" fill="#fffbea" stroke="#6d8a65" stroke-width="1.2"/><path d="M15 14L18 17M44 10L42 14M30 6V10" stroke="#c8aa64" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <div class="brand-copy"><span class="brand-kicker">A little farm. A very big debt. <b id="hVer" hidden>v0.7.00</b></span>
+      <h1 class="logo">Due by <span>Dusk</span></h1></div>
+      <span class="farmno" id="hFarm">Farm No. 1</span>
+    </div>
+    <div class="chips">
+      <div class="chip"><span class="k">Day</span><span class="v" id="hDay">1</span></div>
+      <div class="chip cash"><span class="k">Cash</span><span class="v" id="hCash">$0</span></div>
+      <div class="chip"><span class="k">Grit</span><span class="v" id="hGrit">0</span></div>
+      <div class="chip diamond"><span class="k">Skills</span><span class="v" id="hDiamonds">💎 2</span></div>
+      <button class="chipbtn" id="btnPause" type="button" hidden>Pause</button>
+    </div>
+      <button class="management-toggle" id="btnManagement" type="button" aria-label="Open farm menu" aria-controls="managementDrawer" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9.2 3-.5 2.1-1.8 1L4.8 6l-1.7 3 1.6 1.5v2.1L3.1 14l1.7 3 2.1-.1 1.8 1 .5 2.1h3.5l.6-2.1 1.8-1 2.1.1 1.7-3-1.6-1.4v-2.1L18.9 9l-1.7-3-2.1.1-1.8-1-.6-2.1H9.2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="11" cy="11.5" r="3" stroke="currentColor" stroke-width="1.6"/></svg><span>Farm menu</span></button>
+  </header>
+
+  <main class="layout">
+    <section class="stage" id="stage" aria-label="The field">
+      <div class="field-sign" id="fieldSign" aria-hidden="true">WORLD 1 · THE NORTH FIELD</div>
+      <canvas id="field" role="img" aria-label="Your field. Move the scythe over the crops to harvest them before sunset."></canvas>
+      <div class="hud" id="hud" hidden>
+        <div>
+          <div class="pill today" id="hudToday">Today <b id="hudEarn">$0</b></div>
+          <div class="combo" id="hudCombo"></div>
+        </div>
+        <div class="pill bill-hud" id="billHud" aria-label="Next bill"><span class="bill-hud-label">Next bill</span><strong id="billHudAmount">$20</strong><span id="billHudDue">Due at sunset</span></div>
+        <div class="pill daylight" id="hudLight">
+          <div class="dl-row"><span>Daylight</span><span id="dlText">16.0 s</span></div>
+          <div class="dl-track"><div class="dl-fill" id="dlFill"></div></div>
+        </div>
+        <div class="field-event" id="eventLabel" role="status"></div>
+      <div class="harvest-status" id="harvestStatus">
+        <div class="chain-top"><strong class="multiplier" id="multiplierValue">×1</strong><div class="chain-copy"><span class="chain-eyebrow">Keep the good crops coming</span><span class="chain-count" id="chainCount">5 crops to your first multiplier</span><div class="chain-track"><i id="chainFill"></i></div></div></div>
+        <div class="rush-row"><span class="rush-label" id="rushLabel">Harvest Rush · cut 22 to charge</span><span class="rush-track"><i id="rushFill"></i></span></div>
+      </div>
+      </div>
+      <div class="overlay" id="overlay"></div>
+      <div class="pause-overlay" id="pauseOverlay" hidden><div class="pause-card" role="dialog" aria-modal="true" aria-labelledby="pauseTitle"><svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M13 9V31M27 9V31" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg><h2 id="pauseTitle">A little breather.</h2><p>Your crops can wait. The daylight is paused until you return.</p><button class="btn" id="btnResume" type="button">Back to the field</button></div></div>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </section>
+
+    <button class="management-scrim" id="managementScrim" type="button" aria-label="Close farm menu" hidden></button>
+    <aside class="ledger management-drawer" id="managementDrawer" aria-label="Farm menu" inert>
+      <div class="drawer-top"><div><p class="eyebrow">A little time to plan</p><h2>Farm menu</h2></div><button class="drawer-close" id="btnManagementClose" type="button" aria-label="Close farm menu">×</button></div>
+      <nav class="management-tools" aria-label="Farm tools">
+      <button class="chipbtn" id="btnBiome" type="button" title="Choose a destination">🌍 🍁 Toronto</button>
+      <button class="chipbtn" id="btnSkillTree" type="button" title="Spend diamonds on permanent skills">💎 Skill Tree</button>
+      <button class="chipbtn" id="btnArthurStudio" type="button" title="Inspect Authored Arthur Grumble Sprite Atlas & 5 Animations">🎩 Arthur Atlas</button>
+      <button class="chipbtn" id="btnSaveTransfer" type="button" title="Back up or restore your progress">💾 Save backup</button>
+      <button class="chipbtn" id="btnSound" type="button" aria-pressed="true">Sound</button>
+      </nav>
+      <div class="ledger-heading"><h2>The farm ledger</h2><span>GRUMBLE &amp; SONS</span></div>
+      <div class="ledger-tabs" role="tablist" aria-label="Farm ledger sections"><button class="ledger-tab" type="button" role="tab" id="tab-ledger" aria-selected="true" aria-controls="page-ledger" data-page="ledger">The ledger</button><button class="ledger-tab" type="button" role="tab" id="tab-shed" aria-selected="false" aria-controls="page-shed" data-page="shed" tabindex="-1">Equipment</button><button class="ledger-tab" type="button" role="tab" id="tab-heir" aria-selected="false" aria-controls="page-heir" data-page="heir" tabindex="-1">Heirlooms</button></div>
+      <div class="ledger-page" id="page-ledger" role="tabpanel" aria-labelledby="tab-ledger">
+      <article class="notice" id="notice" aria-live="polite"></article>
+
+      <section class="panel" aria-labelledby="perkH">
+        <div class="ph"><h2 id="perkH">Perks</h2><span class="tag">This farm only</span></div>
+        <div id="perkList"></div>
+      </section>
+
+      <div class="field-guide"><p class="guide-title">A few things worth knowing</p><div class="guide-item"><span class="guide-icon">×3</span><p><strong>Find your rhythm.</strong><br>Cut 8, 18, then 30 crops in a chain to grow your multiplier.</p></div><div class="guide-item"><span class="guide-icon">2×</span><p><strong>Make hay while it shines.</strong><br>Charge a Harvest Rush for four seconds of +50% income.</p></div><div class="guide-item"><span class="guide-icon">✦</span><p><strong>Look for the little glow.</strong><br>Lucky crops pay double. A golden harvest is even sweeter.</p></div><div class="mini-record"><span>BEST CHAIN TODAY</span><b id="bestChain">0</b></div></div>
+      </div>
+      <div class="ledger-page" id="page-shed" role="tabpanel" aria-labelledby="tab-shed" hidden>      <section class="panel" aria-labelledby="shedH">
+        <div class="ph"><h2 id="shedH">Equipment shed</h2><span class="tag" id="shedTag">Open</span></div>
+        <p class="hint" id="shedHint">Upgrades last until the bank takes this farm.</p>
+        <div class="rows" id="shedList"></div>
+      </section>
+
+</div>
+<div class="ledger-page" id="page-heir" role="tabpanel" aria-labelledby="tab-heir" hidden>      <section class="panel" aria-labelledby="heirH">
+        <div class="ph"><h2 id="heirH">Heirlooms</h2><span class="tag" id="gritTag">0 Grit</span></div>
+        <p class="hint" id="heirHint"></p>
+        <div class="rows" id="heirList"></div>
+      </section>
+
+</div>
+      <details class="comfort-settings">
+        <summary>Comfort &amp; controls</summary>
+        <label class="setting-row" for="settingTouchOffset"><span>Scythe above finger <output id="touchOffsetValue" for="settingTouchOffset">48 px</output></span><input id="settingTouchOffset" type="range" min="0" max="100" step="4" value="48" /></label>
+        <label class="setting-row" for="settingEffects"><span>Harvest effects</span><select id="settingEffects"><option value="full">Full effects</option><option value="reduced">Reduced effects</option></select></label>
+        <label class="setting-row setting-check" for="settingHaptics"><span>Harvest vibration</span><input id="settingHaptics" type="checkbox" checked /></label>
+        <p class="hint">Drag to cut crops. Hold to charge, then release for a wider swing.</p>
+      </details>
+      <footer class="foot">
+        <p>Move to harvest · WASD / arrows to steer · P to pause. Progress saves automatically.</p>
+        <button type="button" class="linkbtn" id="btnReset">Wipe save</button>
+      </footer>
+    </aside>
+  </main>
+</div>
+<div class="rotate-hint" role="status"><span aria-hidden="true">↻</span> Turn your phone sideways for a wider field.</div>
+<div class="modal" id="modal" hidden></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

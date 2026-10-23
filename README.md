@@ -4,6 +4,14 @@ A farming game prototype. You sweep a scythe over crops, each crop sells the mom
 
 Not published to any app store yet.
 
+## Mobile development (v0.7.0)
+
+The maintained TypeScript/Phaser/Capacitor project is now in [mobile/](mobile/). It continues the supplied v0.6.00 game. Landscape gameplay fills the screen; a gear button opens management and pauses an active harvest.
+
+From mobile/, run npm ci, npm run dev, npm test and npm run build. See [architecture](mobile/ARCHITECTURE.md), [native setup](mobile/docs/mobile.md) and [release plan](mobile/docs/release-plan.md). GitHub Actions checks updates and builds a debug Android APK. The app has not been published to a store.
+
+The original 2D/3D experiments below remain available as earlier prototypes.
+
 ## What is in this repo
 
 - `2d/index.html`: the full 2D game. Nine bills, equipment shed upgrades, perks, heirlooms, and a save in the browser.

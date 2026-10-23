@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Due by Dusk</string>
+    <string name="title_activity_main">Due by Dusk</string>
+    <string name="package_name">com.navidfarazmand.duebydusk</string>
+    <string name="custom_url_scheme">com.navidfarazmand.duebydusk</string>
+</resources>

@@ -1,0 +1,23 @@
+# Mobile build output and local tools
+mobile/node_modules/
+mobile/dist/
+mobile/.test-temp/
+mobile/test-results/
+mobile/playwright-report/
+mobile/.ts-build/
+mobile/android/.gradle/
+mobile/android/.idea/
+mobile/android/local.properties
+mobile/android/**/build/
+mobile/android/capacitor-cordova-android-plugins/
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor.config.json
+mobile/android/app/src/main/assets/capacitor.plugins.json
+mobile/ios/App/App/public/
+mobile/ios/App/Pods/
+mobile/ios/DerivedData/
+*.keystore
+*.jks
+.env*
+mobile/.tmp/
+mobile/.vitest-cache/
