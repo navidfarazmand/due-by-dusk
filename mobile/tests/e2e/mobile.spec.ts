@@ -105,9 +105,13 @@ test('mature vegetables are finger sized and the lowest crop can be harvested by
   const before = await readEarned();
   const cdp = await context.newCDPSession(page);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: lowest.fingerX, y: lowest.fingerY, id: 1 }] });
-  await page.waitForTimeout(450);
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await expect.poll(readEarned, { timeout: 3000 }).toBeGreaterThan(before);
+  try {
+    // Onions and cabbages need several ordinary swings. Keep the finger on the
+    // actual lowest crop until it pays out, independently of its random health.
+    await expect.poll(readEarned, { timeout: 6000 }).toBeGreaterThan(before);
+  } finally {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
   await page.screenshot({ path: testInfo.outputPath('lowest-crop-touch-harvest.png') });
   await cdp.detach();
 });
