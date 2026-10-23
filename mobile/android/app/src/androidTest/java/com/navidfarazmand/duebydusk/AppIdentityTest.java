@@ -14,6 +14,6 @@ public class AppIdentityTest {
     @Test
     public void targetsDueByDusk() {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertEquals("com.navidfarazmand.duebydusk", context.getPackageName());
+        assertEquals("com.navidfarazmand.duebydusk.testing", context.getPackageName());
     }
 }

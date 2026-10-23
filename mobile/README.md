@@ -1,4 +1,4 @@
-# Due by Dusk — mobile development v0.7.0
+# Due by Dusk — mobile development v0.7.1
 
 Landscape harvest game built with TypeScript, Phaser 3, Vite and Capacitor 8. Use Node 22.12+ (Node 24 recommended).
 
@@ -22,6 +22,10 @@ The development server prints the local URL. The generated dist/ is a web build:
 
 Assets and fonts are packaged locally. Management starts closed; open the gear to view bills, equipment, heirlooms, map, skills, save transfer and controls. Drag to harvest; hold then release to cleave. Keyboard arrows/WASD steer, Space charges and P pauses. Interrupted days restart from dawn with the pre-day farm state. Save imports preserve existing v1/v2 progress through validation and migration.
 
-The production build uses real Phaser; the old custom shim is not shipped. Android debug APKs are CI artifacts for testing, not signed Play Store releases. iOS requires a Mac and signing. No ads, purchases, accounts or analytics have been added.
+The bottom dock keeps the multiplier, daylight, bill and buttons outside the crop area. Existing vegetable artwork is preserved and enlarged; scenery and Arthur use new cartoon vector artwork. Successful farms grant one skill point.
 
-Editable supplied character sources live in art/source. The original asset pipeline is archived in art/tools and references raw generated images that were not included in the supplied archive. Shipping assets are already supplied in public/assets and require no regeneration.
+[Download the Android test APK](https://github.com/navidfarazmand/due-by-dusk/releases/download/android-v0.7.1/Due-by-Dusk-Test.apk). It installs as **Due by Dusk Test** alongside the old app. Export/import a save to carry over progress, and keep the old app installed until you verify the transfer.
+
+The production build uses real Phaser; the old custom shim is not shipped. Android test APKs are distributed through GitHub prereleases and CI artifacts. They are development builds, not Play Store releases. iOS requires a Mac and signing. No ads, purchases, accounts or analytics have been added.
+
+Editable supplied character sources live in art/source. The original asset pipeline is archived in art/tools and references raw generated images that were not included in the supplied archive. Old bitmap textures are archived in art/legacy-textures; current game art is drawn in code.

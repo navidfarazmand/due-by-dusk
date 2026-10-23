@@ -164,6 +164,38 @@ describe('durable progress and recovery', () => {
 });
 
 describe('legacy migration and validation', () => {
+  it('starts fresh and explicitly reset games with zero permanent skill points', async () => {
+    const { SaveSystem, createDefaultMeta } = await setup();
+    expect(createDefaultMeta().diamonds).toBe(0);
+    expect(SaveSystem.loadOrMigrate().meta.diamonds).toBe(0);
+    expect(SaveSystem.resetToDefaults().meta.diamonds).toBe(0);
+  });
+
+  it('preserves saved point balances and learned skills when adopting completion-only rewards', async () => {
+    const { SaveSystem, meta, farm } = await setup();
+    for (const diamonds of [0, 2, 11]) {
+      const old = { schemaVersion: 2, migrationId: 'existing',
+        meta: { ...meta, diamonds, owned: 1, learnedSkills: ['core_awakening', 'reap_root'] }, farm };
+      const migrated = SaveSystem.migrateToV2(old)!;
+      expect(migrated.meta.diamonds).toBe(diamonds);
+      expect(migrated.meta.learnedSkills).toEqual(old.meta.learnedSkills);
+      expect(SaveSystem.migrateToV2(migrated)).toEqual(migrated);
+    }
+  });
+
+  it('initializes missing legacy points using owned farms without bill or record bonuses', async () => {
+    const { SaveSystem, meta, farm } = await setup();
+    const { diamonds: _previousBalance, ...legacyMeta } = meta;
+    for (const owned of [0, 1, 4]) {
+      const migrated = SaveSystem.migrateToV2({ meta: { ...legacyMeta, owned,
+        cityRecords: { ca_toronto: 900 }, cityOwned: { ca_toronto: true } },
+        farm: { ...farm, billsPaid: 8 } })!;
+      expect(migrated.meta.diamonds).toBe(owned);
+      expect(migrated.migrationReport!.diamondsGrantedFromMilestones).toBe(owned);
+      expect(SaveSystem.migrateToV2(migrated)).toEqual(migrated);
+    }
+  });
+
   it('refunds each legacy skill once and stays idempotent across repeat migration', async () => {
     const { SaveSystem, SAVE_KEY_V1, BACKUP_KEY_V1, meta, farm } = await setup();
     const raw = JSON.stringify({ meta: { ...meta, grit: 4, skills: ['reap_1', 'reap_1', 'soil_2'] }, farm });

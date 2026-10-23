@@ -4,7 +4,9 @@ A farming game prototype. You sweep a scythe over crops, each crop sells the mom
 
 Not published to any app store yet.
 
-## Mobile development (v0.7.0)
+## Mobile development (v0.7.1)
+
+[Download Android test APK](https://github.com/navidfarazmand/due-by-dusk/releases/download/android-v0.7.1/Due-by-Dusk-Test.apk) · [Test release and save transfer instructions](https://github.com/navidfarazmand/due-by-dusk/releases/tag/android-v0.7.1)
 
 The maintained TypeScript/Phaser/Capacitor project is now in [mobile/](mobile/). It continues the supplied v0.6.00 game. Landscape gameplay fills the screen; a gear button opens management and pauses an active harvest.
 

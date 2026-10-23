@@ -7,6 +7,9 @@
 // @ts-nocheck
 import Phaser from 'phaser';
 import { SaveSystem } from '../systems/SaveSystem';
+import { cropBounds, cropDepth, FIELD_HEIGHT, FIELD_START } from '../domain/fieldLayout';
+import { STARTING_SKILL_POINTS, skillPointReward } from '../domain/progression';
+import { drawCartoonWorld, drawComicArthur } from '../rendering/cartoonWorld';
 import { loadSettings, storeSettings, SETTINGS_KEY } from '../systems/PlayerSettings';
 import { persistPreference } from '../platform/nativeStorage';
 import { hapticImpact, setHapticsEnabled } from '../platform/mobile';
@@ -1057,7 +1060,7 @@ window.DBD_ENV_RENDERER = (() => {
 
 
 /* ================= data ================= */
-const HW = 640, HORIZON = 186, FIELD_TOP = 228, PAD = 30;
+const HW = FIELD_HEIGHT, HORIZON = 144, FIELD_TOP = FIELD_START, PAD = 30;
 
 // True-to-life relative scale hierarchy: Radish (16) < Carrot (19) < Golden Corn (22) < Cabbage (28) < Couch Potato (36) < King Pumpkin (44)
 
@@ -1094,7 +1097,7 @@ const SHED_IDS = SHED.map(d => d.id), HEIR_IDS = HEIRS.map(d => d.id);
 const blank = ids => { const o = {}; ids.forEach(k => o[k] = 0); return o; };
 let meta = {
   grit: 0,
-  diamonds: 2, // Start with 2 Diamonds so players can immediately explore the branching skill tree!
+  diamonds: STARTING_SKILL_POINTS,
   learnedSkills: [],
   heir: blank(HEIR_IDS),
   lost: 0, owned: 0, best: 0, sound: true,
@@ -1429,7 +1432,7 @@ function resize(){
   canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
   scale = cssH / HW; worldW = cssW / scale;
   if (oldW && Math.abs(oldW - worldW) > 0.5){ const f = worldW / oldW; crops.forEach(c => c.x *= f); if (goat) goat.x *= f; pointer.x *= f; }
-  buildHills(); buildFieldLayer(); coinTarget = null;
+  crops.forEach(keepCropReachable); coinTarget = null;
   if (!oldW && mode === 'idle' && cur && SPRITES.carrot) fillIdle();
 }
 
@@ -1456,7 +1459,12 @@ const keys = new Set();
 const STAGE2_AGE = 0.16;
 const STAGE3_AGE = 0.36;
 
-function depth(y){ return 0.8 + 0.45 * clamp((y - FIELD_TOP) / (HW - FIELD_TOP), 0, 1); }
+function depth(y){ return cropDepth(y, cssH || 360); }
+function boundsFor(def){ return cropBounds(cssW, cssH, def.r, def.top, playerSettings.touchOffset); }
+function keepCropReachable(c){
+  const bounds = boundsFor(CROP[c.type]);
+  c.x = clamp(c.x, bounds.left, bounds.right); c.y = clamp(c.y, bounds.top, bounds.bottom); c.ds = depth(c.y);
+}
 function pickType(){
   const paid = farm.billsPaid;
   const allowed = curCity().crops || ['carrot', 'cabbage', 'pumpkin', 'radish', 'golden', 'potato'];
@@ -1497,7 +1505,8 @@ function spawnCrop(delay){
   const type = pickType(), def = CROP[type];
   let x = 0, y = 0, ok = false;
   for (let i = 0; i < 14 && !ok; i++){
-    x = PAD + Math.random() * (worldW - PAD * 2); y = FIELD_TOP + 32 + Math.random() * (HW - FIELD_TOP - 54);
+    const bounds = boundsFor(def);
+    x = lerp(bounds.left, bounds.right, Math.random()); y = lerp(bounds.top, bounds.bottom, Math.random());
     const rr = def.r * depth(y);
     ok = crops.every(c => { const dx = c.x - x, dy = c.y - y, m = (c.r * c.ds + rr) * 0.85; return dx * dx + dy * dy > m * m; });
   }
@@ -1570,8 +1579,7 @@ function endDay(){
   meta.cityRecords[ct.id] = Math.max(meta.cityRecords[ct.id] || 0, Math.floor(today.earned));
   if (today.earned >= ct.record && !meta.cityOwned[ct.id]) {
     meta.cityOwned[ct.id] = true;
-    meta.diamonds = (meta.diamonds || 0) + 1;
-    toast(`👑 Dethroned ${ct.rival} in ${ct.name}! Earned +1 💎 Diamond & Regional Tribute!`, 4200);
+    toast(`👑 New record in ${ct.name}! Regional tribute unlocked.`, 4200);
   }
   Sound.sunset(); save(); renderAll();
   if (!playerSettings.tutorialComplete) {
@@ -1652,8 +1660,9 @@ function unleashChargeCleave(){
 function spawnFieldProp(){
   if (fieldProps.length >= 2) return;
   const kind = (goat && !cur.treaty && Math.random() < 0.45) ? 'treat' : 'fertilizer';
-  const x = PAD + 40 + Math.random() * (worldW - PAD * 2 - 80);
-  const y = FIELD_TOP + 45 + Math.random() * (HW - FIELD_TOP - 80);
+  const bounds = cropBounds(cssW, cssH, 24, 40, playerSettings.touchOffset);
+  const x = lerp(bounds.left, bounds.right, Math.random());
+  const y = lerp(bounds.top, bounds.bottom, Math.random());
   fieldProps.push({ kind, x, y, ds: depth(y), age: 0, life: 9.5 });
 }
 
@@ -2002,11 +2011,10 @@ function moveRadish(c, dt){
   const maxV = 190 * cur.radishSlow * c.stam, v = Math.hypot(c.vx, c.vy);
   if (v > maxV){ c.vx *= maxV / v; c.vy *= maxV / v; }
   c.x += c.vx * dt; c.y += c.vy * dt;
-  if (c.x < PAD){ c.x = PAD; c.vx = Math.abs(c.vx) * 0.3; }
-  if (c.x > worldW - PAD){ c.x = worldW - PAD; c.vx = -Math.abs(c.vx) * 0.3; }
-  if (c.y < FIELD_TOP + 30){ c.y = FIELD_TOP + 30; c.vy = Math.abs(c.vy) * 0.3; }
-  if (c.y > HW - 22){ c.y = HW - 22; c.vy = -Math.abs(c.vy) * 0.3; }
-  c.ds = depth(c.y);
+  const bounds = boundsFor(CROP[c.type]);
+  if (c.x < bounds.left || c.x > bounds.right) c.vx *= -.3;
+  if (c.y < bounds.top || c.y > bounds.bottom) c.vy *= -.3;
+  keepCropReachable(c);
   if (v > 60 && Math.random() < dt * 14 && canAdd()) parts.push({ k:'dust', x:c.x, y:c.y + 2, vx:-c.vx * 0.1, vy:-10, g:0, s:3 + Math.random() * 3, life:0.4, max:0.4 });
 }
 
@@ -3895,105 +3903,27 @@ function drawPropsCrowsAndWeather(){
 }
 
 function draw(){
-  if(!worldW)return;
-  const p=skyP(),m=lightMul(p),night=smooth(1,1.3,p),warm=smooth(.55,1,p);
+  if (!worldW) return;
+  const p = skyP(), night = smooth(1,1.3,p);
   ctx.setTransform(dpr*scale,0,0,dpr*scale,0,0);
   ctx.save();
-  if(shakeA>.2)ctx.translate((Math.random()-.5)*shakeA,(Math.random()-.5)*shakeA);
-
-  const [top,bot]=skyAt(p),sg=ctx.createLinearGradient(0,0,0,FIELD_TOP);
-  sg.addColorStop(0,rgba(top));sg.addColorStop(1,rgba(bot));
-  ctx.fillStyle=sg;ctx.fillRect(-20,-20,worldW+40,FIELD_TOP+20);
-
-  if(night>0){
-    for(const s of stars){
-      ctx.globalAlpha=night*(.55+.45*Math.sin((reduceMotion?0:tNow)*1.7+s.tw));
-      ctx.fillStyle='#fff2ca';circ(ctx,s.x*worldW,s.y*(HORIZON-30),s.r);
-    }
-    ctx.globalAlpha=1;
-    ctx.fillStyle=radial(ctx,worldW*.81,70,2,worldW*.81,70,65,'rgba(245,239,206,.28)','rgba(245,239,206,0)');
-    circ(ctx,worldW*.81,70,65);
-    ctx.fillStyle='#f5ecd0';circ(ctx,worldW*.81,70,13);
-    ctx.fillStyle='rgba(162,168,165,.3)';circ(ctx,worldW*.81-4,67,3);circ(ctx,worldW*.81+4,74,2);
+  if (!reduceMotion && shakeA > .2) ctx.translate((Math.random()-.5)*Math.min(shakeA,4),(Math.random()-.5)*Math.min(shakeA,4));
+  drawCartoonWorld(ctx,worldW,HW,FIELD_TOP,meta.country,tNow,night,reduceMotion);
+  const st = billStatus();
+  const mood = arthurAngerTimer > 0 ? 'anger' : farm.cash >= st.b.amt ? 'shock' : mode === 'day' && time < 4 ? 'demand' : 'smug';
+  drawComicArthur(ctx,worldW*.87,FIELD_TOP-4,tNow,mood,reduceMotion);
+  const list=crops.slice().sort((a,b)=>a.y-b.y);
+  for (const c of list) {
+    if(c.age <= 0) continue;
+    ctx.fillStyle='rgba(63,66,47,.16)'; ell(ctx,c.x,c.y+3,c.r*c.ds*.9,c.r*c.ds*.22);
   }
-
-  // Sun arc & mountain occlusion check
-  const q = Math.min(1, p);
-  const sx = worldW * (0.12 + 0.76 * q);
-  // Sun rises high at midday (y ~ 52) and dips behind the mountain ridge around p ~ 0.80
-  const sy = 136 - Math.sin(Math.PI * q) * 84 + (p > 0.72 ? Math.pow((p - 0.72) / 0.28, 1.55) * 95 : 0);
-  const ridgeY = mountainRidgeY(sx / worldW);
-  // Positive when the sun's center is above the mountain ridge; <= 0 when behind the mountain
-  const sunClearance = ridgeY - sy;
-  const beamVisibility = clamp((sunClearance - 8) / 28, 0, 1) * (1 - night);
-
-  if(p<1.06){
-    const sun=mixc(hex('#fff4be'),hex('#ff9e58'),warm);
-    ctx.fillStyle=radial(ctx,sx,sy,4,sx,sy,105,rgba(sun,.46),rgba(sun,0));
-    circ(ctx,sx,sy,105);
-    ctx.fillStyle=rgba(sun);
-    circ(ctx,sx,sy,20);
-  }
-
-  drawSkyLife(p,night);
-  ensureScenery();
-  ctx.drawImage(sceneryLayer,0,0,worldW,FIELD_TOP);
-  ctx.drawImage(fieldLayer,0,FIELD_TOP-14,worldW,HW-FIELD_TOP+14);
-  drawScarecrowAndSmoke(night);
-
-  // Sunbeams ("God Rays") ONLY when the sun is strictly above the mountain ridge!
-  // As the sun drops behind the mountain (beamVisibility -> 0), beams vanish completely.
-  if (beamVisibility > 0.01 && mode === 'day') {
-    const rayCol = mixc(hex('#fff6c8'), hex('#ffc078'), warm);
-    for (let i = -1; i <= 1; i++) {
-      ctx.save();
-      ctx.translate(sx, sy);
-      const sway = reduceMotion ? 0 : Math.sin(tNow * 0.7 + i) * 0.025;
-      ctx.rotate(((sx - worldW * 0.5) / worldW) * 0.55 + i * 0.20 + sway);
-      const gr = ctx.createLinearGradient(0, 18, 0, 360);
-      gr.addColorStop(0, rgba(rayCol, 0.14 * beamVisibility));
-      gr.addColorStop(0.65, rgba(rayCol, 0.06 * beamVisibility));
-      gr.addColorStop(1, rgba(rayCol, 0));
-      ctx.fillStyle = gr;
-      ctx.beginPath();
-      ctx.moveTo(-12, 18); ctx.lineTo(12, 18);
-      ctx.lineTo(64, 360); ctx.lineTo(-64, 360);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    }
-  }
-
-  drawPuddles();
-  const sunX=sx,shDx=mode==='day'?-(sunX-worldW/2)/worldW*1.4:0,shA=(night>.5?.16:.3)*(0.55+0.45*beamVisibility),list=crops.slice().sort((a,b)=>a.y-b.y);
-  for(const c of list){const grow=c.age<=0?0:Math.min(1,c.age/.35);if(grow<=0)continue;const w=c.r*c.ds*grow;ctx.fillStyle=`rgba(36,27,17,${shA*.5})`;ell(ctx,c.x+shDx*w*.9,c.y+3,w*1.22,w*.38);ctx.fillStyle=`rgba(30,22,14,${shA})`;ell(ctx,c.x,c.y+3,w*.67,w*.2);}
-  if(goat){const ds=depth(goat.y);ctx.fillStyle=`rgba(30,26,17,${shA})`;ell(ctx,goat.x+shDx*20*ds,goat.y+2,29*ds,8*ds);}
-  let goatDrawn=!goat;for(const c of list){if(!goatDrawn&&goat.y<c.y){drawGoat(goat);goatDrawn=true;}drawCrop(c);}if(!goatDrawn)drawGoat(goat);for(const c of list)drawHpBar(c);drawParts();drawPropsCrowsAndWeather();
-
-  // Seamless full-canvas evening/night atmospheric tint (NO horizontal cut line at y=105!)
-  if (warm > 0.05 || night > 0.05) {
-    const ambGrad = ctx.createLinearGradient(0, 0, 0, HW);
-    ambGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    ambGrad.addColorStop(0.28, rgba(mixc([255, 255, 255], m, 0.45)));
-    ambGrad.addColorStop(1, rgba(m));
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = ambGrad;
-    ctx.fillRect(-20, -20, worldW + 40, HW + 40);
-    ctx.globalCompositeOperation = 'source-over';
-  }
-
-  if (warm > 0.15 && night < 0.85) {
-    const duskWash = ctx.createLinearGradient(0, 0, 0, HW);
-    duskWash.addColorStop(0, 'rgba(255, 180, 120, 0)');
-    duskWash.addColorStop(0.35, `rgba(255, 168, 108, ${warm * 0.14 * (1 - night)})`);
-    duskWash.addColorStop(0.7, `rgba(235, 132, 98, ${warm * 0.10 * (1 - night)})`);
-    duskWash.addColorStop(1, `rgba(120, 68, 88, ${warm * 0.06 * (1 - night)})`);
-    ctx.fillStyle = duskWash;
-    ctx.fillRect(0, 0, worldW, HW);
-  }
-
-  drawBarn(m,night);if(window.DBD_ENV_RENDERER)window.DBD_ENV_RENDERER.drawForegroundFraming(ctx,worldW,HW,curBiome().countryCode,tNow);drawAmbient(night);drawCoins();drawTexts();drawCursor();ctx.restore();
-  if(dawnFade>0){ctx.fillStyle=`rgba(20,35,50,${dawnFade*.65})`;ctx.fillRect(0,0,worldW,HW);}
+  let goatDrawn=!goat;
+  for(const c of list){if(!goatDrawn&&goat.y<c.y){drawGoat(goat);goatDrawn=true;}drawCrop(c);}
+  if(!goatDrawn)drawGoat(goat);
+  for(const c of list)drawHpBar(c);
+  drawParts();drawPropsCrowsAndWeather();drawCoins();drawTexts();drawCursor();
+  ctx.restore();
+  if(dawnFade>0){ctx.fillStyle=`rgba(58,90,85,${dawnFade*.25})`;ctx.fillRect(0,0,worldW,HW);}
 }
 function drawBarn(m,night){
   if(night<.05)return;const bs=worldW<430?.83:1.08,bx=Math.max(75,worldW*.21),x=bx-11*bs,y=211-61*bs;
@@ -4019,7 +3949,7 @@ function renderHeader(){
   const bm = curBiome(), bBtn = $('#btnBiome'), fSign = $('#fieldSign');
   for (const id of ['btnSkillTree', 'btnSaveTransfer']) { const button = $('#' + id); if (button) button.disabled = mode !== 'idle'; }
   if (bBtn) { setText(bBtn, `🌍 ${bm.short}`); bBtn.disabled = mode !== 'idle'; }
-  if (fSign) setText(fSign, `${bm.countryName.toUpperCase()} · ${bm.city.toUpperCase()} · v0.7.0`);
+  if (fSign) setText(fSign, `${bm.countryName.toUpperCase()} · ${bm.city.toUpperCase()} · v0.7.1`);
 }
 let lastStampKey = '';
 function renderNotice(){
@@ -4152,10 +4082,6 @@ function payBill(){
   Sound.init(); Sound.stamp();
   farm.cash -= b.amt; farm.paidTotal += b.amt; farm.billsPaid += 1;
   arthurAngerTimer = 3.0;
-  if (farm.billsPaid % 2 === 0) {
-    meta.diamonds = (meta.diamonds || 0) + 1;
-    toast('Bill milestone! Earned +1 💎 Diamond for the Skill Tree!', 3200);
-  }
   if (farm.bill === BILLS.length - 1){ win(); return; }
   farm.bill += 1; farm.due = (farm.day - 1) + BILLS[farm.bill].days;
   const pool = shuffle(PERKS.filter(p => (!p.req || p.req(farm)) && (!p.once || !farm.perks.includes(p.id))).map(p => p.id));
@@ -4214,13 +4140,13 @@ function win(){
   meta.grit += g.total + bonus; meta.owned += 1; meta.best = BILLS.length;
   if (!meta.cityOwned) meta.cityOwned = {};
   meta.cityOwned[curCity().id] = true;
-  meta.diamonds = (meta.diamonds || 0) + 2;
+  meta.diamonds = (meta.diamonds || 0) + skillPointReward('farm-completed');
   sceneryKey = ''; buildFieldLayer();
   farm = newFarm(); cur = stats(); mode = 'idle'; goat = null; fillIdle(); lastStampKey = '';
   save(); renderAll(); Sound.fanfare();
   openModal(
     `<div class="letter"><div class="mtop"><p class="eyebrow">Grumble &amp; Sons Savings &amp; Loan</p><span class="stamp ok pop">Paid in full</span></div>` +
-    `<h3 class="mtitle" id="mTitle">The farm is yours.</h3>` +
+    `<h3 class="mtitle" id="mTitle">The farm is yours. +1 skill point!</h3>` +
     `<p>Dear former customer,</p><p>Enclosed is the deed. We are, frankly, upset. The scarecrow sends his regards and has withdrawn his lawsuit.</p><p class="sig">A. Grumble, Junior Loan Officer</p></div>` +
     `<dl class="tally"><div><dt>Days</dt><dd>${old.day - 1}</dd></div><div><dt>Crops cut</dt><dd>${old.harvested.toLocaleString('en-US')}</dd></div><div><dt>Earned</dt><dd>${fmt$(old.earned)}</dd></div></dl>` +
     `<p class="gritline">Grit earned: <b>${g.total + bonus}</b> <span>(including ${bonus} for owning the farm outright)</span></p>` +
@@ -4436,7 +4362,7 @@ function openSkillTreeModal(){
       <div style="flex:1;min-width:240px">
         <h4>${selNode.icon} ${selNode.name} <small style="font-size:13px;color:#38bdf8">· Cost: 1 💎 Diamond</small></h4>
         <p>${selNode.desc}</p>
-        <p class="tree-reqline">${reqLabel} · <em>Earn Diamonds every 2nd bill paid (+1 💎), by beating a City Rival (+1 💎), or paying a Deed (+2 💎).</em></p>
+        <p class="tree-reqline">${reqLabel} · <em>Complete a farm by paying its deed to earn 1 permanent skill point. Bills and regional records do not grant skill points.</em></p>
       </div>
       <div>
         <button class="btn" type="button" data-learn-skill="${selNode.id}" ${canAfford ? '' : 'disabled'} style="background:${selLearned ? '#15803d' : '#0284c7'};color:#fff">
@@ -4821,11 +4747,7 @@ export class FarmScene extends Phaser.Scene {
     }
     Sound.on = meta.sound;
 
-    // Create Arthur Grumble Sprite GameObject backed by the 30-frame Phaser Texture Atlas!
-    this.arthurSprite = this.add.sprite(0, 0, 'arthur', 'idle_0');
-    this.arthurSprite.setOrigin(0.5, 0.95);
-    this.arthurSprite.setVisible(false); // Rendered in scene depth pass alongside fence & speech bubble
-    this.arthurSprite.play('arthur_idle');
+    // Characters are now drawn as original vector cartoons alongside the crops.
 
     cur = stats();
     buildSprites();
@@ -4845,7 +4767,15 @@ export class FarmScene extends Phaser.Scene {
     // Expose programmatic test hooks for automated headless verification
     if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') (window as any).__DBD_TEST = {
       getScene: () => this,
-      getState: () => ({ mode, meta, farm, time, dayLen, paused, chargeT, cleaveRingCount: parts.filter(p => p.k === 'ring' && p.c === '#38bdf8').length, cropsCount: crops.length }),
+      completeFarmForTest: () => { closeModal(); mode='idle'; dayCheckpoint=null; farm.pendingPerks=null; farm.bill=BILLS.length-1; farm.billsPaid=BILLS.length-1; farm.cash=billObj(farm.bill).amt; payBill(); },
+      getState: () => ({ mode, meta, farm, time, dayLen, paused, chargeT, todayEarned:today.earned,
+        cropTargets: crops.filter(c=>c.age>.4).map(c=>{
+          const rect=canvas.getBoundingClientRect(), cy=c.y-c.r*c.ds*.55;
+          return {x:c.x,y:c.y,type:c.type,screenX:rect.left+c.x*scale,screenY:rect.top+cy*scale,
+            fingerX:rect.left+c.x*scale,fingerY:rect.top+cy*scale+playerSettings.touchOffset,
+            diameter:2*c.r*c.ds*scale};
+        }),
+        cleaveRingCount: parts.filter(p => p.k === 'ring' && p.c === '#38bdf8').length, cropsCount: crops.length }),
       openArthurStudio: (st: string) => { mode = 'idle'; openArthurStudioModal(st); },
       openWorldMap: () => { mode = 'idle'; openWorldMapModal('world'); },
       openCountryMap: (cc: string) => { mode = 'idle'; openWorldMapModal('country', cc); },
@@ -4934,6 +4864,7 @@ window.addEventListener('pagehide', () => { setPaused(true); save(); });
 window.addEventListener('dbd:settings', e => {
   Object.assign(playerSettings, e.detail);
   reduceMotion = playerSettings.reducedEffects || motionPreference.matches;
+  crops.forEach(keepCropReachable);
   setHapticsEnabled(playerSettings.haptics);
   if (!storeSettings(playerSettings)) toast('Settings could not be saved on this device.');
 });

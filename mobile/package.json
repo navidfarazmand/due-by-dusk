@@ -1,6 +1,6 @@
 {
   "name": "due-by-dusk-harvest-edition",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Due by Dusk: Harvest Edition — Phaser 3 + TypeScript + Vite Engine Project",
   "type": "module",

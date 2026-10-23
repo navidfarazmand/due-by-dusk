@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: mobile-${{ github.workflow }}-${{ github.ref }}
@@ -70,6 +70,30 @@ jobs:
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Publish Android testing prerelease
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="android-v${version}"
+          cp android/app/build/outputs/apk/debug/app-debug.apk Due-by-Dusk-Test.apk
+          cat > "$RUNNER_TEMP/android-test-release-notes.md" <<EOF
+          Android testing build v${version}. Source commit: ${GITHUB_SHA}.
+
+          Download **Due-by-Dusk-Test.apk** below, then open it on your Android phone to install.
+
+          This installs **Due by Dusk Test** alongside the old Due by Dusk app and preserves the old app's data. Keep the old app installed. To carry over progress, export your save from the old app's Management panel and import that JSON in Due by Dusk Test. The test app initially has separate, empty storage. Future test APKs update Due by Dusk Test in place.
+
+          Development build only, signed with an intentionally public testing key. This is not a Google Play production release.
+          EOF
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" Due-by-Dusk-Test.apk --clobber
+            gh release edit "$tag" --prerelease --notes-file "$RUNNER_TEMP/android-test-release-notes.md"
+          else
+            gh release create "$tag" Due-by-Dusk-Test.apk --prerelease --target "$GITHUB_SHA" --title "Android test v${version}" --notes-file "$RUNNER_TEMP/android-test-release-notes.md"
+          fi
       - name: Save browser failure diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

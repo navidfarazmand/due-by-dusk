@@ -6,6 +6,13 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   backgroundColor: '#1b2119',
   loggingBehavior: 'debug',
+  plugins: {
+    SystemBars: {
+      hidden: true,
+      insetsHandling: 'css',
+      initialViewportFitValueHint: 'cover',
+    },
+  },
   android: {
     allowMixedContent: false,
     webContentsDebuggingEnabled: false,

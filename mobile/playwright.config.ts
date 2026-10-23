@@ -19,6 +19,8 @@ export default defineConfig({
   projects: [
     { name: 'landscape-phone', use: { viewport: { width: 844, height: 390 } } },
     { name: 'small-landscape-phone', use: { viewport: { width: 667, height: 375 } } },
+    { name: 'a71-landscape', use: { viewport: { width: 914, height: 412 } } },
+    { name: 'a71-compact-landscape', use: { viewport: { width: 800, height: 360 } } },
     { name: 'desktop', use: { viewport: { width: 1440, height: 900 } } },
   ],
   webServer: process.env.DBD_SKIP_SERVER === '1' ? undefined : {

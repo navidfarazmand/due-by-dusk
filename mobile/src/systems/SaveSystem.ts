@@ -24,6 +24,7 @@ import { FarmState, MetaState, MigrationReport, SavePayloadV2 } from '../types/g
 import { GEOGRAPHY } from '../data/geography';
 import { SKILL_TREE_NODES } from '../data/skillTree';
 import { ALMANAC, BILLS, HEIR_IDS, HEIRS, PERKS, SHED, SHED_IDS } from '../data/crops';
+import { STARTING_SKILL_POINTS, legacySkillPointEntitlement } from '../domain/progression';
 
 export const SAVE_KEY_V2 = 'due-by-dusk-v2';
 export const SAVE_KEY_V1 = 'due-by-dusk-v1';
@@ -82,7 +83,7 @@ export function blankMap(ids: string[]): Record<string, number> {
 export function createDefaultMeta(): MetaState {
   return {
     grit: 0,
-    diamonds: 2,
+    diamonds: STARTING_SKILL_POINTS,
     learnedSkills: [],
     heir: blankMap(HEIR_IDS),
     lost: 0,
@@ -290,17 +291,17 @@ export class SaveSystem {
       }
     }
 
-    // 3. Determine Diamonds balance (idempotent: never re-adds milestone diamonds if already present)
-    let diamonds = 2;
+    // 3. Keep existing point balances. Older saves without a balance receive
+    // one point per completed farm, with no starter, bill, or city-record grants.
+    let diamonds = STARTING_SKILL_POINTS;
     let diamondsGranted = 0;
     if (typeof rawMeta.diamonds === 'number' && isFinite(rawMeta.diamonds)) {
       diamonds = Math.max(0, Math.floor(rawMeta.diamonds));
     } else {
-      const billsPaid = clamp(Math.floor(num(rawFarm.billsPaid, 0)), 0, BILLS.length);
       const ownedCount = Math.max(0, Math.floor(num(rawMeta.owned, 0)));
-      diamondsGranted = 2 + Math.floor(billsPaid / 2) + ownedCount * 2;
+      diamondsGranted = legacySkillPointEntitlement(ownedCount);
       diamonds = diamondsGranted;
-      notes.push(`Initialized ${diamonds} Diamonds from progression (${billsPaid} bills paid, ${ownedCount} farms owned).`);
+      notes.push(`Initialized ${diamonds} permanent skill point(s) from ${ownedCount} completed farm(s), one point per farm.`);
     }
 
     // 4. Preserve & migrate geographical Country, City, Records & Deeds

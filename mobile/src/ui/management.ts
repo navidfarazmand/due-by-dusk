@@ -59,6 +59,19 @@ export function initManagementUI() {
   new MutationObserver(updateBillHud).observe(notice, { childList: true, subtree: true, characterData: true });
   updateBillHud();
 
+  // Tips get their own strip above the field, never covering a growing crop.
+  const messages = document.querySelector<HTMLElement>('.field-messages');
+  const toast = document.querySelector<HTMLElement>('#toast');
+  const eventLabel = document.querySelector<HTMLElement>('#eventLabel');
+  function updateMessages() {
+    if (!messages) return;
+    const hasToast = !!toast?.classList.contains('show') && !!toast.textContent?.trim();
+    messages.classList.toggle('has-toast', hasToast);
+    messages.hidden = !hasToast && !eventLabel?.textContent?.trim();
+  }
+  if (messages) new MutationObserver(updateMessages).observe(messages, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] });
+  updateMessages();
+
   const offset = document.querySelector<HTMLInputElement>('#settingTouchOffset');
   offset?.addEventListener('input', () => {
     const output = document.querySelector<HTMLOutputElement>('#touchOffsetValue');

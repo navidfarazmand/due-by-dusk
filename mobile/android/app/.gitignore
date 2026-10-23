@@ -1,2 +1,5 @@
 /build/*
 !/build/.npmkeep
+
+# Intentionally public debug-only identity, so test updates preserve app storage.
+!/test-signing/public-debug.keystore

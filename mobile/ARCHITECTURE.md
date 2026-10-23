@@ -6,9 +6,9 @@ The mobile project continues the supplied v0.6.00 game with TypeScript, Phaser 3
 
 `src/main.ts` hydrates the local save cache from native Preferences before importing scenes, connects verified saves to ordered native writes, initializes the management drawer and lifecycle handlers, and starts Phaser. Fonts are installed locally.
 
-Phaser runs timing, scenes, textures and atlas animations on a hidden 1×1 canvas. The procedural Canvas2D renderer exclusively owns the visible `#field` canvas. Keeping the two separate prevents Phaser's render pass from clearing the field. Arthur is drawn using the real Phaser atlas Frame API. The previous shim/fallback build is not a production path.
+Phaser runs timing and scenes on a hidden 1×1 canvas. The procedural Canvas2D renderer exclusively owns the visible `#field` canvas. Keeping the two separate prevents Phaser's render pass from clearing the field. The scenery and Arthur are original cartoon artwork in `src/rendering/cartoonWorld.ts`. Vegetable drawing functions remain unchanged; only their size and placement changed. Old bitmap panoramas and the Arthur atlas are archived under `art/legacy-textures` and are not shipped. The previous shim/fallback build is not a production path.
 
-The field coordinate system remains 640 logical units high. Width changes with its aspect ratio. Screen-to-world input uses the visible canvas bounds and scale; the adjustable finger offset is in CSS pixels. Pixel ratio is capped at 2. Reduced effects also follows the operating system's reduced-motion preference.
+The bottom dock holds every gameplay counter and control outside the playable canvas. Tips use a separate strip above it. Android uses immersive system bars and cutout-safe control insets. The field coordinate system remains 640 logical units high. Width changes with its aspect ratio. Screen-to-world input uses the visible canvas bounds and scale; the adjustable finger offset is in CSS pixels. `fieldLayout.ts` keeps vegetables large in CSS pixels and reserves safe finger targets away from edges. Pixel ratio is capped at 2. Reduced effects also follows the operating system's reduced-motion preference.
 
 ## State and saving
 
@@ -22,7 +22,7 @@ The field coordinate system remains 640 logical units high. Width changes with i
 
 A day is a transaction. Before dawn, the farm is checkpointed. During an interrupted harvest, saving writes the checkpoint rather than partly earned cash. Closing/restarting replays that day from dawn; it never adds partial income twice. On successful sunset, the whole day and regional rewards commit. Opening management pauses play and closing it requires explicit Resume. Backgrounding saves and pauses; foregrounding never silently resumes the timer.
 
-Cash, equipment and perks belong to the current farm. Grit, heirlooms, learned skills, Diamonds and regional accomplishments persist across farms. Perk stacks are intentional. Migration must preserve them and must not refund old skills twice.
+Completed farms grant exactly one permanent skill point; new games start at zero. Bills and city records grant none. Existing saved balances are preserved. Cash, equipment and perks belong to the current farm. Grit, heirlooms, learned skills, Diamonds and regional accomplishments persist across farms. Perk stacks are intentional. Migration must preserve them and must not refund old skills twice.
 
 Imported JSON is untrusted data: validate state, escape text rendered in HTML, and never execute it. Unknown future schemas are not downgraded. Unrecoverable originals block autosave until explicit restore/reset, with a visible warning.
 
