@@ -65,5 +65,16 @@
 	<true/>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!-- The AdMob plugin needs an app ID at launch. This is Google's sample iOS app ID: the game
+	     requests no ads on iOS yet. Replace it with the real iOS app ID once the iOS app exists in AdMob. -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-3940256099942544~1458002511</string>
+	<key>SKAdNetworkItems</key>
+	<array>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>cstr6suwn9.skadnetwork</string>
+		</dict>
+	</array>
 </dict>
 </plist>

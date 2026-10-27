@@ -10,6 +10,7 @@ import { bootstrapPreferences, persistPreference } from './platform/nativeStorag
 import { initializeMobilePlatform } from './platform/mobile';
 import { initManagementUI } from './ui/management';
 import { initializeSaveStatus } from './ui/saveStatus';
+import { initializeAds, initPrivacyLinks } from './platform/ads';
 
 async function start() {
   let nativeWarning = '';
@@ -22,6 +23,7 @@ async function start() {
   });
   const management = initManagementUI();
   window.addEventListener('dbd:close-management', () => management.close());
+  initPrivacyLinks();
   await initializeMobilePlatform({
     onPause: () => window.dispatchEvent(new Event('dbd:pause')),
     onBackButton: () => {
@@ -52,6 +54,8 @@ async function start() {
   const game = new Phaser.Game({type:Phaser.CANVAS,parent:engine,width:1,height:1,transparent:true,audio:{noAudio:true},scene:[BootScene,PreloadScene,FarmScene],fps:{target:60}});
   initializeSaveStatus();
   if(nativeWarning) window.dispatchEvent(new CustomEvent('dbd:storage-warning',{detail:nativeWarning}));
+  // Consent and ads start once the farm is on screen; they never delay or block play.
+  setTimeout(() => { void initializeAds(); }, 1200);
   if(import.meta.env.DEV || import.meta.env.MODE==='e2e') (window as any).__PHASER_GAME=game;
 }
 start().catch(error => {

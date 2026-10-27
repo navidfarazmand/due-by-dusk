@@ -1,6 +1,6 @@
 {
   "name": "due-by-dusk-harvest-edition",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "private": true,
   "description": "Due by Dusk: Harvest Edition — Phaser 3 + TypeScript + Vite Engine Project",
   "type": "module",
@@ -16,6 +16,7 @@
     "ios:open": "cap open ios"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^8.2.1",
     "@capacitor/android": "^8.5.3",
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.3",

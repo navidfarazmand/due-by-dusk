@@ -1,4 +1,4 @@
-# Due by Dusk — mobile development v0.7.1
+# Due by Dusk — mobile development v0.7.2
 
 Landscape harvest game built with TypeScript, Phaser 3, Vite and Capacitor 8. Use Node 22.12+ (Node 24 recommended).
 
@@ -24,8 +24,8 @@ Assets and fonts are packaged locally. Management starts closed; open the gear t
 
 The bottom dock keeps the multiplier, daylight, bill and buttons outside the crop area. Existing vegetable artwork is preserved and enlarged; scenery and Arthur use new cartoon vector artwork. Successful farms grant one skill point.
 
-[Download the Android test APK](https://github.com/navidfarazmand/due-by-dusk/releases/download/android-v0.7.1/Due-by-Dusk-Test.apk). It installs as **Due by Dusk Test** alongside the old app. Export/import a save to carry over progress, and keep the old app installed until you verify the transfer.
+[Download the Android test APK](https://github.com/navidfarazmand/due-by-dusk/releases/download/android-v0.7.2/Due-by-Dusk-Test.apk). It installs as **Due by Dusk Test** alongside the old app. Export/import a save to carry over progress, and keep the old app installed until you verify the transfer.
 
-The production build uses real Phaser; the old custom shim is not shipped. Android test APKs are distributed through GitHub prereleases and CI artifacts. They are development builds, not Play Store releases. iOS requires a Mac and signing. No ads, purchases, accounts or analytics have been added.
+The production build uses real Phaser; the old custom shim is not shipped. Android test APKs are distributed through GitHub prereleases and CI artifacts. They are development builds, not Play Store releases. iOS requires a Mac and signing. Since v0.7.2 the game includes optional rewarded ads (Google AdMob) with Google's consent message; test builds show Google demo ads. No purchases, accounts or analytics have been added. The Play app ID is `com.khoreh.duebydusk`; see the [release plan](docs/release-plan.md#google-play-and-admob-v072).
 
 Editable supplied character sources live in art/source. The original asset pipeline is archived in art/tools and references raw generated images that were not included in the supplied archive. Old bitmap textures are archived in art/legacy-textures; current game art is drawn in code.

@@ -114,6 +114,8 @@ export interface FarmState {
   lastBest: number;
   lastBonus: number;
   bestChain: number;
+  /** True once the rewarded ad has bought this farm its one extra day. */
+  extraDayUsed: boolean;
 }
 
 export interface MigrationReport {

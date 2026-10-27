@@ -1,14 +1,17 @@
 apply plugin: 'com.android.application'
 
 android {
+    // The Java namespace stays as created; the Play app ID below is what players and Google Play see.
     namespace = "com.navidfarazmand.duebydusk"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.navidfarazmand.duebydusk"
+        // Google Play app ID (permanent): created in Play Console on 27 Oct 2026.
+        applicationId "com.khoreh.duebydusk"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 8
-        versionName "0.7.1"
+        // Every Play upload needs a higher versionCode; the release workflow passes DBD_VERSION_CODE.
+        versionCode((System.getenv('DBD_VERSION_CODE') ?: '9') as int)
+        versionName "0.7.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -25,16 +28,35 @@ android {
             keyPassword 'android'
             storeType 'JKS'
         }
+        // Private Play upload key. It comes from CI secrets (see .github/workflows/release-aab.yml)
+        // or from your own ~/.gradle/gradle.properties. Never commit the key or its passwords.
+        release {
+            def uploadStore = System.getenv('DBD_UPLOAD_STORE_FILE') ?: project.findProperty('dbdUploadStoreFile')
+            if (uploadStore) {
+                storeFile file(uploadStore)
+                storePassword System.getenv('DBD_UPLOAD_STORE_PASSWORD') ?: project.findProperty('dbdUploadStorePassword')
+                keyAlias System.getenv('DBD_UPLOAD_KEY_ALIAS') ?: project.findProperty('dbdUploadKeyAlias')
+                keyPassword System.getenv('DBD_UPLOAD_KEY_PASSWORD') ?: project.findProperty('dbdUploadKeyPassword')
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
-            applicationIdSuffix '.testing'
         }
         release {
+            if (signingConfigs.release.storeFile != null) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+}
+
+// Test APKs keep their original ID (com.navidfarazmand.duebydusk.testing), so new test builds still
+// update the installed "Due by Dusk Test" app and keep its saves. Only the Play build uses com.khoreh.duebydusk.
+androidComponents {
+    onVariants(selector().withBuildType('debug')) { variant ->
+        variant.applicationId.set('com.navidfarazmand.duebydusk.testing')
     }
 }
 

@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.navidfarazmand.duebydusk',
+  appId: 'com.khoreh.duebydusk',
   appName: 'Due by Dusk',
   webDir: 'dist',
   backgroundColor: '#1b2119',

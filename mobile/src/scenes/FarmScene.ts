@@ -13,6 +13,7 @@ import { drawCartoonWorld, drawComicArthur } from '../rendering/cartoonWorld';
 import { loadSettings, storeSettings, SETTINGS_KEY } from '../systems/PlayerSettings';
 import { persistPreference } from '../platform/nativeStorage';
 import { hapticImpact, setHapticsEnabled } from '../platform/mobile';
+import { ADS_CHANGED_EVENT, rewardedAdReady, showRewardedAd } from '../platform/ads';
 import { calculateStats, calculateGrit, upgradeCost, cropHealthMultiplier } from '../domain/economy';
 import { GAZETTE_EVENTS, BILLS, SHED, ALMANAC, HEIRS, PERKS } from '../data/crops';
 import { GEOGRAPHY as GEO } from '../data/geography';
@@ -1111,7 +1112,7 @@ let dayCheckpoint = null;
 
 function newFarm(){
   return { no: meta.lost + meta.owned + 1, day:1, cash: ALMANAC[meta.heir.almanac] || 0, shed: blank(SHED_IDS), perks: [],
-    bill:0, due: BILLS[0].days, paidTotal:0, billsPaid:0, lastEarn:0, lastCount:0, played:false, earned:0, harvested:0, pendingPerks:null, lastBest:0, lastBonus:0, bestChain:0 };
+    bill:0, due: BILLS[0].days, paidTotal:0, billsPaid:0, lastEarn:0, lastCount:0, played:false, earned:0, harvested:0, pendingPerks:null, lastBest:0, lastBonus:0, bestChain:0, extraDayUsed:false };
 }
 
 function hasSkill(id){ return Array.isArray(meta.learnedSkills) && meta.learnedSkills.includes(id); }
@@ -4025,9 +4026,15 @@ function renderCard(){
   let title, body, btn;
   const startBtn = `<button class="btn" type="button" data-act="start">Start day ${farm.day}</button>`;
   if (st.tonight && farm.cash < b.amt){
+    // Optional rewarded ad: once per farm, and only offered while an ad is already loaded.
+    const canExtend = !farm.extraDayUsed && rewardedAdReady();
     title = 'The bank comes tonight.';
-    body = `You're ${fmt$(Math.ceil(b.amt - farm.cash))} short on the ${lc(b.name)}. Grumble &amp; Sons will take the farm. You keep your heirlooms and earn Grit.`;
-    btn = `<button class="btn money" type="button" data-act="bank">Face the bank</button>`;
+    body = `You're ${fmt$(Math.ceil(b.amt - farm.cash))} short on the ${lc(b.name)}. ` + (canExtend
+      ? 'Grumble &amp; Sons will take the farm, unless you watch an ad for one more day.'
+      : 'Grumble &amp; Sons will take the farm. You keep your heirlooms and earn Grit.');
+    // Both buttons fit one row on the narrowest landscape card (262 px).
+    btn = `<button class="btn money" type="button" data-act="bank">Face the bank</button>` +
+      (canExtend ? `<button class="chipbtn" type="button" data-act="extraday" aria-label="Watch an ad for one more day">▶ +1 day</button>` : '');
   } else if (st.tonight){
     title = 'Pay before you sleep.';
     body = `The ${lc(b.name)} is due tonight, and you have the money.`;
@@ -4117,6 +4124,22 @@ function buyHeir(id){
   meta.grit -= c; meta.heir[id] += 1;
   if (id === 'almanac' && !farm.played && farm.billsPaid === 0) farm.cash = Math.max(farm.cash, ALMANAC[meta.heir.almanac]);
   cur = stats(); Sound.click(); save(); renderAll();
+}
+let adBusy = false;
+async function extraDay(){
+  const st = billStatus();
+  if (adBusy || mode !== 'idle' || farm.pendingPerks || !el.modal.hidden || !st.tonight || farm.cash >= st.b.amt || farm.extraDayUsed) return;
+  const before = farm;
+  adBusy = true;
+  const rewarded = await showRewardedAd();
+  adBusy = false;
+  if (!rewarded){ renderAll(); toast('No extra day this time. Watch the whole ad to earn it.'); return; }
+  // Only extend the same unpaid bill the player asked about.
+  const now = billStatus();
+  if (farm !== before || !now.tonight || farm.cash >= now.b.amt || farm.extraDayUsed){ renderAll(); return; }
+  farm.due += 1; farm.extraDayUsed = true;
+  save(); renderAll(); Sound.click();
+  toast(`Grumble & Sons will wait. The ${lc(now.b.name)} is now due at sunset tomorrow.`, 4000);
 }
 function foreclose(){
   if (mode !== 'idle' || farm.pendingPerks || !el.modal.hidden || !billStatus().tonight || farm.cash >= billObj(farm.bill).amt) return;
@@ -4526,9 +4549,10 @@ function closeModal(){
 el.overlay.addEventListener('click', e => {
   const b = e.target.closest('button[data-act]'); if (!b) return;
   const act = b.dataset.act; Sound.init(); Sound.click();
-  if (act === 'start') startDay(); else if (act === 'pay') payBill(); else if (act === 'bank') foreclose(); else if (act === 'map') openWorldMapModal('world'); else if (act === 'skills') openSkillTreeModal(); else if (act === 'arthur') openArthurStudioModal('demand');
+  if (act === 'start') startDay(); else if (act === 'pay') payBill(); else if (act === 'bank') foreclose(); else if (act === 'extraday') void extraDay(); else if (act === 'map') openWorldMapModal('world'); else if (act === 'skills') openSkillTreeModal(); else if (act === 'arthur') openArthurStudioModal('demand');
 });
 el.notice.addEventListener('click', e => { if (e.target.closest('#btnPay')) payBill(); });
+window.addEventListener(ADS_CHANGED_EVENT, () => { if (farm && mode === 'idle' && !adBusy) renderCard(); });
 el.shedList.addEventListener('click', e => { const b = e.target.closest('button[data-buy]'); if (b) buyShed(b.dataset.buy); });
 el.heirList.addEventListener('click', e => { const b = e.target.closest('button[data-heir]'); if (b) buyHeir(b.dataset.heir); });
 el.modal.addEventListener('click', e => {

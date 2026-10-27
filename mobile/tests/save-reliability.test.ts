@@ -235,4 +235,14 @@ describe('legacy migration and validation', () => {
       migrationReport: { notes: 'not an array', fromVersion: '<img>', toVersion: '<script>', backupKey: '<img>' } })!;
     expect(payload.migrationReport).toMatchObject({ fromVersion: 2, toVersion: 2, notes: [], backupKey: 'due-by-dusk-v1-backup' });
   });
+
+  it('keeps the once-per-farm extra day through saves and gives older saves a fresh one', async () => {
+    const { SaveSystem, meta, farm } = await setup();
+    expect(farm.extraDayUsed).toBe(false);
+    const used = SaveSystem.migrateToV2({ schemaVersion: 2, migrationId: 'x', meta, farm: { ...farm, extraDayUsed: true } })!;
+    expect(used.farm.extraDayUsed).toBe(true);
+    const { extraDayUsed: _omitted, ...olderFarm } = farm;
+    expect(SaveSystem.migrateToV2({ schemaVersion: 2, migrationId: 'y', meta, farm: olderFarm })!.farm.extraDayUsed).toBe(false);
+    expect(SaveSystem.migrateToV2({ schemaVersion: 2, migrationId: 'z', meta, farm: { ...farm, extraDayUsed: 'yes' } })!.farm.extraDayUsed).toBe(false);
+  });
 });

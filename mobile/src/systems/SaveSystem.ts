@@ -117,6 +117,7 @@ export function createNewFarm(meta: MetaState): FarmState {
     lastBest: 0,
     lastBonus: 0,
     bestChain: 0,
+    extraDayUsed: false,
   };
 }
 
@@ -399,6 +400,7 @@ export class SaveSystem {
       lastBest: Math.max(0, Math.floor(num(rawFarm.lastBest, 0))),
       lastBonus: Math.max(0, num(rawFarm.lastBonus, 0)),
       bestChain: Math.max(0, Math.floor(num(rawFarm.bestChain, 0))),
+      extraDayUsed: rawFarm.extraDayUsed === true,
     };
 
     const savedReport = raw.migrationReport;
