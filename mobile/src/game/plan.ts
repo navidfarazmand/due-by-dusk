@@ -90,10 +90,10 @@ const BILL_DAYS: Record<CountryCode, number[]> = {
 };
 
 /**
- * Extra bill pressure per country. Balance runs (a bot playing the whole route) found the USA and Brazil
- * too relaxed next to Morocco onwards, where bosses and longer farms already bite.
+ * Bill pressure per country. Balance runs (a bot playing the whole route) found the USA and Brazil too
+ * relaxed next to Morocco onwards, where bosses and long farms already bite, and Japan a little too steep.
  */
-const BILL_MUL: Record<CountryCode, number> = { CA: 1, US: 1.15, BR: 1.2, MA: 1, FR: 1, CN: 1, JP: 1 };
+const BILL_MUL: Record<CountryCode, number> = { CA: 1, US: 1.3, BR: 1.3, MA: 1, FR: 1, CN: 1, JP: 0.9 };
 
 /** Share of a steady day's earnings each bill asks for, per day it gives you; it rises through the farm. */
 function billShare(i: number, n: number): number {
@@ -264,8 +264,8 @@ export function planFor(cityId: string): CityPlan {
     unlock,
     goldAt: 4,
     crops,
-    // the rival's best day: about twice a steady day early on, nearly three times by Japan
-    record: roundMoney(ref * (1.8 + 0.04 * k)),
+    // the rival's best day: 1.5 steady days in Charlottetown, rising to about 3 by Japan
+    record: roundMoney(ref * (1.5 + 0.05 * k)),
     totalDays,
     par: Math.max(2, totalDays - 1),
     signatureEvent: SIGNATURE[cityId] || 'market',
