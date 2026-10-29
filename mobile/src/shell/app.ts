@@ -954,10 +954,11 @@ export class GameApp {
   }
 
   private walletChip(): string {
-    // on a farm: the farm's cash (for its bills) and, beside it, savings (for upgrades)
-    const save = `<div class="st-chip chip-row save-chip" aria-label="Savings ${money(this.g.wallet)}, for upgrades and tools">${ICON.piggy(22)}<span>${money(this.g.wallet)}</span></div>`;
-    if (!this.g.run) return save.replace('save-chip', 'save-chip wallet-chip');
-    return `<div class="st-chip chip-row wallet-chip" aria-label="Cash on this farm ${money(this.farmCash())}">${ICON.coin(22)}<span>${money(this.farmCash())}</span></div>${this.g.wallet > 0 ? save : ''}`;
+    // between farms: savings (for upgrades and tools); on a farm: the farm's cash (for its bills), then savings
+    if (!this.g.run)
+      return `<div class="st-chip chip-row wallet-chip save-chip" aria-label="Savings ${money(this.g.wallet)}, for upgrades and tools">${ICON.piggy(22)}<span>${money(this.g.wallet)}</span></div>`;
+    const save = this.g.wallet > 0 ? `<i class="wc-sep"></i>${ICON.piggy(18)}<span class="wc-save">${money(this.g.wallet)}</span>` : '';
+    return `<div class="st-chip chip-row wallet-chip" aria-label="Cash on this farm ${money(this.farmCash())}${save ? `, savings ${money(this.g.wallet)}` : ''}">${ICON.coin(22)}<span>${money(this.farmCash())}</span>${save}</div>`;
   }
 
   // ------------------------------------------------------------------ menu
@@ -1173,7 +1174,7 @@ export class GameApp {
     return `<div class="wood"></div>
       <div class="grp tl" style="width: 520px; height: 64px"><div class="fh-top">
         <button type="button" class="st-btn st-sq" data-act="map" data-arg="${run.cityId}" aria-label="Back to the map">${ICON.back()}</button>
-        <div class="st-chip fh-title"><h2>${esc(ct.short)}</h2><span class="sub">Day ${st.day}${plan.boss ? ' · Boss farm' : ''}</span></div>
+        <div class="st-chip fh-title"><h2>${esc(ct.short)}</h2><span class="sub">Day ${st.day}${plan.boss ? ' · Boss' : ''}</span></div>
         ${this.walletChip()}${coinsOffer}</div></div>
       <div class="grp tr" style="width: 230px; height: 64px">${action}</div>
       <div class="grp ml" style="width: 240px; height: 300px">${this.noticeHtml(b, st)}</div>
