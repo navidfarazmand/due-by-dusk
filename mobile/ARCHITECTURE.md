@@ -1,35 +1,31 @@
-# Due by Dusk mobile architecture
+# Due by Dusk mobile architecture (v0.8)
 
-The mobile project continues the supplied v0.6.00 game with TypeScript, Phaser 3 and Capacitor 8. It is landscape, with a full-width harvest field and a gear-operated management drawer. Android and iOS contain local web assets; a server connection is unnecessary during play.
+Landscape farm game: Gemini's v0.6.05 farm engine runs the harvest days; Claude's game shell runs everything around them. TypeScript + Vite + Capacitor 8. Android and iOS hold local web assets; no server is needed to play.
 
-## Entry and rendering
+## Pieces
 
-`src/main.ts` hydrates the local save cache from native Preferences before importing scenes, connects verified saves to ordered native writes, initializes the management drawer and lifecycle handlers, and starts Phaser. Fonts are installed locally.
+- `src/engine/gemini-engine.js`: Gemini's v0.6.05 bundle (Phaser shim, crops, characters, sounds, effects), formatted and patched. It draws the field on `#field`, keeps its own farm save (`dbd-farm-v3`) and exposes `window.__DBD_ENGINE` (state, bills, start day, pay, perks, tools, boss info). The shell talks to it only through that API and the `window.__dbdEvent` events (`dayStart`, `dayEnd`, `idle`, `billPaid`, `perks`, `cityWon`, `foreclosed`, `bossAppear`, `bossStomp`, `bossDown`). Gemini's developer studios and Arthur are removed. Its old `__DBD_TEST` hook exists only in dev and e2e builds.
+- `src/game/`: pure game rules, no DOM, unit-tested.
+  - `world.ts`: 7 countries, 30 cities in route order, trios, rivals. The last city of each country is its boss farm.
+  - `plan.ts`: what each farm asks (`planFor`): bills and their schedule, crop health and value, field density, content unlocks, crops, the city record, par days, the boss.
+  - `progress.ts`: the game save (`dbd-game-v3`): wins, stars, crowns, wallet, workshop, tools, ad counters, settings; country and city locks; stars.
+  - `workshop.ts`: permanent upgrades; small ones are instant, bigger ones take time (one at a time).
+  - `tools.ts`: sickle, scythe, flame weeder, seed blaster and their attachments; `toolStats` becomes `window.__DBD_TOOL` for the engine.
+- `src/shell/`: the screens (menu, world and country maps, farmhouse, sundown, won and lost, modals), the farm HUD, rewarded offers, music, art lookup and layout scaling.
+- `src/platform/`: native storage mirror, lifecycle, orientation, haptics and AdMob (rewarded ads only, with Google's consent message).
 
-Phaser runs timing and scenes on a hidden 1×1 canvas. The procedural Canvas2D renderer exclusively owns the visible `#field` canvas. Keeping the two separate prevents Phaser's render pass from clearing the field. The scenery and Arthur are original cartoon artwork in `src/rendering/cartoonWorld.ts`. Vegetable drawing functions remain unchanged; only their size and placement changed. Old bitmap panoramas and the Arthur atlas are archived under `art/legacy-textures` and are not shipped. The previous shim/fallback build is not a production path.
+## Rules worth keeping
 
-The bottom dock holds every gameplay counter and control outside the playable canvas. Tips use a separate strip above it. Android uses immersive system bars and cutout-safe control insets. The field coordinate system remains 640 logical units high. Width changes with its aspect ratio. Screen-to-world input uses the visible canvas bounds and scale; the adjustable finger offset is in CSS pixels. `fieldLayout.ts` keeps vegetables large in CSS pixels and reserves safe finger targets away from edges. Pixel ratio is capped at 2. Reduced effects also follows the operating system's reduced-motion preference.
-
-## State and saving
-
-- `src/types/game.ts`: state interfaces, schema v2.
-- `src/data/`: canonical crops, geography, skills, bills, equipment and perks.
-- `src/domain/economy.ts`: renderer-independent stats, upgrade costs, crop health and Grit formulas.
-- `src/systems/SaveSystem.ts`: validation, migration, verified writes, rotating backups, recovery and observable storage failures.
-- `src/platform/`: native lifecycle, landscape orientation, optional vibration and ordered Preferences persistence.
-- `src/ui/`: management drawer and save warnings.
-- `src/scenes/FarmScene.ts`: procedural art, current harvest state and gameplay UI. This remains a large legacy module; continue extracting focused systems as their behavior changes.
-
-A day is a transaction. Before dawn, the farm is checkpointed. During an interrupted harvest, saving writes the checkpoint rather than partly earned cash. Closing/restarting replays that day from dawn; it never adds partial income twice. On successful sunset, the whole day and regional rewards commit. Opening management pauses play and closing it requires explicit Resume. Backgrounding saves and pauses; foregrounding never silently resumes the timer.
-
-Completed farms grant exactly one permanent skill point; new games start at zero. Bills and city records grant none. Existing saved balances are preserved. Cash, equipment and perks belong to the current farm. Grit, heirlooms, learned skills, Diamonds and regional accomplishments persist across farms. Perk stacks are intentional. Migration must preserve them and must not refund old skills twice.
-
-Imported JSON is untrusted data: validate state, escape text rendered in HTML, and never execute it. Unknown future schemas are not downgraded. Unrecoverable originals block autosave until explicit restore/reset, with a visible warning.
+- One wallet. While a farm runs, the engine's cash is the wallet; between farms it lives in the game save. A foreclosure leaves the player with at most the money they came with; workshop levels and tools are kept.
+- Bills keep their schedule: each bill is due its own number of days after the previous due date, so paying early never pulls the next bill closer.
+- A boss farm's deed cannot be paid until its boss is knocked out. Boss health is set when the farm starts, from the player's strongest owned tool (`focusSec` seconds of steady hitting), and it carries over between days.
+- Ads are never forced. Every reward (double a day, free coins, finish an upgrade, one more day) is a button the player can ignore, shown only while an ad is loaded, and granted only when AdMob reports the reward.
+- A day is a transaction: an interrupted day replays from dawn (the engine saves its pre-day checkpoint).
 
 ## Verification and delivery
 
-Run `npm ci`, `npm test`, `npm run build`, and `npm run test:e2e`. The browser tests cover landscape sizes, drawer pause/resume, actual touch charge release, local assets and interrupted-day recovery. Use `npm run mobile:sync` before opening a native project. Device builds require the SDKs documented in `docs/mobile.md`.
+Run `npm ci`, `npm test`, `npm run build` and `npm run test:e2e` (five landscape sizes: the day loop, farmhouse layout on every tab, tools, the boss farm with a test ad, settings). `npm run build:pc` plus `node scripts/inline-html.mjs dist-pc Due-by-Dusk.html` makes one self-contained HTML for playing on a computer (with labelled test ads).
 
-Production builds do not expose the mutable `__DBD_TEST` harness. Development and the explicit `e2e` build mode do. Keep generated builds, dependencies, local SDK paths, signing material and test output out of Git.
+Keep generated builds, dependencies, local SDK paths, signing material and test output out of Git.
 
 Navid authorizes pushing tested updates to this repository. Commit and push coherent, verified changes; record any untested native/device behavior honestly. Publishing to an app store is a separate release step.

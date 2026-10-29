@@ -125,6 +125,12 @@ describe('progress', () => {
     expect(starsFor({ won: true, days: 3, par: 3, crown: true }).stars).toBe(3);
   });
 
+  it('keeps the par star for bills earned on the farm', () => {
+    expect(starsFor({ won: true, days: 0, par: 3, crown: false }).par).toBe(false);
+    expect(starsFor({ won: true, days: 1, par: 3, crown: false, selfFunded: false }).stars).toBe(1);
+    expect(starsFor({ won: true, days: 1, par: 3, crown: false, selfFunded: true }).stars).toBe(2);
+  });
+
   it('lets the bank keep the farm earnings after a foreclosure', () => {
     expect(walletAfterForeclosure(500, 120)).toBe(120);
     expect(walletAfterForeclosure(40, 120)).toBe(40);
@@ -185,16 +191,17 @@ describe('tools', () => {
     const b = toolStats(t);
     expect(b.style).toBe('blaster');
     expect(b.targets).toBe(3);
-    expect(b.range).toBeCloseTo(230 * 1.18, 5);
+    expect(b.range).toBeCloseTo(150 * 1.15, 5);
     expect(toolStats(t, 'sickle').dmg).toBeCloseTo(1.36, 5);
   });
 
-  it('gives every tool three attachments of three levels', () => {
+  it('gives every tool three attachments of two or three levels', () => {
     for (const t of TOOLS) {
       expect(t.mods).toHaveLength(3);
       for (const m of t.mods) {
+        expect(m.max).toBeGreaterThanOrEqual(2);
         expect(modCost(t.id, m.id, 0)!).toBeGreaterThan(0);
-        expect(modCost(t.id, m.id, 3)).toBeNull();
+        expect(modCost(t.id, m.id, m.max)).toBeNull();
       }
     }
   });

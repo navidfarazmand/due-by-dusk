@@ -220,13 +220,13 @@ export class GameApp {
     on('foreclosed', d => this.foreclosed(d));
   }
 
-  private cityWon(d: { days: number; harvested: number; earned: number; cash: number }): void {
+  private cityWon(d: { days: number; harvested: number; earned: number; paidTotal: number; cash: number }): void {
     const run = this.g.run;
     if (!run) return;
     const plan = planFor(run.cityId);
     const p = (this.g.cities[run.cityId] ||= { ...cityProgress(this.g, run.cityId) });
     const firstWin = !p.won;
-    const res = starsFor({ won: true, days: d.days, par: plan.par, crown: p.crown });
+    const res = starsFor({ won: true, days: d.days, par: plan.par, crown: p.crown, selfFunded: d.earned >= d.paidTotal * 0.9 });
     p.won = true;
     p.stars = Math.max(p.stars, res.stars);
     p.bestDays = p.bestDays ? Math.min(p.bestDays, d.days) : d.days;
@@ -865,7 +865,7 @@ export class GameApp {
     const mods = sel.mods
       .map(m => {
         const l = modLevel(T, sel.id, m.id), cost = modCost(sel.id, m.id, l);
-        const pips = [0, 1, 2].map(i => `<i class="${i < l ? 'on' : ''}"></i>`).join('');
+        const pips = Array.from({ length: m.max }, (_, i) => `<i class="${i < l ? 'on' : ''}"></i>`).join('');
         let btn: string;
         if (cost == null) btn = `<button type="button" class="st-btn btn-mod off" disabled>Max</button>`;
         else if (!owned) btn = `<button type="button" class="st-btn btn-mod off" disabled>${money(cost)}</button>`;
@@ -1098,7 +1098,9 @@ export class GameApp {
     const tail = lock.open
       ? `${esc(next.name)} is open.`
       : `Earn ${starGate(code) - countryStars(this.g, code)} more ★ in ${esc(c.name)} to open ${esc(next.name)}.`;
-    return `<p class="r-boss">${ICON.crown('#FFC23D', 18)}<span>${esc(c.name)}'s boss is out cold. ${tail}</span></p>`;
+    const tool = TOOLS.find(t => t.after === code);
+    const sale = tool && !this.g.tools.owned.includes(tool.id) ? ` The ${esc(tool.name.toLowerCase())} is now for sale in the farmhouse.` : '';
+    return `<p class="r-boss">${ICON.crown('#FFC23D', 18)}<span>${esc(c.name)}'s boss is out cold. ${tail}${sale}</span></p>`;
   }
 
   private openCredits(): void {

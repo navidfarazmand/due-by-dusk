@@ -94,10 +94,10 @@ export const TOOLS: ToolDef[] = [
   {
     id: 'blaster', name: 'Seed blaster', price: 6000, after: 'BR',
     blurb: 'Fires seeds at the nearest crops in range. Hit them from across the field.',
-    base: { ...BASE, dmg: 2.3, speed: 1.0, reach: 0.8, range: 230 },
+    base: { ...BASE, dmg: 1.6, speed: 0.8, reach: 0.8, range: 150 },
     mods: [
-      { id: 'scope', name: 'Scope', line: '+18% range', max: 3, base: 2000, growth: 2.0, apply: (s, l) => { s.range *= 1 + 0.18 * l; } },
-      { id: 'barrel', name: 'Extra barrel', line: '+1 seed per shot', max: 3, base: 2600, growth: 2.0, apply: (s, l) => { s.targets += l; } },
+      { id: 'scope', name: 'Scope', line: '+15% range', max: 3, base: 2000, growth: 2.0, apply: (s, l) => { s.range *= 1 + 0.15 * l; } },
+      { id: 'barrel', name: 'Extra barrel', line: '+1 seed per shot', max: 2, base: 2600, growth: 2.2, apply: (s, l) => { s.targets += l; } },
       {
         id: 'golden', name: 'Golden seeds', line: '+8% crop prices', max: 3, base: 3000, growth: 2.0,
         apply: (s, l) => { s.value *= 1 + 0.08 * l; s.gold += 0.004 * l; },

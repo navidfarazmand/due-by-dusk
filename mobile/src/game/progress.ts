@@ -234,9 +234,13 @@ export interface StarResult {
   crown: boolean;
 }
 
-export function starsFor(opts: { won: boolean; days: number; par: number; crown: boolean }): StarResult {
+/**
+ * Stars for a farm: one for winning, one for winning within par days, one for the crown.
+ * The par star needs the bills to be earned on this farm (`selfFunded`), so savings can't buy it.
+ */
+export function starsFor(opts: { won: boolean; days: number; par: number; crown: boolean; selfFunded?: boolean }): StarResult {
   if (!opts.won) return { stars: 0, win: false, par: false, crown: opts.crown };
-  const par = opts.days <= opts.par;
+  const par = opts.days <= opts.par && opts.days >= 1 && opts.selfFunded !== false;
   return { stars: 1 + (par ? 1 : 0) + (opts.crown ? 1 : 0), win: true, par, crown: opts.crown };
 }
 

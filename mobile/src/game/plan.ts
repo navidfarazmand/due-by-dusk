@@ -89,6 +89,12 @@ const BILL_DAYS: Record<CountryCode, number[]> = {
   JP: [2, 2, 2, 2, 2],
 };
 
+/**
+ * Extra bill pressure per country. Balance runs (a bot playing the whole route) found the USA and Brazil
+ * too relaxed next to Morocco onwards, where bosses and longer farms already bite.
+ */
+const BILL_MUL: Record<CountryCode, number> = { CA: 1, US: 1.15, BR: 1.2, MA: 1, FR: 1, CN: 1, JP: 1 };
+
 /** Share of a steady day's earnings each bill asks for, per day it gives you; it rises through the farm. */
 function billShare(i: number, n: number): number {
   return n <= 1 ? 0.8 : 0.58 + 0.32 * (i / (n - 1));
@@ -221,7 +227,7 @@ export function planFor(cityId: string): CityPlan {
     name: names[i][0],
     note: names[i][1],
     days: d,
-    amt: roundMoney(ref * d * billShare(i, days.length) * (boss && i === days.length - 1 ? 1.15 : 1)),
+    amt: roundMoney(ref * d * billShare(i, days.length) * BILL_MUL[city.country] * (boss && i === days.length - 1 ? 1.15 : 1)),
   }));
   const unlock = Math.min(5, Math.floor(k / 2));
   const [lead, second, third] = country.trio;
@@ -248,8 +254,9 @@ export function planFor(cityId: string): CityPlan {
     boss,
     bills,
     hp: 0.45 * Math.pow(1.16, k),
-    hpDay: 0.06,
-    hpBill: 1.1,
+    // crops toughen a little each day and with each bill paid; kept gentle because late farms run 10+ days
+    hpDay: 0.045,
+    hpBill: 1.07,
     val: Math.pow(1.12, k),
     density: 1 + 0.02 * k,
     spawn: 1 + 0.015 * k,
@@ -257,7 +264,8 @@ export function planFor(cityId: string): CityPlan {
     unlock,
     goldAt: 4,
     crops,
-    record: roundMoney(ref * 1.5),
+    // the rival's best day: about twice a steady day early on, nearly three times by Japan
+    record: roundMoney(ref * (1.8 + 0.04 * k)),
     totalDays,
     par: Math.max(2, totalDays - 1),
     signatureEvent: SIGNATURE[cityId] || 'market',

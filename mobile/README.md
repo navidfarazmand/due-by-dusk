@@ -1,6 +1,6 @@
-# Due by Dusk — mobile development v0.7.2
+# Due by Dusk — mobile development v0.8.0
 
-Landscape harvest game built with TypeScript, Phaser 3, Vite and Capacitor 8. Use Node 22.12+ (Node 24 recommended).
+Landscape farm game: Gemini's farm engine for the harvest days, Claude's game around it, packaged with Vite and Capacitor 8. Use Node 22.12+ (Node 24 recommended).
 
 ## Run and verify
 
@@ -14,18 +14,16 @@ npm run test:e2e
 npm run mobile:sync
 ```
 
-The development server prints the local URL. The generated dist/ is a web build: serve it over HTTP or sync it into the native projects. Opening the built index directly using file:// is not supported.
-
-- [Architecture and state invariants](ARCHITECTURE.md)
+- [Architecture and game rules](ARCHITECTURE.md)
 - [Android/iOS setup and native limitations](docs/mobile.md)
 - [Release plan and remaining device/store work](docs/release-plan.md)
 
-Assets and fonts are packaged locally. Management starts closed; open the gear to view bills, equipment, heirlooms, map, skills, save transfer and controls. Drag to harvest; hold then release to cleave. Keyboard arrows/WASD steer, Space charges and P pauses. Interrupted days restart from dawn with the pre-day farm state. Save imports preserve existing v1/v2 progress through validation and migration.
+The game: 7 countries and 30 farms on one route, each farm a few days long with bills from Grumble & Sons. Win farms for stars and diamonds; stars and each country's boss open the next country. Between days, the farmhouse has the workshop, tools and attachments, perks and the bill list. Rewarded ads are optional: double a day, free coins, finish an upgrade now, or one more day on a bill you can't pay.
 
-The bottom dock keeps the multiplier, daylight, bill and buttons outside the crop area. Existing vegetable artwork is preserved and enlarged; scenery and Arthur use new cartoon vector artwork. Successful farms grant one skill point.
+For a computer, `npm run build:pc` and `node scripts/inline-html.mjs dist-pc Due-by-Dusk.html` make one HTML file that opens straight from disk.
 
-[Download the Android test APK](https://github.com/navidfarazmand/due-by-dusk/releases/download/android-v0.7.2/Due-by-Dusk-Test.apk). It installs as **Due by Dusk Test** alongside the old app. Export/import a save to carry over progress, and keep the old app installed until you verify the transfer.
+[Download the Android test APK](https://github.com/navidfarazmand/due-by-dusk/releases/download/android-v0.8.0/Due-by-Dusk-Test.apk). It installs as **Due by Dusk Test** alongside the old app. v0.8.0 starts a fresh game (the farm engine changed); older test saves stay untouched in their own storage.
 
-The production build uses real Phaser; the old custom shim is not shipped. Android test APKs are distributed through GitHub prereleases and CI artifacts. They are development builds, not Play Store releases. iOS requires a Mac and signing. Since v0.7.2 the game includes optional rewarded ads (Google AdMob) with Google's consent message; test builds show Google demo ads. No purchases, accounts or analytics have been added. The Play app ID is `com.khoreh.duebydusk`; see the [release plan](docs/release-plan.md#google-play-and-admob-v072).
+Android test APKs are development builds from GitHub prereleases and CI artifacts, not Play Store releases. iOS requires a Mac and signing. Test builds show Google demo ads. No purchases, accounts or analytics. The Play app ID is `com.khoreh.duebydusk`; see the [release plan](docs/release-plan.md#google-play-and-admob-v072). Music and sound credits are in `licenses/README.md` and in the game under Settings → Credits.
 
 Editable supplied character sources live in art/source. The original asset pipeline is archived in art/tools and references raw generated images that were not included in the supplied archive. Old bitmap textures are archived in art/legacy-textures; current game art is drawn in code.

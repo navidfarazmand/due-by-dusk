@@ -70,7 +70,14 @@ function fakeAd(): Promise<boolean> {
 /** Shows the ad; resolves true only when the reward was earned. Counts it against today's cap. */
 export async function watch(g: GameSave, kind: OfferKind): Promise<boolean> {
   if (!canOffer(g, kind)) return false;
-  const ok = testAds ? await fakeAd() : await showRewardedAd();
+  // the game's music steps aside while the ad plays its own sound
+  window.dispatchEvent(new Event('dbd:ad-open'));
+  let ok = false;
+  try {
+    ok = testAds ? await fakeAd() : await showRewardedAd();
+  } finally {
+    window.dispatchEvent(new Event('dbd:ad-close'));
+  }
   if (!ok) return false;
   const c = counters(g);
   if (kind === 'double') c.doubles++;

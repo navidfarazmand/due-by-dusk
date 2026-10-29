@@ -45,6 +45,7 @@ export class Music {
   private mood: Mood = 'menu';
   private unlocked = false;
   private hidden = false;
+  private adOn = false;
   private raf = 0;
   private last = 0;
   private rooster: HTMLAudioElement;
@@ -62,6 +63,14 @@ export class Music {
     this.rooster.preload = 'auto';
     this.rooster.volume = 0.55;
     document.addEventListener('visibilitychange', () => this.setHidden(document.hidden));
+    window.addEventListener('dbd:ad-open', () => {
+      this.adOn = true;
+      this.setHidden(this.hidden);
+    });
+    window.addEventListener('dbd:ad-close', () => {
+      this.adOn = false;
+      this.setHidden(document.hidden);
+    });
   }
 
   /** Call from a user gesture: browsers only allow audio after one. */
@@ -84,7 +93,7 @@ export class Music {
 
   setHidden(h: boolean): void {
     this.hidden = h;
-    if (h) {
+    if (h || this.adOn) {
       // stop right away when the app goes to the background
       for (const k of ['field', 'menu'] as Mood[]) {
         this.vol[k] = 0;
@@ -108,7 +117,7 @@ export class Music {
   }
 
   private target(k: Mood): number {
-    return this.enabled && this.unlocked && !this.hidden && this.mood === k ? VOLUME[k] : 0;
+    return this.enabled && this.unlocked && !this.hidden && !this.adOn && this.mood === k ? VOLUME[k] : 0;
   }
 
   private apply(): void {
