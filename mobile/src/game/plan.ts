@@ -98,7 +98,7 @@ const BILL_DAYS: Record<CountryCode, number[]> = {
  * without ads a player at Navid's speed needs replays now and then; with an ad after most days, rarely.
  */
 const CANADA_MUL = [1.0, 1.1, 1.25, 1.3, 1.35, 1.4];
-const BILL_MUL: Record<CountryCode, number> = { CA: 1.4, US: 1.45, BR: 1.3, MA: 1.05, FR: 1.0, CN: 0.95, JP: 0.85 };
+const BILL_MUL: Record<CountryCode, number> = { CA: 1.4, US: 1.45, BR: 1.3, MA: 1.05, FR: 1.0, CN: 0.95, JP: 0.72 };
 export function billMul(cityId: string): number {
   const c = cityById(cityId);
   if (!c) return 1;
