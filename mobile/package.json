@@ -2,7 +2,7 @@
   "name": "due-by-dusk-harvest-edition",
   "version": "0.7.2",
   "private": true,
-  "description": "Due by Dusk: Harvest Edition — Phaser 3 + TypeScript + Vite Engine Project",
+  "description": "Due by Dusk: Harvest Edition \u2014 Phaser 3 + TypeScript + Vite Engine Project",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -13,7 +13,8 @@
     "build:e2e": "vite build --mode e2e",
     "mobile:sync": "npm run build && cap sync",
     "android:open": "cap open android",
-    "ios:open": "cap open ios"
+    "ios:open": "cap open ios",
+    "build:pc": "tsc --noEmit && vite build -c vite.pc.config.ts"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.2.1",

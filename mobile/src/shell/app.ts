@@ -5,16 +5,18 @@ import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, ro
 import { planFor, type CityPlan } from '../game/plan';
 import {
   GAME_SAVE_KEY, cityLock, cityProgress, countryLock, countryStars, crownCount, newGame, nextCity, parseGame,
-  starsFor, totalStars, walletAfterForeclosure, type GameSave,
+  starGate, starsFor, toolLock, totalStars, walletAfterForeclosure, type GameSave,
 } from '../game/progress';
 import { UPGRADES, formatDuration, settleJob, startUpgrade, upgradeCost, upgradeDuration, type UpgradeId } from '../game/workshop';
+import { TOOLS, isToolId, modCost, modLevel, toolDef, toolStats, toolSummary, type ToolId } from '../game/tools';
 import { ART, BAND, MAP, NODES, PREVIEW, SPRITE, bandFor, spriteImg } from './art';
-import { $, ICON, cap, clamp, esc, money, stars } from './dom';
-import { engine, on, type DayEvent, type PerkInfo, type Today } from './engine';
+import { $, ICON, TOOL_ICON, cap, clamp, esc, money, stars } from './dom';
+import { engine, on, type BillInfo, type DayEvent, type EngineState, type PerkInfo, type Today } from './engine';
 import { FarmHud, deviceText, eventIcon } from './hud';
 import { watchLayout, layout } from './layout';
 import { adsAvailable, canOffer, coinsWait, onAdsChanged, watch } from './offers';
 import { PINS } from './pins';
+import { AUDIO_CREDITS, Music } from './music';
 
 type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost';
 
@@ -40,6 +42,7 @@ interface CityResult {
   wallet: number;
   short?: number;
   bill?: string;
+  bossKept?: boolean;
 }
 
 const EVENT_LINES: Record<string, string> = {
@@ -61,12 +64,14 @@ export class GameApp {
   private worldSel: CountryCode = 'CA';
   private countrySel: CountryCode = 'CA';
   private citySel = ROUTE[0].id;
-  private fhTab: 'workshop' | 'perks' | 'bills' = 'workshop';
+  private fhTab: 'workshop' | 'tools' | 'perks' | 'bills' = 'workshop';
+  private toolSel: ToolId = 'sickle';
   private day: DayResult | null = null;
   private result: CityResult | null = null;
   private pendingEvent: DayEvent | null = null;
   private busy = false;
   private saveT = 0;
+  private music: Music;
 
   constructor(private persist: (key: string, value: string) => void) {
     let raw: string | null = null;
@@ -76,6 +81,14 @@ export class GameApp {
       /* private mode */
     }
     this.g = parseGame(raw);
+    this.music = new Music(this.g.settings.music);
+    (window as any).__dbdRooster = () => {
+      try {
+        return this.music.crow(engine().state().sound);
+      } catch {
+        return false;
+      }
+    };
     this.root = document.createElement('div');
     this.root.id = 'dbdScreens';
     document.body.append(this.root);
@@ -118,10 +131,13 @@ export class GameApp {
         e.setShed(this.g.workshop.levels);
       } else {
         // The farm save does not match (cleared storage, older build): restart this farm cleanly.
-        e.beginCity({ cityId: run.cityId, country: plan.country, cash: run.startCash, shed: this.g.workshop.levels, plan });
+        const tools = this.g.tools.owned.map(id => toolStats(this.g.tools, id));
+        e.beginCity({ cityId: run.cityId, country: plan.country, cash: run.startCash, shed: this.g.workshop.levels, plan, tools });
       }
     }
     this.settleWorkshop();
+    this.applyTool();
+    this.toolSel = this.g.tools.equipped;
     setInterval(() => this.tick(), 1000);
     const loop = (t: number) => {
       this.hud.frame(t);
@@ -130,6 +146,10 @@ export class GameApp {
     requestAnimationFrame(loop);
     this.hud.syncSound(e.state().sound);
     this.show('menu');
+  }
+
+  hapticsOn(): boolean {
+    return this.g.settings.haptics;
   }
 
   private save(): void {
@@ -223,7 +243,7 @@ export class GameApp {
     this.show('won');
   }
 
-  private foreclosed(d: { bill: string; short: number; days: number; cash: number }): void {
+  private foreclosed(d: { bill: string; short: number; days: number; cash: number; bossKept?: boolean }): void {
     const run = this.g.run;
     if (!run) return;
     const left = walletAfterForeclosure(d.cash, run.startCash);
@@ -231,7 +251,7 @@ export class GameApp {
     this.g.run = null;
     this.result = {
       kind: 'lost', cityId: run.cityId, stars: 0, par: false, crown: false, firstWin: false, diamonds: 0,
-      days: d.days, earned: 0, harvested: 0, wallet: left, short: d.short, bill: d.bill,
+      days: d.days, earned: 0, harvested: 0, wallet: left, short: d.short, bill: d.bill, bossKept: !!d.bossKept,
     };
     this.saveNow();
     this.show('lost');
@@ -246,6 +266,7 @@ export class GameApp {
     this.root.style.display = s === 'farm' ? 'none' : '';
     document.body.classList.toggle('dbd-onscr', s !== 'farm');
     this.hud.show(s === 'farm');
+    this.music.setMood(s === 'farm' ? 'field' : 'menu');
     if (s !== 'farm') this.render(s);
     layout(this.root);
   }
@@ -275,6 +296,7 @@ export class GameApp {
     const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
     if (!t || t.hasAttribute('disabled')) return;
     const act = t.dataset.act || '', arg = t.dataset.arg || '';
+    this.music.unlock();
     try {
       engine().initAudio();
     } catch {
@@ -293,6 +315,11 @@ export class GameApp {
       case 'bank': this.faceBank(); break;
       case 'tab': this.fhTab = arg as typeof this.fhTab; this.render('farmhouse'); break;
       case 'buy': this.buy(arg as UpgradeId); break;
+      case 'tool': if (isToolId(arg)) { this.toolSel = arg; this.render('farmhouse'); } break;
+      case 'equip': this.equip(arg); break;
+      case 'buy-tool': this.buyTool(arg); break;
+      case 'buy-mod': this.buyMod(arg); break;
+      case 'credits': this.openCredits(); break;
       case 'perk': this.pickPerk(arg); break;
       case 'ad-double': void this.adDouble(); break;
       case 'ad-coins': void this.adCoins(); break;
@@ -306,7 +333,7 @@ export class GameApp {
       case 'crowns': this.openCrowns(); break;
       case 'workshop': this.openWorkshopModal(); break;
       case 'sound': this.toggleSound(); break;
-      case 'music': this.g.settings.music = !this.g.settings.music; this.save(); this.openSettings(); window.dispatchEvent(new CustomEvent('dbd:music', { detail: this.g.settings.music })); break;
+      case 'music': this.g.settings.music = !this.g.settings.music; this.save(); this.music.setEnabled(this.g.settings.music); this.openSettings(); break;
       case 'haptics': this.g.settings.haptics = !this.g.settings.haptics; this.save(); this.openSettings(); window.dispatchEvent(new CustomEvent('dbd:haptics', { detail: this.g.settings.haptics })); break;
       case 'close': this.closeModal(); break;
       case 'reset': this.confirmReset(); break;
@@ -370,7 +397,8 @@ export class GameApp {
 
   private beginRun(cityId: string): void {
     const plan = planFor(cityId);
-    const ok = engine().beginCity({ cityId, country: plan.country, cash: this.g.wallet, shed: this.g.workshop.levels, plan });
+    const tools = this.g.tools.owned.map(id => toolStats(this.g.tools, id));
+    const ok = engine().beginCity({ cityId, country: plan.country, cash: this.g.wallet, shed: this.g.workshop.levels, plan, tools });
     if (!ok) return;
     this.g.run = { cityId, startCash: this.g.wallet, startedAt: Date.now(), bestDay: 0 };
     const p = (this.g.cities[cityId] ||= { ...cityProgress(this.g, cityId) });
@@ -406,18 +434,64 @@ export class GameApp {
     this.render('farmhouse');
   }
 
+  /** Pays from the one wallet: the farm's cash while a farm runs, the saved wallet between farms. */
+  private spend(cost: number): boolean {
+    if (this.g.run) return engine().spendCash(cost);
+    if (this.g.wallet < cost) return false;
+    this.g.wallet -= cost;
+    return true;
+  }
+
   private buy(id: UpgradeId): void {
     const e = engine();
-    const res = startUpgrade(this.g.workshop, id, Date.now(), cost => {
-      if (this.g.run) return e.spendCash(cost);
-      if (this.g.wallet < cost) return false;
-      this.g.wallet -= cost;
-      return true;
-    });
+    const res = startUpgrade(this.g.workshop, id, Date.now(), cost => this.spend(cost));
     if (res.ok) {
       if (res.instant) e.setShed(this.g.workshop.levels);
       this.saveNow();
     }
+    this.refresh();
+  }
+
+  private applyTool(): void {
+    try {
+      engine().setTool(toolStats(this.g.tools));
+    } catch {
+      /* engine not ready yet; start() applies it */
+    }
+  }
+
+  private equip(id: string): void {
+    const T = this.g.tools;
+    if (!isToolId(id) || !T.owned.includes(id)) return;
+    T.equipped = id;
+    this.applyTool();
+    this.saveNow();
+    this.toast(`${toolDef(id).name} in hand.`);
+    this.refresh();
+  }
+
+  private buyTool(id: string): void {
+    const T = this.g.tools;
+    if (!isToolId(id) || T.owned.includes(id) || !toolLock(this.g, id).open) return;
+    const def = toolDef(id);
+    if (!this.spend(def.price)) return;
+    T.owned.push(id);
+    T.equipped = id;
+    this.applyTool();
+    this.saveNow();
+    this.toast(`${def.name} bought. It's in your hands.`);
+    this.refresh();
+  }
+
+  private buyMod(key: string): void {
+    const [tool, mod] = key.split('.');
+    const T = this.g.tools;
+    if (!isToolId(tool) || !T.owned.includes(tool)) return;
+    const l = modLevel(T, tool, mod), cost = modCost(tool, mod, l);
+    if (cost == null || !this.spend(cost)) return;
+    T.mods[key] = l + 1;
+    this.applyTool();
+    this.saveNow();
     this.refresh();
   }
 
@@ -682,10 +756,14 @@ export class GameApp {
     let h = `<div class="cc-top"><span class="eyebrow">FARM ${n} OF ${c.cities.length}${plan.boss ? ' · BOSS' : ''}</span><span class="stars">${stars(p.stars)}</span></div>
       <h3 class="cc-name">${esc(ct.name)}</h3>`;
     if (lock.open) {
+      const bossSpr = plan.bossFight ? SPRITE[plan.bossFight.type] : '';
       h += preview
-        ? `<div class="cc-preview" style="background-image: url('${preview}')" role="img" aria-label="The ${esc(ct.short)} farm"></div>`
-        : `<div class="cc-preview empty"></div>`;
-      h += `<div class="cc-twist"><span class="tw-ic">${eventIcon(plan.signatureEvent)}</span><p>${esc(EVENT_LINES[plan.signatureEvent] || '')}</p></div>`;
+        ? `<div class="cc-preview" style="background-image: url('${preview}')" role="img" aria-label="The ${esc(ct.short)} farm">${bossSpr ? `<span class="cc-boss"><img src="${bossSpr}" alt="" draggable="false">${ICON.crown('#FFC23D', 26)}</span>` : ''}</div>`
+        : `<div class="cc-preview empty">${bossSpr ? `<span class="cc-boss"><img src="${bossSpr}" alt="" draggable="false">${ICON.crown('#FFC23D', 26)}</span>` : ''}</div>`;
+      if (plan.bossFight)
+        h += `<div class="cc-twist boss">${ICON.crown('#FFC23D', 18)}<p><b>${esc(plan.bossFight.name)}</b> guards the deed. Knock ${pronoun(plan.bossFight.name)} out to win the farm.</p></div>`;
+      else
+        h += `<div class="cc-twist"><span class="tw-ic">${eventIcon(plan.signatureEvent)}</span><p>${esc(EVENT_LINES[plan.signatureEvent] || '')}</p></div>`;
     } else {
       h += `<div class="locked-box tall">${ICON.lock()}<span>${esc(lock.reason)}</span></div>`;
       h += `<p class="cc-desc">${esc(ct.desc)}</p>`;
@@ -713,52 +791,95 @@ export class GameApp {
     if (b.tonight && !b.canPay) action = `<button type="button" class="st-btn red btn-top" data-act="bank">Face the bank</button>`;
     else if (b.tonight) action = `<button type="button" class="st-btn gold btn-top" data-act="pay">Pay ${money(b.amt)}</button>`;
     else action = `<button type="button" class="st-btn gold btn-top" data-act="start">Start day ${st.day}${ICON.next()}</button>`;
+    const coinsOffer = canOffer(this.g, 'coins')
+      ? `<button type="button" class="ad-chip" data-act="ad-coins">${ICON.play()}<span>Free ${money(this.coinsReward())}</span></button>`
+      : '';
+    const tabs = (['workshop', 'tools', 'perks', 'bills'] as const)
+      .map(t => `<button type="button" class="${this.fhTab === t ? 'on' : ''}" data-act="tab" data-arg="${t}">${cap(t)}</button>`)
+      .join('');
+    let body = '';
+    if (this.fhTab === 'workshop') body = this.workshopGrid();
+    else if (this.fhTab === 'tools') body = this.toolsTab();
+    else if (this.fhTab === 'perks') body = this.perksList(st.perks);
+    else body = this.billsList();
+    return `<div class="wood"></div>
+      <div class="grp tl" style="width: 520px; height: 64px"><div class="fh-top">
+        <button type="button" class="st-btn st-sq" data-act="map" data-arg="${run.cityId}" aria-label="Back to the map">${ICON.back()}</button>
+        <div class="st-chip fh-title"><h2>${esc(ct.short)}</h2><span class="sub">Day ${st.day}${plan.boss ? ' · Boss farm' : ''}</span></div>
+        ${this.walletChip()}${coinsOffer}</div></div>
+      <div class="grp tr" style="width: 230px; height: 64px">${action}</div>
+      <div class="grp ml" style="width: 240px; height: 300px">${this.noticeHtml(b, st)}</div>
+      <div class="grp mr" style="width: 500px; height: 300px"><div class="st-chip fh-panel"><div class="seg tabs">${tabs}</div><div class="fh-body">${body}</div></div></div>`;
+  }
+
+  private noticeHtml(b: BillInfo, st: EngineState): string {
     const pct = clamp(st.cash / Math.max(1, b.amt), 0, 1);
-    const due = b.tonight ? 'Due tonight' : `Due at sunset, day ${b.dueDay} · ${b.left} ${b.left === 1 ? 'day' : 'days'} left`;
+    const due = b.tonight ? 'Due tonight' : `Due day ${b.dueDay} · ${b.left} ${b.left === 1 ? 'day' : 'days'} left`;
     let offers = '';
     if (b.tonight && !b.canPay && !st.extraDayUsed && canOffer(this.g, 'extraDay'))
-      offers += `<button type="button" class="ad-chip" data-act="ad-extra">${ICON.play()}<span>+1 day</span></button>`;
-    const notice = `<div class="notice">
+      offers = `<button type="button" class="ad-chip" data-act="ad-extra">${ICON.play()}<span>+1 day</span></button>`;
+    const boss = st.boss;
+    let bossRow = '';
+    if (boss && !boss.down) {
+      const f = clamp(boss.hp / Math.max(1, boss.max), 0, 1);
+      const txt = b.bossBlock
+        ? `${esc(boss.name)} is sitting on the deed. Knock ${pronoun(boss.name)} out first.`
+        : `${esc(boss.name)} is on the farm. Bounty ${money(boss.bounty)}.`;
+      bossRow = `<div class="n-boss${b.bossBlock ? ' hot' : ''}">${ICON.crown('#FFC23D', 18)}<span class="nb-t">${txt}</span><span class="nb-bar"><i style="width: ${(f * 100).toFixed(1)}%"></i></span></div>`;
+    } else if (boss && boss.down) {
+      bossRow = `<div class="n-boss done">${ICON.crown('#FFC23D', 18)}<span class="nb-t">${esc(boss.name)} is out cold.</span></div>`;
+    }
+    const payLabel = b.bossBlock && st.cash >= b.amt ? 'Boss first' : `Pay ${money(b.amt)}`;
+    return `<div class="notice${bossRow ? ' has-boss' : ''}">
         <div class="n-head">GRUMBLE &amp; SONS SAVINGS &amp; LOAN</div>
         <div class="n-sub">Notice ${b.index + 1} of ${b.count}</div>
         <div class="n-name">${esc(b.name)}</div>
         <p class="n-note">${esc(b.note)}</p>
         <div class="n-amt">${money(b.amt)}</div>
         <div class="n-due${b.tonight ? ' hot' : ''}">${due}</div>
-        <div class="n-meter${b.canPay ? ' full' : ''}"><i style="width: ${(pct * 100).toFixed(1)}%"></i></div>
+        <div class="n-meter${st.cash >= b.amt ? ' full' : ''}"><i style="width: ${(pct * 100).toFixed(1)}%"></i></div>
         <div class="n-have">You have ${money(st.cash)} · ${Math.round(pct * 100)}%</div>
-        <div class="n-actions"><button type="button" class="st-btn btn-pay${b.canPay ? ' gold' : ''}" data-act="pay" ${b.canPay ? '' : 'disabled'}>Pay ${money(b.amt)}</button>${offers}</div>
+        ${bossRow}
+        <div class="n-actions"><button type="button" class="st-btn btn-pay${b.canPay ? ' gold' : ''}" data-act="pay" ${b.canPay ? '' : 'disabled'}>${payLabel}</button>${offers}</div>
       </div>`;
-    const tabs = (['workshop', 'perks', 'bills'] as const)
-      .map(t => `<button type="button" class="${this.fhTab === t ? 'on' : ''}" data-act="tab" data-arg="${t}">${cap(t)}</button>`)
-      .join('');
-    let body = '';
-    if (this.fhTab === 'workshop') body = this.workshopGrid();
-    else if (this.fhTab === 'perks') body = this.perksList(st.perks);
-    else body = this.billsList();
-    const coinsOffer = canOffer(this.g, 'coins')
-      ? `<button type="button" class="ad-chip" data-act="ad-coins">${ICON.play()}<span>Free ${money(this.coinsReward())}</span></button>`
-      : '';
-    return `<div class="wood"></div>
-      <div class="grp tl" style="width: 520px; height: 64px">
-        <button type="button" class="st-btn st-sq top-btn" data-act="map" data-arg="${run.cityId}" aria-label="Back to the map">${ICON.back()}</button>
-        <div class="st-chip top-chip"><h2>${esc(ct.short)}</h2><span class="sub">Day ${st.day}${plan.boss ? ' · Boss farm' : ''}</span></div>
-        <div class="top-wallet">${this.walletChip()}${coinsOffer}</div></div>
-      <div class="grp tr" style="width: 230px; height: 64px">${action}</div>
-      <div class="grp ml" style="width: 250px; height: 300px">${notice}</div>
-      <div class="grp mr" style="width: 520px; height: 300px"><div class="st-chip fh-panel"><div class="seg tabs">${tabs}</div><div class="fh-body">${body}</div></div></div>`;
   }
 
-  private jobBarHtml(): string {
-    const job = this.g.workshop.job;
-    if (!job) return '';
-    const def = UPGRADES.find(u => u.id === job.id)!;
-    const left = job.endsAt - Date.now();
-    const total = Math.max(1, job.endsAt - job.startedAt);
-    const pct = clamp(1 - left / total, 0, 1);
-    const ad = canOffer(this.g, 'finish') ? `<button type="button" class="ad-chip sm" data-act="ad-finish">${ICON.play()}<span>Finish now</span></button>` : '';
-    return `<div class="job-bar" id="dbdJob">${ICON.clock(15)}<span class="jb-name">${esc(def.name)} ${job.level}</span>
-      <span class="jb-track"><i style="width: ${(pct * 100).toFixed(1)}%"></i></span><span class="jb-left">${formatDuration(left)}</span>${ad}</div>`;
+  private toolsTab(): string {
+    const T = this.g.tools;
+    const cash = this.wallet();
+    const sel = toolDef(this.toolSel);
+    const list = TOOLS.map(t => {
+      const owned = T.owned.includes(t.id), lock = toolLock(this.g, t.id);
+      const status = T.equipped === t.id ? 'In hand' : owned ? 'Owned' : lock.open ? money(t.price) : 'Locked';
+      const cls = `tool-row${this.toolSel === t.id ? ' sel' : ''}${owned ? ' owned' : lock.open ? ' sale' : ' locked'}`;
+      return `<button type="button" class="${cls}" data-act="tool" data-arg="${t.id}">${TOOL_ICON[t.id](32)}<span class="tr-txt"><b>${esc(t.name)}</b><span>${status}</span></span></button>`;
+    }).join('');
+    const owned = T.owned.includes(sel.id), lock = toolLock(this.g, sel.id);
+    let head: string;
+    if (T.equipped === sel.id) head = `<span class="pill-dark pill-sm">In your hands</span>`;
+    else if (owned) head = `<button type="button" class="st-btn gold btn-sm" data-act="equip" data-arg="${sel.id}">Use this</button>`;
+    else if (lock.open) {
+      const can = cash >= sel.price;
+      head = `<button type="button" class="st-btn btn-sm${can ? ' gold' : ' off'}" data-act="buy-tool" data-arg="${sel.id}" ${can ? '' : 'disabled'}>Buy ${money(sel.price)}</button>`;
+    } else head = `<span class="lock-chip">${ICON.lock('#5A3E2B', 12)}${esc(lock.reason)}</span>`;
+    const mods = sel.mods
+      .map(m => {
+        const l = modLevel(T, sel.id, m.id), cost = modCost(sel.id, m.id, l);
+        const pips = [0, 1, 2].map(i => `<i class="${i < l ? 'on' : ''}"></i>`).join('');
+        let btn: string;
+        if (cost == null) btn = `<button type="button" class="st-btn btn-mod off" disabled>Max</button>`;
+        else if (!owned) btn = `<button type="button" class="st-btn btn-mod off" disabled>${money(cost)}</button>`;
+        else {
+          const can = cash >= cost;
+          btn = `<button type="button" class="st-btn btn-mod${can ? ' gold' : ' off'}" data-act="buy-mod" data-arg="${sel.id}.${m.id}" ${can ? '' : 'disabled'}>${money(cost)}</button>`;
+        }
+        return `<div class="mod-row"><span class="mod-txt"><b>${esc(m.name)}</b><span>${esc(m.line)}</span></span><span class="pips">${pips}</span>${btn}</div>`;
+      })
+      .join('');
+    return `<div class="tools-tab"><div class="tool-list">${list}</div><div class="tool-detail">
+        <div class="td-head">${TOOL_ICON[sel.id](30)}<span class="td-name">${esc(sel.name)}</span>${head}</div>
+        <p class="td-blurb">${esc(sel.blurb)}</p><p class="td-stats">${esc(toolSummary(toolStats(T, sel.id)).join(' · '))}</p>
+        <div class="mod-list">${mods}</div></div></div>`;
   }
 
   private updateJobBar(): void {
@@ -769,7 +890,7 @@ export class GameApp {
     const pct = clamp(1 - left / Math.max(1, job.endsAt - job.startedAt), 0, 1);
     const i = bar.querySelector<HTMLElement>('.jb-track i'), l = bar.querySelector<HTMLElement>('.jb-left');
     if (i) i.style.width = (pct * 100).toFixed(1) + '%';
-    if (l) l.textContent = formatDuration(left);
+    if (l) l.innerHTML = `${ICON.clock(11)} ${formatDuration(left)}`;
   }
 
   private workshopGrid(): string {
@@ -788,10 +909,23 @@ export class GameApp {
         const blocked = (dur > 0 && !!job) || cash < cost;
         btn = `<button type="button" class="st-btn btn-buy${blocked ? ' off' : ' gold'}" data-act="buy" data-arg="${u.id}" ${blocked ? 'disabled' : ''}>${money(cost)}${dur ? `<small>${ICON.clock(11)}${formatDuration(dur)}</small>` : ''}</button>`;
       }
-      return `<div class="up-card"><div class="up-name">${esc(u.name)}<span class="up-lv">Lv ${l}</span></div>
-        <div class="up-eff">${esc(u.effect(l))}${cost != null ? ` → <b>${esc(u.effect(l + 1).replace(/^[×+]?/, m => m))}</b>` : ''}</div>${btn}</div>`;
+      const eff = cost != null ? `${esc(u.effect(l))} → <b>${esc(u.effect(l + 1))}</b>` : `<b>${esc(u.effect(l))}</b>`;
+      return `<div class="up-card"><div class="up-name">${esc(u.name)}</div><span class="up-lv" aria-label="Level ${l}">${l}</span>
+        <div class="up-eff">${eff}</div>${btn}</div>`;
     }).join('');
-    return `${this.jobBarHtml()}<div class="up-grid">${cards}</div>`;
+    return `<div class="up-grid">${cards}${this.jobCellHtml()}</div>`;
+  }
+
+  /** The eighth cell of the workshop grid: the upgrade being built, or how building works. */
+  private jobCellHtml(): string {
+    const job = this.g.workshop.job;
+    if (!job) return `<div class="up-card job-cell idle">${ICON.clock(18)}<p>Small upgrades are instant. Bigger ones take a while, one at a time.</p></div>`;
+    const def = UPGRADES.find(u => u.id === job.id)!;
+    const left = job.endsAt - Date.now();
+    const pct = clamp(1 - left / Math.max(1, job.endsAt - job.startedAt), 0, 1);
+    const ad = canOffer(this.g, 'finish') ? `<button type="button" class="ad-chip sm" data-act="ad-finish">${ICON.play()}<span>Finish now</span></button>` : '';
+    return `<div class="up-card job-cell" id="dbdJob"><div class="up-name">${esc(def.name)} ${job.level}</div>
+      <span class="jb-track"><i style="width: ${(pct * 100).toFixed(1)}%"></i></span><span class="jb-left">${ICON.clock(11)} ${formatDuration(left)}</span>${ad}</div>`;
   }
 
   private perksList(ids: string[]): string {
@@ -809,14 +943,15 @@ export class GameApp {
   private billsList(): string {
     const e = engine();
     const st = e.state();
-    let day = 0;
+    // bills keep their schedule: each is due its own number of days after the one before it
+    let due = st.due;
     return `<div class="bill-list">${e
       .bills()
       .map((b, i) => {
-        day += b.days;
+        if (i > st.bill) due += b.days;
         const status = i < st.billsPaid ? 'paid' : i === st.bill ? 'now' : 'later';
         return `<div class="bill-row ${status}"><span class="b-no">${i + 1}</span><span class="b-name">${esc(b.name)}</span><span class="b-amt">${money(b.amt)}</span><span class="b-st">${
-          status === 'paid' ? 'Paid ✓' : status === 'now' ? `Due day ${st.due}` : `+${b.days} ${b.days === 1 ? 'day' : 'days'}`
+          status === 'paid' ? 'Paid ✓' : `Due day ${i === st.bill ? st.due : due}`
         }</span></div>`;
       })
       .join('')}</div>`;
@@ -837,9 +972,17 @@ export class GameApp {
     const pct = Math.round(clamp(p.bestDay / plan.record, 0, 9) * 100);
     const amtTxt = money(b.amt) + '.00';
     const dots = ' ' + new Array(Math.max(2, 31 - b.name.length - amtTxt.length)).join('.') + ' ';
-    const stamp = b.canPay
-      ? `<span class="stamp ok">COVERED</span>`
-      : `<span class="stamp bad">SHORT ${money(b.amt - e.state().cash)}</span>`;
+    const cashNow = e.state().cash;
+    const stamp = b.bossBlock && cashNow >= b.amt
+      ? `<span class="stamp bad">BOSS FIRST</span>`
+      : b.canPay
+        ? `<span class="stamp ok">COVERED</span>`
+        : `<span class="stamp bad">SHORT ${money(b.amt - cashNow)}</span>`;
+    const boss = e.state().boss;
+    let bossLine = '';
+    if (d.today.boss && boss) bossLine = `<div class="sd-boss win">${ICON.crown('#FFC23D', 18)}<span>${esc(boss.name)} knocked out! Bounty +${money(d.today.boss)}</span></div>`;
+    else if (boss && !boss.down)
+      bossLine = `<div class="sd-boss">${ICON.crown('#FFC23D', 18)}<span>${esc(boss.name)}: ${Math.max(1, Math.round((boss.hp / Math.max(1, boss.max)) * 100))}% left</span><span class="nb-bar"><i style="width: ${(clamp(boss.hp / Math.max(1, boss.max), 0, 1) * 100).toFixed(1)}%"></i></span></div>`;
     const dueLine = b.tonight ? 'Due tonight.' : `Due in ${b.left} ${b.left === 1 ? 'day' : 'days'}.`;
     const crownLine = d.crownToday
       ? `👑 New city crown! You beat ${esc(ct.rival)}.`
@@ -857,6 +1000,7 @@ export class GameApp {
       <div class="sd-notice"><div>GRUMBLE &amp; SONS · NOTICE ${b.index + 1} OF ${b.count}</div><div>${esc(b.name)}${dots}${amtTxt}</div><div class="sd-due">${dueLine}</div>${stamp}</div>
       <div class="sd-rec"><div class="sd-rec-row"><span>${crownLine}</span><span>${Math.min(100, pct)}%</span></div>
         <div class="meter"><i style="width: ${Math.min(100, pct)}%"></i></div></div>
+      ${bossLine}
       <div class="sd-actions">${dbl}<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">Farmhouse${ICON.next()}</button></div>
     </div></div>`;
   }
@@ -882,7 +1026,7 @@ export class GameApp {
         <div class="letter-head"><span class="eyebrow">GRUMBLE &amp; SONS SAVINGS &amp; LOAN</span><span class="stamp ok big">PAID IN FULL</span></div>
         <h2 class="r-title">The ${esc(ct.short)} farm is yours.</h2>
         <p class="r-text">Dear former customer, enclosed is the deed. We are, frankly, upset.</p>
-        <div class="star-rows">${starRow}</div>
+        <div class="star-rows">${starRow}</div>${plan.bossFight ? this.clearedLine(ct.country) : ''}
         <div class="r-rewards"><span>${r.days} days · ${r.harvested.toLocaleString('en-US')} crops · ${money(r.earned)} earned</span>${r.diamonds ? `<span class="dia">${ICON.diamond(16)} +${r.diamonds}</span>` : ''}</div>
         <div class="r-actions"><button type="button" class="st-btn blue btn-md flex1" data-act="map" data-arg="${r.cityId}">Map</button>
           ${nextOpen ? `<button type="button" class="st-btn gold btn-md flex1" data-act="next-city">Next farm${ICON.next()}</button>` : ''}</div>
@@ -891,7 +1035,11 @@ export class GameApp {
     return `<div class="grp mc" style="width: 450px; height: 330px"><div class="st-chip result-card lost">
       <div class="letter-head"><span class="eyebrow">GRUMBLE &amp; SONS SAVINGS &amp; LOAN</span><span class="stamp bad big">FORECLOSED</span></div>
       <h2 class="r-title">The bank took the farm.</h2>
-      <p class="r-text">Dear farmer, regarding your ${esc((r.bill || 'bill').toLowerCase())}: you were ${money(r.short || 0)} short. The farm, the tractor and the goat now belong to us. The goat is already a problem.</p>
+      <p class="r-text">${
+        r.bossKept && plan.bossFight
+          ? `Dear farmer, ${esc(plan.bossFight.name)} was still sitting on the deed at sunset. The farm, the tractor and the goat now belong to us. The goat is already a problem.`
+          : `Dear farmer, regarding your ${esc((r.bill || 'bill').toLowerCase())}: you were ${money(r.short || 0)} short. The farm, the tractor and the goat now belong to us. The goat is already a problem.`
+      }</p>
       <p class="r-text">You keep your workshop upgrades and ${money(r.wallet)}.</p>
       <div class="r-actions"><button type="button" class="st-btn blue btn-md flex1" data-act="map" data-arg="${r.cityId}">Map</button>
         <button type="button" class="st-btn gold btn-md flex1" data-act="retry" data-arg="${r.cityId}">Try again</button></div>
@@ -935,9 +1083,32 @@ export class GameApp {
       ${row('music', 'Music', s.music)}${row('sound', 'Sound effects', sound)}${row('haptics', 'Vibration', s.haptics)}
       <div class="m-links"><a id="linkPrivacyPolicy" href="https://khoreh.com/due-by-dusk/privacy.html">Privacy policy</a>
         <button type="button" class="linkish" id="btnPrivacyChoices" hidden>Privacy choices</button>
+        <button type="button" class="linkish" data-act="credits">Credits</button>
         <button type="button" class="linkish" data-act="reset">Start over</button></div>
       <button type="button" class="st-btn gold btn-md" data-act="close">Done</button>`);
     window.dispatchEvent(new Event('dbd:privacy-links'));
+  }
+
+  private clearedLine(code: CountryCode): string {
+    const i = COUNTRIES.findIndex(c => c.code === code);
+    const next = COUNTRIES[i + 1];
+    const c = countryOf(code);
+    if (!next) return `<p class="r-boss">${ICON.crown('#FFC23D', 18)}<span>${esc(c.name)} is cleared. That was the last boss. The bank is speechless.</span></p>`;
+    const lock = countryLock(this.g, next.code);
+    const tail = lock.open
+      ? `${esc(next.name)} is open.`
+      : `Earn ${starGate(code) - countryStars(this.g, code)} more ★ in ${esc(c.name)} to open ${esc(next.name)}.`;
+    return `<p class="r-boss">${ICON.crown('#FFC23D', 18)}<span>${esc(c.name)}'s boss is out cold. ${tail}</span></p>`;
+  }
+
+  private openCredits(): void {
+    const rows = AUDIO_CREDITS.map(
+      c => `<div class="credit-row"><span class="eyebrow">${esc(c.what.toUpperCase())}</span><span>“${esc(c.title)}” by ${esc(c.by)}.
+        <a href="${c.url}" target="_blank" rel="noopener">${esc(c.licence)}</a>${c.note ? ` · ${esc(c.note)}` : ''}</span></div>`,
+    ).join('');
+    this.openModal('credits', `<h2 class="m-title">Credits</h2>${rows}
+      <p class="m-text">Fonts: Lilita One, Nunito, Courier Prime, Figtree and Big Shoulders Stencil, under the SIL Open Font License.</p>
+      <div class="m-row"><button type="button" class="st-btn" data-act="settings">Back</button><button type="button" class="st-btn gold" data-act="close">Done</button></div>`, 420);
   }
 
   private openCrowns(): void {
@@ -970,10 +1141,18 @@ export class GameApp {
     this.g = newGame();
     this.saveNow();
     engine().setShed(this.g.workshop.levels);
+    this.toolSel = 'sickle';
+    this.applyTool();
+    this.music.setEnabled(true);
     engine().setCash(0);
     this.closeModal();
     this.show('menu');
   }
+}
+
+/** "him" or "her" from a boss title. */
+function pronoun(name: string): string {
+  return /^queen\b/i.test(name) ? 'her' : 'him';
 }
 
 export function bandRegistry(): Record<string, { url: string }> {

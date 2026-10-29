@@ -15,7 +15,12 @@ import { initializeAds, initPrivacyLinks } from './platform/ads';
 import { startGeminiEngine } from './engine/gemini-engine.js';
 import { installEventBridge, whenEngineReady, engine } from './shell/engine';
 import { GameApp, bandRegistry } from './shell/app';
-import { GAME_SAVE_KEY } from './game/progress';
+import * as progress from './game/progress';
+import * as workshop from './game/workshop';
+import * as tools from './game/tools';
+import { ROUTE } from './game/world';
+
+const { GAME_SAVE_KEY } = progress;
 
 const STORAGE_KEYS = ['dbd-farm-v3', 'dbd-farm-v3-backup', GAME_SAVE_KEY];
 
@@ -36,10 +41,12 @@ async function start(): Promise<void> {
   // Claude's skyline bands, keyed the way the engine looks them up (band_<cityId>, band_<CC>).
   w.__DBD_BANDS = bandRegistry();
   installEventBridge();
+  if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') w.__DBD_DEV_HOOKS = true;
   const app = new GameApp(persist);
   startGeminiEngine();
   await whenEngineReady();
   app.start();
+  setHapticsEnabled(app.hapticsOn());
   window.addEventListener('dbd:privacy-links', () => initPrivacyLinks());
   window.addEventListener('dbd:haptics', e => setHapticsEnabled(!!(e as CustomEvent).detail));
   await initializeMobilePlatform({
@@ -55,7 +62,14 @@ async function start(): Promise<void> {
     },
   });
   setTimeout(() => void initializeAds(), 1200);
-  if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') w.__DBD_APP = app;
+  if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') {
+    // hooks for the browser tests and the balance simulation
+    w.__DBD_APP = app;
+    w.__DBD_PROGRESS = progress;
+    w.__DBD_WORKSHOP = workshop;
+    w.__DBD_TOOLS = tools;
+    w.__DBD_ROUTE_IDS = ROUTE.map(c => c.id);
+  }
 }
 
 start().catch(error => {

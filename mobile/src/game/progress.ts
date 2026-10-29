@@ -3,6 +3,7 @@
 
 import { COUNTRIES, ROUTE, type CountryCode, countryOf, cityById } from './world';
 import { emptyLevels, type WorkshopState } from './workshop';
+import { newTools, parseTools, toolDef, type ToolId, type ToolsState } from './tools';
 
 export const GAME_SAVE_KEY = 'dbd-game-v3';
 
@@ -49,6 +50,7 @@ export interface GameSave {
   /** Wallet between farms (while a farm runs, the engine's cash is the wallet). */
   wallet: number;
   workshop: WorkshopState;
+  tools: ToolsState;
   ads: AdCounters;
   settings: Settings;
   seen: Record<string, boolean>;
@@ -63,6 +65,7 @@ export function newGame(now = Date.now()): GameSave {
     run: null,
     wallet: 0,
     workshop: { levels: emptyLevels(), job: null },
+    tools: newTools(),
     ads: { date: '', coins: 0, doubles: 0, finishes: 0, lastCoinsAt: 0 },
     settings: { music: true, haptics: true },
     seen: {},
@@ -119,6 +122,7 @@ export function parseGame(raw: string | null): GameSave {
       g.workshop.job = { id: j.id, level: Math.floor(num(j.level)), startedAt: num(j.startedAt), endsAt: num(j.endsAt) };
     }
   }
+  g.tools = parseTools(o.tools);
   if (o.ads && typeof o.ads === 'object') {
     g.ads = {
       date: typeof o.ads.date === 'string' ? o.ads.date : '',
@@ -194,6 +198,25 @@ export function cityLock(g: GameSave, cityId: string): CityLock {
   if (i <= 0) return { open: true, reason: '' };
   const prev = list[i - 1];
   return cityProgress(g, prev.id).won ? { open: true, reason: '' } : { open: false, reason: `Win ${prev.short} to open` };
+}
+
+/** True once the boss farm (the last city) of a country has been won. */
+export function bossBeaten(g: GameSave, code: CountryCode): boolean {
+  const list = countryOf(code).cities;
+  return cityProgress(g, list[list.length - 1].id).won;
+}
+
+export interface ToolLock {
+  open: boolean;
+  reason: string;
+}
+
+/** A tool goes on sale when the boss of its country is beaten. */
+export function toolLock(g: GameSave, id: ToolId): ToolLock {
+  const def = toolDef(id);
+  if (!def.after || bossBeaten(g, def.after)) return { open: true, reason: '' };
+  const c = countryOf(def.after);
+  return { open: false, reason: `Beat ${c.name}'s boss` };
 }
 
 /** The farm the player should look at next: the current run, else the first open city not yet won. */

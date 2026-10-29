@@ -1,6 +1,7 @@
 # Mobile build output and local tools
 mobile/node_modules/
 mobile/dist/
+mobile/dist-pc/
 mobile/.test-temp/
 mobile/test-results/
 mobile/playwright-report/
@@ -21,3 +22,4 @@ mobile/ios/DerivedData/
 .env*
 mobile/.tmp/
 mobile/.vitest-cache/
+mobile/pw.local.config.ts

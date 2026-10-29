@@ -59,3 +59,15 @@ export const ICON = {
 export function stars(n: number, size = 14): string {
   return [0, 1, 2].map(i => ICON.star(i < n, size)).join('');
 }
+
+/** Tool icons for the farmhouse (40×40 sticker drawings). */
+export const TOOL_ICON: Record<string, (size?: number) => string> = {
+  sickle: (size = 40) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 40 40" aria-hidden="true"><path d="M21 21 L10 35" stroke="${INK}" stroke-width="7.5" stroke-linecap="round"/><path d="M21 21 L10 35" stroke="#C27838" stroke-width="4" stroke-linecap="round"/><path d="M20 22 C33 22 37 9 28 4 C31 12 26 17 18 16 Z" fill="#E2E8F0" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/><rect x="17.5" y="17.5" width="6" height="6" rx="1.6" fill="#EAB308" stroke="${INK}" stroke-width="1.8" transform="rotate(35 20.5 20.5)"/></svg>`,
+  scythe: (size = 40) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 40 40" aria-hidden="true"><path d="M27 37 Q22 20 25 6" stroke="${INK}" stroke-width="6.5" stroke-linecap="round" fill="none"/><path d="M27 37 Q22 20 25 6" stroke="#B8793C" stroke-width="3.4" stroke-linecap="round" fill="none"/><path d="M20 22 L28 19" stroke="${INK}" stroke-width="4.5" stroke-linecap="round"/><path d="M25 7 C18 1 7 2 2 11 C9 7 17 8 24 12 Z" fill="#E2E8F0" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/></svg>`,
+  flame: (size = 40) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 40 40" aria-hidden="true"><path d="M26 15 C28 6 35 6 36 2 C39 9 36 16 28 17 Z" fill="#FF9A3D" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/><path d="M28 15 C30 10 33 9 34 7 C35 11 33 14 29 15 Z" fill="#FFF1A8"/><path d="M11 30 L26 15" stroke="${INK}" stroke-width="6" stroke-linecap="round"/><path d="M11 30 L26 15" stroke="#9CA3AF" stroke-width="3" stroke-linecap="round"/><rect x="3" y="24" width="11" height="14" rx="5" fill="#EF4444" stroke="${INK}" stroke-width="2.2" transform="rotate(-40 8.5 31)"/></svg>`,
+  blaster: (size = 40) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 40 40" aria-hidden="true"><rect x="9" y="25" width="7" height="11" rx="2.5" fill="#7C4A21" stroke="${INK}" stroke-width="2.2"/><rect x="24" y="17" width="12" height="8" rx="2.5" fill="#FFC23D" stroke="${INK}" stroke-width="2.2"/><rect x="4" y="14" width="23" height="13" rx="5.5" fill="#6DBE45" stroke="${INK}" stroke-width="2.4"/><rect x="9" y="6" width="12" height="9" rx="4" fill="#FF9A3D" stroke="${INK}" stroke-width="2.2"/><ellipse cx="38" cy="12" rx="2.4" ry="1.8" fill="#9A6B2F" stroke="${INK}" stroke-width="1.2"/></svg>`,
+};

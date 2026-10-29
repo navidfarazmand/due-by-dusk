@@ -5,6 +5,17 @@ import type { Levels } from '../game/workshop';
 
 export type EngineMode = 'idle' | 'day' | 'dusk';
 
+export interface BossHud {
+  name: string;
+  type: string;
+  hp: number;
+  max: number;
+  down: boolean;
+  phase: number;
+  onField: boolean;
+  bounty: number;
+}
+
 export interface EngineState {
   mode: EngineMode;
   paused: boolean;
@@ -20,6 +31,7 @@ export interface EngineState {
   pendingPerks: string[] | null;
   perks: string[];
   extraDayUsed: boolean;
+  boss: BossHud | null;
   lastEarn: number;
   lastCount: number;
   lastBest: number;
@@ -48,6 +60,8 @@ export interface BillInfo {
   tonight: boolean;
   dueDay: number;
   canPay: boolean;
+  /** The deed is waiting for the boss to be knocked out. */
+  bossBlock: boolean;
 }
 
 export interface HudState {
@@ -72,6 +86,7 @@ export interface HudState {
   time: number;
   dayLen: number;
   sound: boolean;
+  boss: BossHud | null;
 }
 
 export interface PerkInfo {
@@ -93,6 +108,8 @@ export interface Today {
   bonus: number;
   rushes: number;
   lucky: number;
+  /** Boss bounty paid today (0 if none). */
+  boss?: number;
 }
 
 export interface EngineApi {
@@ -101,7 +118,7 @@ export interface EngineApi {
   bills(): Array<BillInfo & { days: number }>;
   perkInfo(id: string): PerkInfo | null;
   hud(): HudState;
-  beginCity(o: { cityId: string; country: string; cash: number; shed: Levels; plan: CityPlan }): boolean;
+  beginCity(o: { cityId: string; country: string; cash: number; shed: Levels; plan: CityPlan; tools?: unknown[] }): boolean;
   setPlan(p: CityPlan): void;
   startDay(): boolean;
   payBill(): boolean;
@@ -116,6 +133,8 @@ export interface EngineApi {
   addDiamonds(n: number): void;
   setSound(on: boolean): void;
   setPaused(v: boolean): void;
+  setTool(t: unknown): void;
+  statsWith(t: unknown): Record<string, number | string | boolean>;
   initAudio(): void;
   nextEvent(): DayEvent;
 }
@@ -127,7 +146,10 @@ export interface EngineEvents {
   billPaid: { index: number; name: string; amt: number; day: number; last: boolean };
   perks: { ids: string[]; perks: PerkInfo[] };
   cityWon: { days: number; harvested: number; earned: number; paidTotal: number; cash: number; grit: number; bestChain: number };
-  foreclosed: { bill: string; amt: number; short: number; grit: number; days: number; billsPaid: number; billTotal: number; paidTotal: number; cash: number };
+  foreclosed: { bill: string; amt: number; short: number; grit: number; days: number; billsPaid: number; billTotal: number; paidTotal: number; cash: number; bossKept?: boolean };
+  bossAppear: { name: string; hp: number; max: number };
+  bossStomp: { phase: number; name: string };
+  bossDown: { name: string; bounty: number; day: number };
 }
 
 type Handler<K extends keyof EngineEvents> = (detail: EngineEvents[K]) => void;

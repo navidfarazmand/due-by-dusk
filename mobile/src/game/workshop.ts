@@ -40,7 +40,7 @@ export const UPGRADES: UpgradeDef[] = [
     effect: l => `${7 + l} crops at once`,
   },
   {
-    id: 'market', name: "Farmers' market", line: '+10% crop prices', max: 20, base: 70, growth: 1.36, freeUpTo: 3,
+    id: 'market', name: 'Market stall', line: '+10% crop prices', max: 20, base: 70, growth: 1.36, freeUpTo: 3,
     effect: l => `prices ×${(1 + 0.1 * l).toFixed(1)}`,
   },
   {

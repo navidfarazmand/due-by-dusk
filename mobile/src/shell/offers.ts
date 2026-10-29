@@ -14,7 +14,11 @@ export const COINS_COOLDOWN_MIN = 20;
 
 const testAds = (() => {
   try {
-    return new URLSearchParams(location.search).has('testads') || (import.meta.env.DEV && localStorage.getItem('dbd-testads') === '1');
+    return (
+      new URLSearchParams(location.search).has('testads') ||
+      import.meta.env.VITE_TEST_ADS === 'true' ||
+      (import.meta.env.DEV && localStorage.getItem('dbd-testads') === '1')
+    );
   } catch {
     return false;
   }

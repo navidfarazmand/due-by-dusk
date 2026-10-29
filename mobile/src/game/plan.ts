@@ -19,6 +19,19 @@ export interface Bill {
 
 export type CropWeight = [type: string, weight: number, unlockAt: number];
 
+/** The country boss: a giant crowned crop that stays on the boss farm until knocked out. */
+export interface BossFight {
+  type: string;
+  name: string;
+  /** Boss health is set when the farm starts: this many seconds of steady hitting with the player's
+   * strongest tool (so it stays a fight however the player built up). */
+  focusSec: number;
+  /** Fallback health factor (× the crop's health × the city's crop health) when no tool info is given. */
+  hpMul: number;
+  /** Paid out when the boss is knocked out. */
+  bounty: number;
+}
+
 export interface CityPlan {
   cityId: string;
   country: CountryCode;
@@ -50,7 +63,20 @@ export interface CityPlan {
   signatureEvent: string;
   /** What a steady player earns on a day here (used for bills, records, ad rewards). */
   dayRef: number;
+  /** Only on boss farms. The deed cannot be paid until the boss is knocked out. */
+  bossFight?: BossFight;
 }
+
+/** One boss per country, a giant crowned member of its trio. */
+export const BOSSES: Record<CountryCode, { type: string; name: string }> = {
+  CA: { type: 'pei_russet', name: 'King Russet' },
+  US: { type: 'sweetcorn', name: 'King Corn' },
+  BR: { type: 'abacaxi', name: 'Queen Abacaxi' },
+  MA: { type: 'chickpea', name: 'King Chickpea' },
+  FR: { type: 'artichaut', name: 'King Artichaut' },
+  CN: { type: 'bittermelon', name: 'King Bitter Melon' },
+  JP: { type: 'kabocha', name: 'King Kabocha' },
+};
 
 /** Bills per country, as days until each is due (the last one is always the deed). */
 const BILL_DAYS: Record<CountryCode, number[]> = {
@@ -210,6 +236,11 @@ export function planFor(cityId: string): CityPlan {
     ...STAPLES,
   ];
   const totalDays = days.reduce((a, b) => a + b, 0);
+  // Bosses take longer in later countries: 14 s of steady hitting in Canada, 38 s in Japan.
+  const ci = COUNTRIES.findIndex(c => c.code === city.country);
+  const bossFight: BossFight | undefined = boss
+    ? { ...BOSSES[city.country], focusSec: 14 + 4 * ci, hpMul: Math.round(0.6 * (12 + 0.45 * k) * totalDays), bounty: roundMoney(ref * 1.2) }
+    : undefined;
   return {
     cityId,
     country: city.country,
@@ -231,6 +262,7 @@ export function planFor(cityId: string): CityPlan {
     par: Math.max(2, totalDays - 1),
     signatureEvent: SIGNATURE[cityId] || 'market',
     dayRef: ref,
+    ...(bossFight ? { bossFight } : {}),
   };
 }
 

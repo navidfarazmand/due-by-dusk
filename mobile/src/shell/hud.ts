@@ -62,6 +62,10 @@ export const HUD_HTML = `<div id="dbdHud" hidden>
       <circle id="dbdSun" cx="30" cy="58" r="10" fill="#FFD45C" stroke="#2B1708" stroke-width="3"/>
     </svg>
     <div class="hb-secs" id="dbdSecs">18s</div>
+    <div class="st-chip hb-boss" id="dbdBoss" hidden>
+      <svg class="hb-bcrown" viewBox="0 0 24 18" aria-hidden="true"><path d="M2 16 L1 3 L7 9 L12 1 L17 9 L23 3 L22 16 Z" fill="#FFC23D" stroke="#2B1708" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="11" r="2.2" fill="#E5484D"/></svg>
+      <span class="hb-bname" id="dbdBossName">King</span><span class="hb-bbar"><i id="dbdBossFill"></i></span>
+    </div>
   </div>
   <div class="grp tr">
     <div class="st-chip hb-rush" id="dbdRush"><span class="rl" id="dbdRushLbl">RUSH</span><span class="rn" id="dbdRushN">0/22</span><span class="rbar"><i id="dbdRushFill"></i></span></div>
@@ -92,7 +96,7 @@ export class FarmHud {
     stage.insertAdjacentHTML('beforeend', HUD_HTML);
     this.root = document.getElementById('dbdHud') as HTMLElement;
     for (const k of ['Bank', 'Cash', 'BillFill', 'BillName', 'BillAmt', 'Jar', 'JarGold', 'Badge', 'Chain', 'Mult', 'ChainLbl', 'ChainFill', 'Next', 'ChainTimer',
-      'Arc', 'Sun', 'Secs', 'Rush', 'RushLbl', 'RushN', 'RushFill', 'Sound', 'Pause', 'Banner', 'BannerIc', 'BannerT', 'BannerD']) {
+      'Arc', 'Sun', 'Secs', 'Boss', 'BossName', 'BossFill', 'Rush', 'RushLbl', 'RushN', 'RushFill', 'Sound', 'Pause', 'Banner', 'BannerIc', 'BannerT', 'BannerD']) {
       this.E[k] = document.getElementById('dbd' + k) as HTMLElement & SVGElement;
     }
     this.E.Pause.addEventListener('click', () => engine().setPaused(true));
@@ -199,6 +203,14 @@ export class FarmHud {
     E.RushLbl.textContent = rushing ? 'RUSH!' : 'RUSH';
     E.RushN.textContent = rushing ? h.rushT.toFixed(1) + 's' : h.rushCharge + '/' + h.rushGoal;
     E.RushFill.style.width = ((rushing ? h.rushT / h.rushDur : h.rushCharge / h.rushGoal) * 100).toFixed(1) + '%';
+    const bo = h.boss;
+    const bossOn = !!(bo && bo.onField && !bo.down);
+    if (E.Boss.hidden === bossOn) E.Boss.hidden = !bossOn;
+    if (bo && bossOn) {
+      if (E.BossName.textContent !== bo.name) E.BossName.textContent = bo.name;
+      E.BossFill.style.width = (clamp(bo.hp / Math.max(1, bo.max), 0, 1) * 100).toFixed(1) + '%';
+      E.Boss.classList.toggle('angry', bo.phase > 0);
+    }
   }
 
   private showBanner(first: boolean): void {

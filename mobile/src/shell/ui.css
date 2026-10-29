@@ -94,7 +94,7 @@ header.bar, aside.ledger, #fieldSign, #eventLabel, #hud, .dbd-badge, .dbd-btns, 
 .scr .bg { position: absolute; left: 50%; top: 50%; width: 844px; height: 390px; transform-origin: 50% 50%; }
 .scr .bg > img.art { position: absolute; left: 0; top: 0; width: 844px; height: 390px; }
 .scr-menu { background: linear-gradient(#5C4E94 0 50%, #6B4632 50% 100%); }
-.scr-world, .scr-france { background: #8FD5EA; }
+.scr-world, .scr-country { background: #8FD5EA; }
 .scr-sundown { background: rgba(62, 40, 104, .55); }
 .scr-modal { background: rgba(43, 23, 8, .45); z-index: 3; }
 @media (prefers-reduced-motion: no-preference) {
@@ -161,7 +161,16 @@ body.dbd-onscr #stage .toast { display: none !important; }
 .scr .bg > :not(.art) { z-index: 2; }
 .scr .bg > .cloud { z-index: 3; }
 #dbdScreens.lb .scr-world .bg::before, #dbdScreens.lb .scr-world .bg::after,
-#dbdScreens.lb .scr-france .bg::before, #dbdScreens.lb .scr-france .bg::after {
+#dbdScreens.lb .scr-country .bg::before, #dbdScreens.lb .scr-country .bg::after {
   content: ""; position: absolute; left: -500px; right: -500px; height: 36px; z-index: 1; pointer-events: none; }
-#dbdScreens.lb .scr-world .bg::before, #dbdScreens.lb .scr-france .bg::before { top: -1px; background: linear-gradient(#8FD5EA, rgba(143, 213, 234, 0)); }
-#dbdScreens.lb .scr-world .bg::after, #dbdScreens.lb .scr-france .bg::after { bottom: -1px; background: linear-gradient(rgba(143, 213, 234, 0), #8FD5EA); }
+#dbdScreens.lb .scr-world .bg::before, #dbdScreens.lb .scr-country .bg::before { top: -1px; background: linear-gradient(#8FD5EA, rgba(143, 213, 234, 0)); }
+#dbdScreens.lb .scr-world .bg::after, #dbdScreens.lb .scr-country .bg::after { bottom: -1px; background: linear-gradient(rgba(143, 213, 234, 0), #8FD5EA); }
+
+/* boss bar under the dial */
+.hb-boss { position: absolute; left: -45px; top: 72px; width: 240px; height: 30px; border-radius: 12px; display: flex; align-items: center; gap: 6px; padding: 0 9px 0 7px; }
+.hb-bcrown { width: 22px; height: 17px; flex: none; }
+.hb-bname { font: 400 14px var(--ui-display); white-space: nowrap; max-width: 104px; overflow: hidden; text-overflow: ellipsis; }
+.hb-bbar { flex: 1; height: 11px; box-sizing: border-box; border: 2px solid var(--dbd-ink); border-radius: 6px; background: #fff; overflow: hidden; }
+.hb-bbar i { display: block; height: 100%; width: 100%; background: #E5484D; transition: width .15s linear; }
+.hb-boss.angry { animation: dbdBossShake .5s ease-in-out infinite alternate; }
+@keyframes dbdBossShake { from { transform: translateX(-1px); } to { transform: translateX(1px); } }

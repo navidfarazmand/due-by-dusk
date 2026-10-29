@@ -2979,6 +2979,15 @@ export function startGeminiEngine() {
         extraDayUsed: !!rawFarm.extraDayUsed,
         won: !!rawFarm.won,
         lost: !!rawFarm.lost,
+        boss:
+          rawFarm.boss && typeof rawFarm.boss === 'object' && num(rawFarm.boss.max, 0) > 0
+            ? {
+                hp: Math.max(0, num(rawFarm.boss.hp, 0)),
+                max: Math.max(1, num(rawFarm.boss.max, 1)),
+                down: !!rawFarm.boss.down,
+                phase: clamp(Math.floor(num(rawFarm.boss.phase, 0)), 0, 2),
+              }
+            : null,
       };
       const report =
         alreadyV2 && raw.migrationReport
@@ -16692,6 +16701,10 @@ export function startGeminiEngine() {
       treaty: count(P, 'treaty') > 0 || hasSkill('gold_treaty') || hasSkill('gold_herd'),
       storm: count(P, 'storm') > 0 || hasSkill('reap_exec'),
       cleaver: count(P, 'cleaver') > 0 || hasSkill('reap_cleave'),
+      style: 'sickle',
+      burn: 0,
+      targets: 1,
+      range: 0,
     };
   }
   /**
@@ -16753,6 +16766,10 @@ export function startGeminiEngine() {
       treaty: count(P, 'treaty') > 0 || hasSkill('gold_treaty') || hasSkill('gold_herd'),
       storm: count(P, 'storm') > 0 || hasSkill('reap_exec') || !!T.storm,
       cleaver: count(P, 'cleaver') > 0 || hasSkill('reap_cleave'),
+      style: T.style || 'sickle',
+      burn: T.burn || 0,
+      targets: Math.max(1, Math.floor(T.targets || 1)),
+      range: T.range || 0,
     };
   }
   function statsWith(id) {
@@ -17035,6 +17052,26 @@ export function startGeminiEngine() {
     click() {
       if (!this.ok()) return;
       this.tone(660, 0.05, { type: 'square', v: 0.035 });
+    },
+    flame() {
+      if (!this.ok()) return;
+      const n = performance.now();
+      if (n - (this.lastFlame || 0) < 110) return;
+      this.lastFlame = n;
+      this.noise(0.13, { v: 0.08, f: 420, q: 0.5, type: 'lowpass' });
+    },
+    seed() {
+      if (!this.ok()) return;
+      const n = performance.now();
+      if (n - (this.lastSeed || 0) < 60) return;
+      this.lastSeed = n;
+      this.tone(760, 0.06, { type: 'square', v: 0.035, to: 380 });
+      this.noise(0.03, { v: 0.08, f: 2400, q: 1.2 });
+    },
+    stomp() {
+      if (!this.ok()) return;
+      this.tone(92, 0.42, { type: 'sawtooth', v: 0.16, to: 46 });
+      this.noise(0.26, { v: 0.26, f: 180, q: 0.7, type: 'lowpass' });
     },
   };
   /* ================= canvas & scene ================= */ const canvas = $('#field'),
@@ -17605,15 +17642,22 @@ export function startGeminiEngine() {
     }
     return clumps;
   }
-  function spawnCrop(delay) {
-    const type = pickType(),
+  function spawnCrop(delay, at) {
+    const type = at && at.type && CROP[at.type] ? at.type : pickType(),
       def = CROP[type];
     let x = 0,
       y = 0,
       ok = false;
     for (let i = 0; i < 14 && !ok; i++) {
-      x = PAD + Math.random() * (worldW - PAD * 2);
-      y = FIELD_TOP + 32 + Math.random() * (HW - FIELD_TOP - 54);
+      if (at) {
+        const a = Math.random() * Math.PI * 2,
+          d = (at.d || 90) * (0.75 + Math.random() * 0.6);
+        x = FarmScene_clamp(at.x + Math.cos(a) * d, PAD, worldW - PAD);
+        y = FarmScene_clamp(at.y + Math.sin(a) * d * 0.55, FIELD_TOP + 32, HW - 22);
+      } else {
+        x = PAD + Math.random() * (worldW - PAD * 2);
+        y = FIELD_TOP + 32 + Math.random() * (HW - FIELD_TOP - 54);
+      }
       const rr = def.r * depth(y);
       ok = crops.every((c) => {
         const dx = c.x - x,
@@ -17706,11 +17750,15 @@ export function startGeminiEngine() {
     rushTimer = 0;
     rushCharge = 0;
     paused = false;
-    today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0 };
+    today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0, boss: 0 };
     goatTimer = unlockLevel() >= 2 ? 3 + Math.random() * 5 : Infinity;
     goat = null;
     const initCount = Math.min(cur.max, 4 + Math.floor(cur.max * 0.35) + (hasSkill('soil_dew') ? 3 : 0));
     for (let i = 0; i < initCount; i++) spawnCrop(0.08 + i * 0.04);
+    seeds = [];
+    bossCrop = null;
+    initBoss();
+    spawnBoss();
     mode = 'day';
     last = performance.now();
     dawnFade = reduceMotion ? 0 : 0.65;
@@ -17733,6 +17781,8 @@ export function startGeminiEngine() {
     if (mode !== 'day') return;
     if (window.__odDayEnded) window.__odDayEnded(Object.assign({}, today));
     dayCheckpoint = null;
+    if (bossCrop && !bossCrop.dead && farm.boss) farm.boss.hp = Math.max(1, bossCrop.hp);
+    seeds = [];
     mode = 'dusk';
     duskT = 0;
     paused = false;
@@ -17930,10 +17980,116 @@ export function startGeminiEngine() {
       }
     }
   }
+  /* ---- tools: blade swings (sickle, scythe), flame ticks with burning, seeds that fly to their targets ---- */
+  let seeds = [],
+    flameT = 0,
+    flameAcc = 0,
+    aimA = -0.5,
+    bossCrop = null;
+  /** One hit on one crop. Returns 0 (blocked), 1 (hit) or 2 (harvested). */
+  function hitCrop(c, cy, dmg, crit, src) {
+    if (c.frosted) {
+      c.frosted = false;
+      farm.cash += 2;
+      farm.earned += 2;
+      today.earned += 2;
+      addText('FROST +$2', c.x, cy - 24, '#bae6fd', 18, -36, 0.8);
+    } // Monsieur Échalote's Invisible Glass Box blocks the first hit of damage!
+    if (c.type === 'echalote' && !c.mimeBlocked && !c.boss) {
+      c.mimeBlocked = true;
+      c.sq = 1;
+      c.flash = 1;
+      c.hpShow = 1.5;
+      c.eye = 1.35;
+      c.stretch = -0.22;
+      c.stretchVel = -4.5;
+      c.wobbleVel = (pointer.vx >= 0 ? 1 : -1) * 6.5;
+      parts.push({ k: 'ring', x: c.x, y: cy, r: c.r * c.ds * 1.3, life: 0.32, max: 0.32, c: '#38bdf8' });
+      addText('SACRÉ BLEU! (MIME WALL!)', c.x, cy - 26, '#7dd3fc', 17, -34, 0.9);
+      if (Sound.ok()) Sound.tone(1480, 0.08, { type: 'triangle', v: 0.14, to: 1920 });
+      return 0;
+    }
+    c.hp -= dmg;
+    if (c.type === 'onion' && canAdd() && src !== 'flame') {
+      for (const dir of [-1, 1]) {
+        parts.push({
+          k: 'juice',
+          x: c.x + dir * 8,
+          y: cy - 4,
+          vx: dir * (45 + Math.random() * 40),
+          vy: -65,
+          g: 520,
+          floor: c.y + 4,
+          r: 3.2,
+          c: '#38bdf8',
+          life: 0.55,
+          max: 0.55,
+        });
+      }
+    }
+    c.sq = 1;
+    c.flash = 1;
+    c.hpShow = 1.4;
+    c.eye = 1.35;
+    c.monoclePop = 1.0;
+    c.capBounce = 1.0;
+    c.crownPop = 1.0; // Rikishi Kabocha takes half knockback due to his heavy sumo stance!
+    const kbScale =
+      (c.type === 'kabocha' ? 0.48 : c.type === 'fiddlehead' ? 1.45 : 1.0) *
+      (c.boss ? 0.08 : 1) *
+      (src === 'flame' ? 0.4 : 1);
+    c.stretch = (c.type === 'fiddlehead' ? 0.52 : -0.38) * kbScale;
+    c.stretchVel = (c.type === 'fiddlehead' ? 13.5 : -7.5) * kbScale;
+    const dirX = src === 'seed' ? (c.x >= pointer.x ? 1 : -1) : pointer.vx >= 0 ? 1 : -1;
+    c.wobbleVel = dirX * 9.5 * kbScale; // Trigger country-specific On-Hit Counter / Slapstick Gag Animations!
+    if (!c.boss || Math.random() < 0.06) triggerRegionalOnHitGag(c, cy);
+    if (c.boss) c.wobbleAngle = FarmScene_clamp(c.wobbleAngle || 0, -0.12, 0.12);
+    if (src !== 'flame' || Math.random() < 0.35) debris(c, crit ? 5 : src === 'flame' ? 1 : 3);
+    if (src === 'flame' && cur.burn > 0) {
+      c.burnT = Math.max(c.burnT || 0, cur.burn);
+      c.burnD = cur.dmg * 1.5;
+    }
+    if (c.boss) bossHit(c, false);
+    if (c.hp <= 1e-6 || (hasSkill('reap_exec') && !c.boss && c.hp / c.maxHp <= 0.25)) {
+      harvest(c);
+      return 2;
+    }
+    return 1;
+  }
+  function stormChain(x, y) {
+    let chained = 0,
+      killed = 0;
+    for (const tCrop of crops) {
+      if (tCrop.dead || chained >= 2) continue;
+      const d = Math.hypot(tCrop.x - x, tCrop.y - y);
+      if (d > cur.R && d < cur.R + 170) {
+        chained++;
+        bolts.push({ x1: x, y1: y, x2: tCrop.x, y2: tCrop.y - 18, life: 0.22, max: 0.22 });
+        tCrop.hp -= cur.dmg * 1.6;
+        tCrop.eye = 0.85;
+        tCrop.stretch = -0.35;
+        if (tCrop.boss) bossHit(tCrop, true);
+        if (tCrop.hp <= 1e-6) {
+          harvest(tCrop);
+          killed++;
+        }
+      }
+    }
+    return killed;
+  }
   function swing() {
     if (!pointer.active) return;
-    sweepT = 0.13;
-    sweepA = (sweepA + 2.3) % (Math.PI * 2);
+    const style = cur.style || 'sickle';
+    if (style === 'blaster') {
+      fireSeeds();
+      return;
+    }
+    const flame = style === 'flame';
+    if (flame) flameT = 0.14;
+    else {
+      sweepT = 0.13;
+      sweepA = (sweepA + 2.3) % (Math.PI * 2);
+    }
     const crit = Math.random() < cur.cc,
       dmg = cur.dmg * (crit ? cur.cm : 1);
     let hits = 0,
@@ -17946,93 +18102,619 @@ export function startGeminiEngine() {
         rr = cur.R + c.r * c.ds * 0.65;
       if (dx * dx + dy * dy > rr * rr) continue;
       hits++;
-      if (c.frosted) {
-        c.frosted = false;
-        farm.cash += 2;
-        farm.earned += 2;
-        today.earned += 2;
-        addText('FROST +$2', c.x, cy - 24, '#bae6fd', 18, -36, 0.8);
-      } // Monsieur Échalote's Invisible Glass Box blocks the first hit of damage!
-      if (c.type === 'echalote' && !c.mimeBlocked) {
-        c.mimeBlocked = true;
-        c.sq = 1;
-        c.flash = 1;
-        c.hpShow = 1.5;
-        c.eye = 1.35;
-        c.stretch = -0.22;
-        c.stretchVel = -4.5;
-        c.wobbleVel = (pointer.vx >= 0 ? 1 : -1) * 6.5;
-        parts.push({ k: 'ring', x: c.x, y: cy, r: c.r * c.ds * 1.3, life: 0.32, max: 0.32, c: '#38bdf8' });
-        addText('SACRÉ BLEU! (MIME WALL!)', c.x, cy - 26, '#7dd3fc', 17, -34, 0.9);
-        if (Sound.ok()) Sound.tone(1480, 0.08, { type: 'triangle', v: 0.14, to: 1920 });
-        continue;
-      }
-      c.hp -= dmg;
-      if (c.type === 'onion' && canAdd()) {
-        for (const dir of [-1, 1]) {
-          parts.push({
-            k: 'juice',
-            x: c.x + dir * 8,
-            y: cy - 4,
-            vx: dir * (45 + Math.random() * 40),
-            vy: -65,
-            g: 520,
-            floor: c.y + 4,
-            r: 3.2,
-            c: '#38bdf8',
-            life: 0.55,
-            max: 0.55,
-          });
-        }
-      }
-      c.sq = 1;
-      c.flash = 1;
-      c.hpShow = 1.4;
-      c.eye = 1.35;
-      c.monoclePop = 1.0;
-      c.capBounce = 1.0;
-      c.crownPop = 1.0; // Rikishi Kabocha takes half knockback due to his heavy sumo stance!
-      const kbScale = c.type === 'kabocha' ? 0.48 : c.type === 'fiddlehead' ? 1.45 : 1.0;
-      c.stretch = (c.type === 'fiddlehead' ? 0.52 : -0.38) * kbScale;
-      c.stretchVel = (c.type === 'fiddlehead' ? 13.5 : -7.5) * kbScale;
-      c.wobbleVel = (pointer.vx >= 0 ? 1 : -1) * 9.5 * kbScale; // Trigger country-specific On-Hit Counter / Slapstick Gag Animations!
-      triggerRegionalOnHitGag(c, cy);
-      debris(c, crit ? 5 : 3);
-      if (c.hp <= 1e-6 || (hasSkill('reap_exec') && c.hp / c.maxHp <= 0.25)) {
-        harvest(c);
-        killed++;
-      }
+      if (hitCrop(c, cy, dmg, crit, flame ? 'flame' : 'blade') === 2) killed++;
     }
     if (hits) {
-      Sound.hit(crit);
+      if (flame) Sound.flame();
+      else Sound.hit(crit);
       if (crit) {
-        shake(5);
-        hitStopTimer = 0.035;
-        addText('CRIT', pointer.x, pointer.y - cur.R - 8, '#ffd34d', 30, -40, 0.7);
-        spark(pointer.x, pointer.y); // Storm Scythe synergy: chain lightning to up to 2 nearby crops!
-        if (cur.storm) {
-          let chained = 0;
-          for (const tCrop of crops) {
-            if (tCrop.dead || chained >= 2) continue;
-            const d = Math.hypot(tCrop.x - pointer.x, tCrop.y - pointer.y);
-            if (d > cur.R && d < cur.R + 170) {
-              chained++;
-              bolts.push({ x1: pointer.x, y1: pointer.y, x2: tCrop.x, y2: tCrop.y - 18, life: 0.22, max: 0.22 });
-              tCrop.hp -= cur.dmg * 1.6;
-              tCrop.eye = 0.85;
-              tCrop.stretch = -0.35;
-              if (tCrop.hp <= 1e-6) {
-                harvest(tCrop);
-                killed++;
-              }
-            }
-          }
+        if (!flame) {
+          shake(5);
+          hitStopTimer = 0.035;
+          addText('CRIT', pointer.x, pointer.y - cur.R - 8, '#ffd34d', 30, -40, 0.7);
         }
+        spark(pointer.x, pointer.y); // Storm synergy: chain lightning to up to 2 nearby crops!
+        if (cur.storm) killed += stormChain(pointer.x, pointer.y);
       }
     }
     if (killed) crops = crops.filter((c) => !c.dead);
     if (goat) checkGoat();
     checkPropsAndCrows(cur.R);
+  }
+  /** Seed blaster: fire at the nearest crops in range; the seeds do the damage when they land. */
+  function fireSeeds() {
+    checkPropsAndCrows(cur.R);
+    if (goat) checkGoat();
+    const reach = cur.range || cur.R * 3;
+    const list = [];
+    for (const c of crops) {
+      if (c.dead || c.age < 0.04) continue;
+      const cy = c.y - c.r * c.ds * 0.55;
+      const d = Math.hypot(c.x - pointer.x, cy - pointer.y) - c.r * c.ds * 0.6;
+      if (d <= reach) list.push({ d, c, cy });
+    }
+    if (!list.length) return;
+    list.sort((p, q) => p.d - q.d);
+    const n = Math.min(cur.targets || 1, list.length);
+    aimA = Math.atan2(list[0].cy - (pointer.y - 8), list[0].c.x - pointer.x);
+    sweepT = 0.13;
+    const mx = pointer.x + Math.cos(aimA) * 30,
+      my = pointer.y - 8 + Math.sin(aimA) * 30;
+    for (let i = 0; i < n; i++) {
+      const t = list[i];
+      seeds.push({
+        x: mx,
+        y: my,
+        sx: mx,
+        sy: my,
+        c: t.c,
+        t: 0,
+        dur: FarmScene_clamp(Math.max(0, t.d) / 900, 0.06, 0.32),
+        crit: Math.random() < cur.cc,
+        wob: Math.random() * 6,
+      });
+    }
+    Sound.seed();
+  }
+  function updateSeeds(dt) {
+    if (!seeds.length) return;
+    let killed = 0;
+    for (const sd of seeds) {
+      sd.t += dt / sd.dur;
+      const c = sd.c,
+        tx = c.x,
+        ty = c.y - c.r * c.ds * 0.55,
+        k = Math.min(1, sd.t);
+      sd.x = lerp(sd.sx, tx, k);
+      sd.y = lerp(sd.sy, ty, k) - Math.sin(k * Math.PI) * 18;
+      if (sd.t < 1) continue;
+      sd.done = true;
+      if (c.dead) continue;
+      if (hitCrop(c, ty, cur.dmg * (sd.crit ? cur.cm : 1), sd.crit, 'seed') === 2) killed++;
+      Sound.hit(sd.crit);
+      if (sd.crit) {
+        addText('CRIT', tx, ty - 30, '#ffd34d', 26, -40, 0.7);
+        spark(tx, ty);
+        shake(3);
+      }
+      if (canAdd()) parts.push({ k: 'ring', x: tx, y: ty, r: 16, life: 0.25, max: 0.25, c: '#bef264' });
+    }
+    seeds = seeds.filter((sd) => !sd.done);
+    if (killed) crops = crops.filter((c) => !c.dead);
+  }
+  /** Per-frame tool work during the day: seeds in flight, flame particles, burning crops, the boss walking. */
+  function toolUpdate(dt) {
+    flameT = Math.max(0, flameT - dt);
+    updateSeeds(dt);
+    if ((cur.style || 'sickle') === 'flame' && pointer.active) {
+      flameAcc += dt * (reduceMotion ? 18 : 60);
+      while (flameAcc >= 1) {
+        flameAcc -= 1;
+        if (!canAdd()) {
+          flameAcc = 0;
+          break;
+        }
+        const a = Math.random() * Math.PI * 2,
+          rr = Math.sqrt(Math.random()) * cur.R * 0.8,
+          life = 0.28 + Math.random() * 0.22;
+        parts.push({
+          k: 'flame',
+          x: pointer.x + Math.cos(a) * rr,
+          y: pointer.y + Math.sin(a) * rr * 0.6,
+          vx: (Math.random() - 0.5) * 34,
+          vy: -45 - Math.random() * 55,
+          g: -30,
+          s: 3.5 + Math.random() * 4.5,
+          life,
+          max: life,
+        });
+      }
+    }
+    let killed = 0;
+    for (const c of crops) {
+      if (!(c.burnT > 0) || c.dead) continue;
+      c.burnT = Math.max(0, c.burnT - dt);
+      c.hp -= (c.burnD || 0) * dt;
+      c.hpShow = Math.max(c.hpShow, 0.5);
+      if (!reduceMotion && Math.random() < dt * 8 && canAdd()) {
+        const life = 0.4 + Math.random() * 0.2;
+        parts.push({
+          k: Math.random() < 0.6 ? 'flame' : 'smoke',
+          x: c.x + (Math.random() - 0.5) * c.r * c.ds,
+          y: c.y - c.r * c.ds * (0.4 + Math.random() * 0.6),
+          vx: (Math.random() - 0.5) * 12,
+          vy: -30 - Math.random() * 30,
+          g: -10,
+          s: 2.5 + Math.random() * 3,
+          life,
+          max: life,
+        });
+      }
+      if (c.boss) bossHit(c, true);
+      if (c.hp <= 1e-6) {
+        harvest(c);
+        killed++;
+      }
+    }
+    if (killed) crops = crops.filter((c) => !c.dead);
+    if (bossCrop && !bossCrop.dead) bossMove(bossCrop, dt);
+  }
+  /* ---- the country boss: a giant crowned crop that stays on the farm, day after day, until knocked out ---- */
+  const BOSS_SCALE = 2.25;
+  function bossFight() {
+    const pl = plan();
+    return pl && pl.bossFight && CROP[pl.bossFight.type] ? pl.bossFight : null;
+  }
+  /** Single-target damage per second with a tool (blade swings, flame plus burning, or one seed per shot). */
+  function bossDpsWith(tool) {
+    const prev = window.__DBD_TOOL;
+    window.__DBD_TOOL = tool || prev;
+    const st = stats();
+    window.__DBD_TOOL = prev;
+    const rate = st.style === 'flame' ? st.tick + 1.5 : st.tick;
+    return st.dmg * rate * (1 + st.cc * (st.cm - 1));
+  }
+  function initBoss(tools) {
+    const bf = bossFight();
+    if (!bf) {
+      farm.boss = null;
+      return;
+    }
+    if (farm.boss && farm.boss.max > 0) return;
+    const pl = plan();
+    const floor = CROP[bf.type].hp * (pl.hp || 1) * 6;
+    let max;
+    if (bf.focusSec) {
+      let dps = 0;
+      for (const t of tools && tools.length ? tools : [window.__DBD_TOOL]) dps = Math.max(dps, bossDpsWith(t));
+      max = Math.max(floor, dps * bf.focusSec);
+    } else max = CROP[bf.type].hp * (pl.hp || 1) * (bf.hpMul || 30);
+    max = Math.max(1, Math.round(max));
+    farm.boss = { hp: max, max, down: false, phase: 0 };
+  }
+  /** The deed stays in the boss's pocket until the boss is knocked out. */
+  function bossBlocked() {
+    return !!(bossFight() && farm.boss && !farm.boss.down && farm.bill === billCount() - 1);
+  }
+  function bossHud() {
+    const bf = bossFight();
+    if (!bf || !farm.boss) return null;
+    const alive = !!(bossCrop && !bossCrop.dead);
+    return {
+      name: bf.name,
+      type: bf.type,
+      hp: Math.max(0, alive ? bossCrop.hp : farm.boss.hp),
+      max: farm.boss.max,
+      down: !!farm.boss.down,
+      phase: farm.boss.phase || 0,
+      onField: alive && mode === 'day',
+      bounty: bf.bounty || 0,
+    };
+  }
+  function spawnBoss() {
+    const bf = bossFight();
+    if (!bf || !farm.boss || farm.boss.down) return;
+    const def = CROP[bf.type];
+    const x = worldW * (0.35 + Math.random() * 0.3),
+      y = FIELD_TOP + (HW - FIELD_TOP) * 0.6,
+      ds = depth(y) * BOSS_SCALE;
+    const c = {
+      type: bf.type,
+      x,
+      y,
+      ds,
+      r: def.r,
+      hp: Math.max(1, farm.boss.hp),
+      maxHp: farm.boss.max,
+      age: 0.5,
+      stage: 3,
+      stretch: -0.7,
+      stretchVel: 10,
+      wobbleAngle: 0,
+      wobbleVel: 0,
+      moundClumps: makeMoundClumps(def.r),
+      sq: 0,
+      flash: 0,
+      wob: Math.random() * 6.28,
+      vx: 0,
+      vy: 0,
+      hpShow: 0,
+      panic: 0,
+      stam: 1,
+      zt: 1,
+      eye: 0,
+      monoclePop: 0,
+      capBounce: 0,
+      crownPop: 0,
+      hatProgress: 0.65,
+      scarfProgress: 0,
+      frosted: false,
+      dead: false,
+      lucky: false,
+      boss: true,
+      tx: x,
+      ty: y,
+      wait: 1.4,
+      hits: 0,
+    };
+    crops.push(c);
+    bossCrop = c;
+    addText(bf.name.toUpperCase(), x, y - def.top * ds - 26, '#ffe27a', 34, -18, 1.6);
+    shake(9);
+    Sound.stomp();
+    dbdEvent('bossAppear', { name: bf.name, hp: c.hp, max: c.maxHp });
+  }
+  function bossMove(c, dt) {
+    const ph = farm.boss ? farm.boss.phase || 0 : 0;
+    c.wait -= dt;
+    if (c.wait > 0) return;
+    const dx = c.tx - c.x,
+      dy = c.ty - c.y,
+      d = Math.hypot(dx, dy);
+    if (d < 6) {
+      c.wait = (ph >= 2 ? 0.4 : 0.9) + Math.random() * 1.2;
+      c.tx = PAD + 70 + Math.random() * Math.max(10, worldW - PAD * 2 - 140);
+      c.ty = FIELD_TOP + 70 + Math.random() * Math.max(10, HW - FIELD_TOP - 110);
+      return;
+    }
+    const sp = ph >= 2 ? 44 : ph >= 1 ? 33 : 24;
+    c.x += (dx / d) * sp * dt;
+    c.y += (dy / d) * sp * dt;
+    c.ds = depth(c.y) * BOSS_SCALE;
+    if (!reduceMotion && Math.random() < dt * 5 && canAdd())
+      parts.push({
+        k: 'dust',
+        x: c.x + (Math.random() - 0.5) * c.r * c.ds,
+        y: c.y + 2,
+        vx: -(dx / d) * 20,
+        vy: -10,
+        g: 0,
+        s: 4,
+        life: 0.4,
+        max: 0.4,
+      });
+  }
+  function bossHit(c, quiet) {
+    if (!farm.boss) return;
+    farm.boss.hp = Math.max(0, c.hp);
+    if (!quiet) {
+      c.hits = (c.hits || 0) + 1;
+      const pay = CROP[c.type].val * cur.vm * 0.05;
+      farm.cash += pay;
+      farm.earned += pay;
+      today.earned += pay;
+      if (c.hits % 4 === 0) coin(c.x + (Math.random() - 0.5) * 30, c.y - c.r * c.ds * 0.6, 0);
+    }
+    if (c.hp <= 0) return;
+    const f = c.hp / Math.max(1, c.maxHp);
+    if ((farm.boss.phase || 0) < 1 && f <= 0.66) bossStomp(c, 1);
+    else if ((farm.boss.phase || 0) < 2 && f <= 0.33) bossStomp(c, 2);
+  }
+  function bossStomp(c, phase) {
+    farm.boss.phase = phase;
+    const bf = bossFight(),
+      def = CROP[c.type];
+    shake(12);
+    hitStopTimer = 0.05;
+    addText(phase === 1 ? 'GRRR!' : 'THAT DOES IT!', c.x, c.y - def.top * c.ds - 24, '#fca5a5', 30, -30, 1.1);
+    parts.push({ k: 'ring', x: c.x, y: c.y, r: c.r * c.ds * 2.2, life: 0.5, max: 0.5, c: '#fca5a5' });
+    const pl = plan();
+    const pool = (pl && pl.crops ? pl.crops.slice(0, 3).map((t) => t[0]) : [c.type]).filter((t) => CROP[t]);
+    const n = phase === 1 ? 3 : 4;
+    for (let k = 0; k < n && pool.length; k++)
+      spawnCrop(0.05 + k * 0.06, { x: c.x, y: c.y, d: c.r * c.ds * 1.6, type: pool[k % pool.length] });
+    Sound.stomp();
+    dbdEvent('bossStomp', { phase, name: bf ? bf.name : '' });
+  }
+  function bossDown(c) {
+    c.dead = true;
+    bossCrop = null;
+    const bf = bossFight();
+    if (!farm.boss) return;
+    farm.boss.hp = 0;
+    farm.boss.down = true;
+    const def = CROP[c.type];
+    const bounty = Math.round(bf ? bf.bounty || 0 : 0);
+    farm.cash += bounty;
+    farm.earned += bounty;
+    today.earned += bounty;
+    today.boss = bounty;
+    const top = c.y - def.top * c.ds;
+    addText('KNOCKED OUT!', c.x, top - 40, '#ffe27a', 42, -26, 1.8);
+    if (bounty) addText('BOUNTY ' + fmtGain(bounty), c.x, top - 4, '#bef264', 32, -44, 1.6);
+    shake(16);
+    hitStopTimer = 0.1;
+    for (let i = 0; i < 3; i++)
+      parts.push({
+        k: 'ring',
+        x: c.x,
+        y: c.y - c.r * c.ds * 0.5,
+        r: c.r * c.ds * (1.4 + i * 0.7),
+        life: 0.5 + i * 0.12,
+        max: 0.5 + i * 0.12,
+        c: i === 1 ? '#ffe27a' : def.color,
+      });
+    sliceBurst(c);
+    for (let i = 0; i < 14; i++) coin(c.x + (Math.random() - 0.5) * 60, c.y - c.r * c.ds * 0.6, i * 0.025);
+    for (let i = 0; i < 8; i++) spark(c.x + (Math.random() - 0.5) * 80, top + Math.random() * 60);
+    Sound.fanfare();
+    dbdEvent('bossDown', { name: bf ? bf.name : '', bounty, day: farm.day });
+  }
+  function drawBossCrown(c, def) {
+    const bob = reduceMotion ? 0 : Math.sin(tNow * 3 + c.wob) * 1.2;
+    ctx.save();
+    ctx.translate(0, -def.top - 4 - (c.crownPop || 0) * 5 + bob);
+    ctx.rotate(reduceMotion ? 0 : Math.sin(tNow * 2.1) * 0.06);
+    const w = 16,
+      h = 15;
+    const g = ctx.createLinearGradient(0, -h, 0, 4);
+    g.addColorStop(0, '#fff1a8');
+    g.addColorStop(0.5, '#ffc23d');
+    g.addColorStop(1, '#d98a14');
+    ctx.fillStyle = g;
+    ctx.strokeStyle = '#2B1708';
+    ctx.lineWidth = 1.8;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-w, 3);
+    ctx.lineTo(-w - 1, -h);
+    ctx.lineTo(-w * 0.45, -h * 0.42);
+    ctx.lineTo(0, -h * 1.25);
+    ctx.lineTo(w * 0.45, -h * 0.42);
+    ctx.lineTo(w + 1, -h);
+    ctx.lineTo(w, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.lineWidth = 1.2;
+    ctx.fillStyle = '#e5484d';
+    circ(ctx, 0, -h * 0.28, 2.8);
+    ctx.stroke();
+    ctx.fillStyle = '#5ab0ff';
+    circ(ctx, -w * 0.62, -h * 0.1, 1.9);
+    ctx.stroke();
+    circ(ctx, w * 0.62, -h * 0.1, 1.9);
+    ctx.stroke();
+    ctx.fillStyle = '#fff7d0';
+    circ(ctx, 0, -h * 1.25, 1.9);
+    circ(ctx, -w - 1, -h, 1.6);
+    circ(ctx, w + 1, -h, 1.6);
+    ctx.restore();
+  }
+  /* ---- tool drawings (the sickle keeps Gemini's drawing in drawCursor) ---- */
+  function drawOtherTool(x, y, R) {
+    const style = cur.style;
+    if (style === 'scythe') drawScythe(x, y, R);
+    else if (style === 'flame') drawFlameWand(x, y, R);
+    else drawBlaster(x, y, R);
+  }
+  function drawScythe(x, y, R) {
+    ctx.save();
+    ctx.translate(x, y);
+    const swingKick = reduceMotion ? 0 : Math.sin((1 - FarmScene_clamp(sweepT / 0.13, 0, 1)) * Math.PI) * 0.8;
+    const velTilt = FarmScene_clamp((pointer.vx || 0) * 0.0004, -0.18, 0.18);
+    ctx.rotate(-0.45 + swingKick + velTilt);
+    const z = FarmScene_clamp(R / 56, 0.8, 1.3);
+    ctx.scale(z, z);
+    ctx.lineCap = 'round';
+    ctx.save();
+    ctx.translate(2, 4);
+    ctx.strokeStyle = 'rgba(20, 28, 18, 0.28)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(22, 40);
+    ctx.quadraticCurveTo(10, 4, 0, -30);
+    ctx.stroke();
+    ctx.restore();
+    const shaft = (col, wd, dx, dy) => {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = wd;
+      ctx.beginPath();
+      ctx.moveTo(22 + dx, 40 + dy);
+      ctx.quadraticCurveTo(10 + dx, 4 + dy, 0 + dx, -30 + dy);
+      ctx.stroke();
+    };
+    shaft('#4a2a0e', 7.5, 0, 0);
+    shaft('#b8793c', 4.8, 0, 0);
+    shaft('#e8b276', 1.4, -1.4, -1.5);
+    ctx.strokeStyle = '#4a2a0e';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(11, 10);
+    ctx.lineTo(22, 3);
+    ctx.stroke();
+    ctx.strokeStyle = '#c98a4a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(11, 10);
+    ctx.lineTo(22, 3);
+    ctx.stroke();
+    const bg = ctx.createLinearGradient(-62, -44, 0, -18);
+    bg.addColorStop(0, '#ffffff');
+    bg.addColorStop(0.4, '#e2e8f0');
+    bg.addColorStop(0.8, '#94a3b8');
+    bg.addColorStop(1, '#475569');
+    ctx.fillStyle = bg;
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(3, -27);
+    ctx.bezierCurveTo(-13, -45, -46, -45, -68, -21);
+    ctx.bezierCurveTo(-48, -32, -22, -32, -2, -19);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = '#fffbeb';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(-60, -23);
+    ctx.bezierCurveTo(-44, -31, -22, -30, -4, -20);
+    ctx.stroke();
+    ctx.fillStyle = '#eab308';
+    ctx.strokeStyle = '#78350f';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(-3.5, -31, 8, 7, 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawFlameWand(x, y, R) {
+    ctx.save();
+    ctx.translate(x, y);
+    const fl = 0.8 + (reduceMotion ? 0 : Math.sin(tNow * 40) * 0.12) + flameT * 1.6;
+    ctx.fillStyle = radial(ctx, 0, 0, 2, 0, 0, R * 0.95, `rgba(255,180,70,${0.26 * fl})`, 'rgba(255,120,40,0)');
+    circ(ctx, 0, 0, R * 0.95);
+    ctx.rotate(FarmScene_clamp((pointer.vx || 0) * 0.0004, -0.2, 0.2));
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1f2937';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(10, 8);
+    ctx.lineTo(40, 40);
+    ctx.stroke();
+    ctx.strokeStyle = '#9ca3af';
+    ctx.lineWidth = 3.4;
+    ctx.beginPath();
+    ctx.moveTo(10, 8);
+    ctx.lineTo(40, 40);
+    ctx.stroke();
+    ctx.strokeStyle = '#2B1708';
+    ctx.lineWidth = 8.5;
+    ctx.beginPath();
+    ctx.moveTo(30, 30);
+    ctx.lineTo(42, 42);
+    ctx.stroke();
+    ctx.strokeStyle = '#e5484d';
+    ctx.lineWidth = 5.6;
+    ctx.beginPath();
+    ctx.moveTo(30, 30);
+    ctx.lineTo(42, 42);
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(52, 50);
+    ctx.rotate(-0.75);
+    ctx.fillStyle = '#ef4444';
+    ctx.strokeStyle = '#2B1708';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-9, -14, 18, 28, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.beginPath();
+    ctx.roundRect(-5, -9, 3.5, 16, 2);
+    ctx.fill();
+    ctx.fillStyle = '#9ca3af';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-4, -19, 8, 6, 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(8, 6);
+    ctx.rotate(-Math.PI * 0.75);
+    ctx.fillStyle = '#4b5563';
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-6.5, 9);
+    ctx.lineTo(6.5, 9);
+    ctx.lineTo(4, -3);
+    ctx.lineTo(-4, -3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    const tongue = 10 + fl * 6 + (reduceMotion ? 0 : Math.sin(tNow * 31) * 2);
+    ctx.fillStyle = 'rgba(255,140,50,.85)';
+    ctx.beginPath();
+    ctx.moveTo(-6, 9);
+    ctx.quadraticCurveTo(0, 9 + tongue * 1.7, 6, 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,240,170,.95)';
+    ctx.beginPath();
+    ctx.moveTo(-3, 9);
+    ctx.quadraticCurveTo(0, 9 + tongue, 3, 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.restore();
+  }
+  function drawBlaster(x, y, R) {
+    const range = cur.range || R * 3;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(190, 242, 100, .5)';
+    ctx.setLineDash([3, 9]);
+    ctx.lineDashOffset = reduceMotion ? 0 : -tNow * 12;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(x, y, range, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(x, y - 8);
+    ctx.rotate(aimA);
+    if (Math.cos(aimA) < 0) ctx.scale(1, -1);
+    ctx.translate(sweepT > 0 ? -(sweepT / 0.13) * 5 : 0, 0);
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#2B1708';
+    ctx.lineWidth = 2.2;
+    ctx.fillStyle = '#7c4a21';
+    ctx.beginPath();
+    ctx.roundRect(-9, 2, 9, 16, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffc23d';
+    ctx.beginPath();
+    ctx.roundRect(8, -5, 22, 9, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#2B1708';
+    ctx.beginPath();
+    ctx.roundRect(28, -5, 4, 9, 1.5);
+    ctx.fill();
+    ctx.fillStyle = '#6dbe45';
+    ctx.beginPath();
+    ctx.roundRect(-15, -9, 27, 15, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ff9a3d';
+    ctx.beginPath();
+    ctx.roundRect(-9, -19, 14, 11, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#8b5a2b';
+    circ(ctx, -4, -14, 1.7);
+    circ(ctx, 0.5, -13, 1.7);
+    ctx.strokeStyle = 'rgba(255,255,255,.7)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-11, -5);
+    ctx.lineTo(6, -5);
+    ctx.stroke();
+    if (sweepT > 0.05) {
+      ctx.fillStyle = 'rgba(255,244,184,.9)';
+      circ(ctx, 37, -0.5, 6 * (sweepT / 0.13));
+    }
+    ctx.restore();
+  }
+  function drawSeeds() {
+    for (const sd of seeds) {
+      ctx.save();
+      ctx.translate(sd.x, sd.y);
+      ctx.rotate(sd.wob + sd.t * 14);
+      ctx.fillStyle = sd.crit ? '#ffe27a' : '#9a6b2f';
+      ctx.strokeStyle = '#2B1708';
+      ctx.lineWidth = 1.4;
+      ell(ctx, 0, 0, 4.8, 3.3);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,.65)';
+      circ(ctx, -1.5, -1, 1.1);
+      ctx.restore();
+    }
   }
   let perfumeSparkleTimer = 0;
   function triggerRegionalOnHitGag(c, cy) {
@@ -18230,6 +18912,10 @@ export function startGeminiEngine() {
   }
   function harvest(c) {
     if (c.dead) return;
+    if (c.boss) {
+      bossDown(c);
+      return;
+    }
     c.dead = true;
     const def = CROP[c.type],
       previousTier = chainMultiplier();
@@ -18693,6 +19379,7 @@ export function startGeminiEngine() {
         tickAcc -= iv;
         swing();
       }
+      toolUpdate(dt);
       spawnAcc += dt; // Charge Cleave charging while holding pointer or Spacebar
       if (
         (pointer.down || keys.has(' ')) &&
@@ -20051,6 +20738,14 @@ export function startGeminiEngine() {
       ctx.stroke();
       ctx.restore();
     }
+    if (c.burnT > 0 && c.stage >= 2) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, c.burnT * 2) * 0.55;
+      ctx.fillStyle = 'rgba(234, 88, 12, 0.5)';
+      ell(ctx, 0, -c.r * 0.58, c.r * 0.92, c.r * 0.7);
+      ctx.restore();
+    }
+    if (c.boss) drawBossCrown(c, def);
     if (c.lucky && c.stage === 3) {
       const starY = -def.top - 8,
         tw = reduceMotion ? 0 : tNow * 0.8;
@@ -20071,7 +20766,7 @@ export function startGeminiEngine() {
     ctx.restore();
   }
   function drawHpBar(c) {
-    if (c.hpShow <= 0 || c.dead || c.maxHp <= 1.001) return;
+    if (c.hpShow <= 0 || c.dead || c.maxHp <= 1.001 || c.boss) return;
     const w = Math.max(30, c.r * 1.1) * c.ds,
       x = c.x - w / 2,
       y = c.y - CROP[c.type].top * c.ds - 12,
@@ -20384,6 +21079,15 @@ export function startGeminiEngine() {
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r * (0.4 + t * 0.9), 0, Math.PI * 2);
         ctx.stroke();
+      } else if (p.k === 'flame') {
+        const t = 1 - p.life / p.max;
+        ctx.globalAlpha = Math.max(0, 1 - t) * 0.92;
+        ctx.fillStyle = t < 0.25 ? '#fff4b8' : t < 0.55 ? '#ffb13b' : '#f2542d';
+        circ(ctx, p.x, p.y, Math.max(0.5, p.s * (1 - t * 0.55)));
+      } else if (p.k === 'smoke') {
+        ctx.globalAlpha = (p.life / p.max) * 0.28;
+        ctx.fillStyle = '#5b524c';
+        circ(ctx, p.x, p.y, p.s * (1.9 - p.life / p.max));
       } else if (p.k === 'dust') {
         ctx.globalAlpha = (p.life / p.max) * 0.4;
         ctx.fillStyle = '#d1b285';
@@ -20477,7 +21181,7 @@ export function startGeminiEngine() {
       ctx.stroke();
       ctx.restore();
     } // Dynamic crescent slash arc when swinging
-    if (sweepT > 0) {
+    if (sweepT > 0 && (cur.style === 'sickle' || cur.style === 'scythe' || !cur.style)) {
       const t = 1 - sweepT / 0.13;
       const span = Math.PI * 1.28 * t;
       ctx.save();
@@ -20493,6 +21197,10 @@ export function startGeminiEngine() {
       ctx.arc(x, y, R * 0.91, sweepA + span * 0.15, sweepA + span);
       ctx.stroke();
       ctx.restore();
+    }
+    if (cur.style && cur.style !== 'sickle') {
+      drawOtherTool(x, y, R);
+      return;
     } // Upgraded Harvest Crescent Sickle
     ctx.save();
     ctx.translate(x, y);
@@ -21095,6 +21803,7 @@ export function startGeminiEngine() {
     if (!goatDrawn) drawGoat(goat);
     for (const c of list) drawHpBar(c);
     drawParts();
+    drawSeeds();
     drawPropsCrowsAndWeather(); // Seamless full-canvas evening/night atmospheric tint (NO horizontal cut line at y=105!)
     if (warm > 0.05 || night > 0.05 || dawnAmt(p) > 0.02) {
       const ambGrad = ctx.createLinearGradient(0, 0, 0, HW);
@@ -21419,7 +22128,7 @@ export function startGeminiEngine() {
   /* actions */ function payBill() {
     if (mode !== 'idle' || farm.pendingPerks || !el.modal.hidden) return;
     const b = billObj(farm.bill);
-    if (farm.cash < b.amt) return;
+    if (farm.cash < b.amt || bossBlocked()) return;
     Sound.init();
     Sound.stamp();
     farm.cash -= b.amt;
@@ -21438,7 +22147,7 @@ export function startGeminiEngine() {
       return;
     }
     farm.bill += 1;
-    farm.due = farm.day - 1 + billList()[farm.bill].days;
+    farm.due = Math.max(farm.due, farm.day - 1) + billList()[farm.bill].days;
     const pool = shuffle(
       FarmScene_PERKS.filter((p) => (!p.req || p.req(farm)) && (!p.once || !farm.perks.includes(p.id))).map(
         (p) => p.id,
@@ -21520,7 +22229,7 @@ export function startGeminiEngine() {
       farm.pendingPerks ||
       !el.modal.hidden ||
       !billStatus().tonight ||
-      farm.cash >= billObj(farm.bill).amt
+      (farm.cash >= billObj(farm.bill).amt && !bossBlocked())
     )
       return;
     const old = farm,
@@ -21544,6 +22253,7 @@ export function startGeminiEngine() {
       billTotal: billCount(),
       paidTotal: old.paidTotal,
       cash: old.cash,
+      bossKept: bossBlocked(),
     });
   }
   function win() {
@@ -22214,7 +22924,7 @@ export function startGeminiEngine() {
     const elapsed = last ? Math.max(0, (now - last) / 1000) : 0;
     last = now;
     if (elapsed > 3.5 && mode === 'day' && !paused) setPaused(true);
-    let remaining = Math.min(elapsed, 0.75);
+    let remaining = Math.min(elapsed, 0.75) * (window.__DBD_TIMESCALE || 1);
     while (remaining > 0) {
       const step = Math.min(1 / 60, remaining);
       update(step);
@@ -22300,6 +23010,7 @@ export function startGeminiEngine() {
           pendingPerks: farm.pendingPerks ? farm.pendingPerks.slice() : null,
           perks: farm.perks.slice(),
           extraDayUsed: !!farm.extraDayUsed,
+          boss: bossHud(),
           lastEarn: farm.lastEarn,
           lastCount: farm.lastCount,
           lastBest: farm.lastBest,
@@ -22328,7 +23039,8 @@ export function startGeminiEngine() {
             left: st.left,
             tonight: st.tonight,
             dueDay: farm.due,
-            canPay: farm.cash >= st.b.amt,
+            canPay: farm.cash >= st.b.amt && !bossBlocked(),
+            bossBlock: bossBlocked(),
           };
         },
         bills: () => billList().map((b, i) => Object.assign({ index: i }, billObj(i))),
@@ -22361,6 +23073,7 @@ export function startGeminiEngine() {
             time,
             dayLen,
             sound: meta.sound,
+            boss: bossHud(),
           };
         },
         /** Start a fresh farm in a city. The shell owns the wallet, the workshop and the plan. */
@@ -22371,7 +23084,10 @@ export function startGeminiEngine() {
           meta.cityId = o.cityId;
           farm = newFarm();
           farm.cash = Math.max(0, o.cash || 0);
+          farm.boss = null;
+          bossCrop = null;
           if (o.shed) for (const k of FarmScene_SHED_IDS) farm.shed[k] = Math.max(0, Math.floor(o.shed[k] || 0));
+          initBoss(o.tools);
           dayCheckpoint = null;
           goat = null;
           sceneryKey = '';
@@ -22387,6 +23103,7 @@ export function startGeminiEngine() {
         /** Re-apply the plan after a reload (the farm itself comes from the engine's save). */
         setPlan: (p) => {
           window.__DBD_PLAN = p;
+          initBoss();
           sceneryKey = '';
           buildFieldLayer();
           cur = stats();
@@ -22462,6 +23179,19 @@ export function startGeminiEngine() {
           renderAll();
         },
         setPaused: (v) => setPaused(v),
+        /** The shell's equipped tool (style plus multipliers); takes effect now and at the next day start. */
+        setTool: (t) => {
+          window.__DBD_TOOL = t || null;
+          cur = stats();
+        },
+        /** Stats as they would be with another tool in hand (nothing changes). */
+        statsWith: (t) => {
+          const prev = window.__DBD_TOOL;
+          window.__DBD_TOOL = t || prev;
+          const st = Object.assign({}, stats());
+          window.__DBD_TOOL = prev;
+          return st;
+        },
         initAudio: () => Sound.init(),
         nextEvent: () => {
           rollDailyEvent();
@@ -22472,12 +23202,22 @@ export function startGeminiEngine() {
       engineApi.peek = () => ({
         scale,
         worldW,
-        crops: crops.map((c) => ({ x: c.x, y: c.y, r: c.r, ds: c.ds, hp: c.hp, type: c.type, dead: c.dead, age: c.age })),
+        crops: crops.map((c) => ({
+          x: c.x,
+          y: c.y,
+          r: c.r,
+          ds: c.ds,
+          hp: c.hp,
+          type: c.type,
+          dead: c.dead,
+          age: c.age,
+          boss: !!c.boss,
+        })),
         chargeT,
         today: Object.assign({}, today),
       });
       window.__DBD_ENGINE = engineApi;
-      window.__DBD_TEST = {
+      const dbdTestApi = {
         getScene: () => this,
         claudeApply: (raw) => {
           if (mode !== 'idle') return false;
@@ -22597,6 +23337,7 @@ export function startGeminiEngine() {
             time,
             dayLen,
             sound: meta.sound,
+            boss: bossHud(),
           };
         },
         claudeEvent: () => {
@@ -22679,10 +23420,11 @@ export function startGeminiEngine() {
           swing();
         },
       };
+      if (window.__DBD_DEV_HOOKS) window.__DBD_TEST = dbdTestApi;
     }
     update(_timeMs, deltaMs) {
       const elapsed = Math.min(deltaMs / 1000, 0.75);
-      let remaining = elapsed;
+      let remaining = elapsed * (window.__DBD_TIMESCALE || 1);
       while (remaining > 0) {
         const step = Math.min(1 / 60, remaining);
         update(step);
