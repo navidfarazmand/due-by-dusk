@@ -69,11 +69,11 @@ describe('native save bridge', () => {
     bridge.set.mockRejectedValueOnce(new Error('storage full')).mockResolvedValue(undefined);
     bridge.get.mockImplementation(async ({ key }) => ({ value: key === 'settings' ? 'settings' : 'retry' }));
     const { persistPreference, getNativeSaveStatus } = await import('./nativeStorage');
-    await expect(persistPreference('due-by-dusk-v2', 'failed')).rejects.toThrow();
+    await expect(persistPreference('dbd-farm-v3', 'failed')).rejects.toThrow();
     expect(getNativeSaveStatus()?.state).toBe('warning');
     await persistPreference('settings', 'settings');
     expect(getNativeSaveStatus()?.state).toBe('warning');
-    await persistPreference('due-by-dusk-v2', 'retry');
+    await persistPreference('dbd-farm-v3', 'retry');
     expect(getNativeSaveStatus()?.state).toBe('saved');
   });
 });

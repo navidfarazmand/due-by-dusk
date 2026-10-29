@@ -43,9 +43,9 @@ export function persistPreference(key: string, value: string): Promise<void> {
       await Preferences.set({ key, value });
       const stored = await Preferences.get({ key });
       if (stored.value !== value) throw new Error('Native save verification failed');
-      if (key === 'due-by-dusk-v2') reportPrimarySave('saved');
+      if (key === 'dbd-farm-v3') reportPrimarySave('saved');
     } catch (error) {
-      if (key === 'due-by-dusk-v2') reportPrimarySave('warning');
+      if (key === 'dbd-farm-v3') reportPrimarySave('warning');
       throw error;
     }
   });
