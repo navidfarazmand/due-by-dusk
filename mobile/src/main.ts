@@ -8,29 +8,54 @@ import '@fontsource/nunito/latin-800.css';
 import '@fontsource/nunito/latin-900.css';
 import './engine/gemini.css';
 import './shell/ui.css';
-import bandAvignon from './art/bands/fr_avignon.webp';
+import './shell/shell.css';
 import { bootstrapPreferences, persistPreference } from './platform/nativeStorage';
-import { initializeMobilePlatform } from './platform/mobile';
-import { initializeAds } from './platform/ads';
+import { initializeMobilePlatform, setHapticsEnabled } from './platform/mobile';
+import { initializeAds, initPrivacyLinks } from './platform/ads';
 import { startGeminiEngine } from './engine/gemini-engine.js';
-import { mountV3Shell } from './shell/v3shell';
+import { installEventBridge, whenEngineReady, engine } from './shell/engine';
+import { GameApp, bandRegistry } from './shell/app';
+import { GAME_SAVE_KEY } from './game/progress';
 
-const STORAGE_KEYS = ['dbd-farm-v3', 'dbd-farm-v3-backup', 'dbd-oneday-best', 'dbd-oneday-crown', 'dbd-oneday-setup'];
+const STORAGE_KEYS = ['dbd-farm-v3', 'dbd-farm-v3-backup', GAME_SAVE_KEY];
 
 async function start(): Promise<void> {
-  try { await bootstrapPreferences(STORAGE_KEYS); } catch { /* the browser cache still works */ }
+  try {
+    await bootstrapPreferences(STORAGE_KEYS);
+  } catch {
+    /* the browser cache still works */
+  }
   const w = window as unknown as Record<string, unknown>;
-  // Every engine save is mirrored to native storage (localStorage can be cleared by the OS).
-  w.__dbdPersist = (key: string, value: string) => { void persistPreference(key, value).catch(() => undefined); };
-  // Claude's skyline bands, keyed the way the engine looks them up (env_<country>_fg).
-  w.__DBD_BANDS = { env_FR_fg: { url: bandAvignon } };
-  await mountV3Shell();
+  const persist = (key: string, value: string) => {
+    void persistPreference(key, value).catch(() => undefined);
+  };
+  // Every engine save is mirrored to native storage (the OS may clear the web cache).
+  w.__dbdPersist = persist;
+  // Gemini's own between-day card is replaced by the farmhouse screen.
+  w.__odCard = () => '';
+  // Claude's skyline bands, keyed the way the engine looks them up (band_<cityId>, band_<CC>).
+  w.__DBD_BANDS = bandRegistry();
+  installEventBridge();
+  const app = new GameApp(persist);
   startGeminiEngine();
+  await whenEngineReady();
+  app.start();
+  window.addEventListener('dbd:privacy-links', () => initPrivacyLinks());
+  window.addEventListener('dbd:haptics', e => setHapticsEnabled(!!(e as CustomEvent).detail));
   await initializeMobilePlatform({
-    onPause: () => { const b = document.getElementById('btnPause'); if (b && !b.hidden && b.getAttribute('aria-pressed') !== 'true') b.click(); },
-    onError: () => { /* an unsupported device capability must not block the game */ },
+    onPause: () => {
+      try {
+        if (engine().state().mode === 'day') engine().setPaused(true);
+      } catch {
+        /* engine not ready */
+      }
+    },
+    onError: () => {
+      /* an unsupported device capability must not block the game */
+    },
   });
-  setTimeout(() => { void initializeAds(); }, 1200);
+  setTimeout(() => void initializeAds(), 1200);
+  if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') w.__DBD_APP = app;
 }
 
 start().catch(error => {

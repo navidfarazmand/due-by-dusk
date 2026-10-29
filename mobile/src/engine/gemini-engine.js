@@ -2603,7 +2603,7 @@ export function startGeminiEngine() {
     {
       id: 'combo',
       name: 'Combo farmer',
-      line: 'Keep your chain for 3 seconds instead of 2. One per farm.',
+      line: 'Your chain waits 1.5 s between cuts instead of 0.9 s. One per farm.',
       once: true,
     },
     {
@@ -2641,7 +2641,7 @@ export function startGeminiEngine() {
     {
       id: 'cleaver',
       name: 'Cleaver mastery',
-      line: 'Hold click/Space: Charge Cleave charges 50% faster and hits wider.',
+      line: 'Charge Cleave charges 50% faster and hits wider.',
       once: true,
     },
   ];
@@ -2951,7 +2951,8 @@ export function startGeminiEngine() {
       // 6. Sanitize Farm state
       const shed = blankMap(SHED_IDS);
       SHED.forEach((s) => {
-        shed[s.id] = clamp(Math.floor(num(rawFarm.shed && rawFarm.shed[s.id], 0)), 0, s.max);
+        // workshop levels go far beyond Gemini's per-farm shed caps
+        shed[s.id] = clamp(Math.floor(num(rawFarm.shed && rawFarm.shed[s.id], 0)), 0, 60);
       });
       const pendingPerks = Array.isArray(rawFarm.pendingPerks)
         ? rawFarm.pendingPerks.filter((p) => PERKS.some((x) => x.id === p))
@@ -2975,6 +2976,9 @@ export function startGeminiEngine() {
         lastBest: Math.max(0, Math.floor(num(rawFarm.lastBest, 0))),
         lastBonus: Math.max(0, num(rawFarm.lastBonus, 0)),
         bestChain: Math.max(0, Math.floor(num(rawFarm.bestChain, 0))),
+        extraDayUsed: !!rawFarm.extraDayUsed,
+        won: !!rawFarm.won,
+        lost: !!rawFarm.lost,
       };
       const report =
         alreadyV2 && raw.migrationReport
@@ -16408,8 +16412,8 @@ export function startGeminiEngine() {
     },
   ];
   const FarmScene_PERKS = [
-    { id: 'spite', name: 'Spite-sharpened', line: '+2 scythe damage.' },
-    { id: 'coffee', name: 'Second coffee', line: '+1 swing per second.' },
+    { id: 'spite', name: 'Spite-sharpened', line: '+20% damage on this farm.' },
+    { id: 'coffee', name: 'Second coffee', line: 'Swing 15% faster.' },
     { id: 'elbow', name: 'Elbow room', line: 'Your swing is 20% wider.' },
     { id: 'saving', name: 'Daylight saving', line: '+2 s of daylight.' },
     { id: 'fever', name: 'Market fever', line: 'Crop prices +25% per stack.' },
@@ -16418,10 +16422,10 @@ export function startGeminiEngine() {
     {
       id: 'combo',
       name: 'Combo farmer',
-      line: 'Keep your chain for 3 seconds instead of 2. One per farm.',
+      line: 'Your chain waits 1.5 s between cuts instead of 0.9 s. One per farm.',
       once: true,
     },
-    { id: 'heavy', name: 'Heavy swing', line: 'Crits hit 5× instead of 3×. One per farm.', once: true },
+    { id: 'heavy', name: 'Heavy swing', line: 'Crits hit 4.5× instead of 2.8×. One per farm.', once: true },
     {
       id: 'whisper',
       name: 'Radish whisperer',
@@ -16446,7 +16450,7 @@ export function startGeminiEngine() {
     {
       id: 'cleaver',
       name: 'Cleaver mastery',
-      line: 'Hold click/Space: Charge Cleave charges 50% faster and hits wider.',
+      line: 'Charge Cleave charges 50% faster and hits wider.',
       once: true,
     },
   ];
@@ -16543,7 +16547,7 @@ export function startGeminiEngine() {
       shed: blank(FarmScene_SHED_IDS),
       perks: [],
       bill: 0,
-      due: FarmScene_BILLS[0].days,
+      due: billList()[0].days,
       paidTotal: 0,
       billsPaid: 0,
       lastEarn: 0,
@@ -16634,8 +16638,10 @@ export function startGeminiEngine() {
   }
   function stats(shed) {
     shed = shed || farm.shed;
+    const pl0 = plan();
     const H = meta.heir,
       P = farm.perks;
+    if (pl0) return planStats(shed, pl0, P);
     const ownedBonus = 1 + 0.04 * ownedCityCount();
     const baseDmg =
       (1 + shed.scythe + H.calloused + 2 * count(P, 'spite') + (hasSkill('reap_root') ? 2 : 0)) *
@@ -16654,19 +16660,27 @@ export function startGeminiEngine() {
       H.boots +
       2 * count(P, 'saving') +
       (hasSkill('core_awakening') ? 1.0 : 0) +
-      (hasSkill('soil_sun') ? 2.0 : 0);
+      (hasSkill('soil_sun') ? 2.0 : 0) +
+      (pl0 ? pl0.dayBonus || 0 : 0);
     const maxCrops = 7 + 2 * shed.soil + 3 * count(P, 'hungry') + (hasSkill('soil_root') ? 2 : 0);
     const spawnRate = 0.82 / (1 + 0.24 * shed.soil + 0.08 * count(P, 'hungry')) / (hasSkill('soil_root') ? 1.12 : 1.0);
     const valMul =
-      (1 + 0.16 * shed.market) * (1 + 0.22 * count(P, 'fever')) * (hasSkill('gold_root') ? 1.15 : 1.0) * ownedBonus;
-    const dens = worldW ? FarmScene_clamp(((worldW * (HW - FIELD_TOP)) / (900 * 412)) * 0.62, 0.8, 1.3) : 1;
+      (1 + 0.16 * shed.market) *
+      (1 + 0.22 * count(P, 'fever')) *
+      (hasSkill('gold_root') ? 1.15 : 1.0) *
+      ownedBonus *
+      planVal();
+    const pl = plan();
+    const dens =
+      (worldW ? FarmScene_clamp(((worldW * (HW - FIELD_TOP)) / (900 * 412)) * 0.62, 0.8, 1.3) : 1) *
+      (pl ? pl.density || 1 : 1);
     return {
       dmg: Math.round(baseDmg * 10) / 10,
       tick: tickRate,
       R: swingRad,
       day: daySecs,
       max: Math.round(maxCrops * dens),
-      spawn: spawnRate / dens,
+      spawn: spawnRate / dens / (pl ? pl.spawn || 1 : 1),
       vm: valMul,
       cc: Math.min(0.65, 0.04 + 0.04 * shed.clover + 0.03 * H.horseshoe + 0.07 * count(P, 'clover')),
       cm: count(P, 'heavy') ? 4.5 : 2.8,
@@ -16677,6 +16691,67 @@ export function startGeminiEngine() {
       radishBonus: count(P, 'whisper') ? 1.5 : 1,
       treaty: count(P, 'treaty') > 0 || hasSkill('gold_treaty') || hasSkill('gold_herd'),
       storm: count(P, 'storm') > 0 || hasSkill('reap_exec'),
+      cleaver: count(P, 'cleaver') > 0 || hasSkill('reap_cleave'),
+    };
+  }
+  /**
+   * The full game's stats. Workshop levels are permanent and multiply (so they keep up with tougher
+   * cities); perks are per farm; the equipped tool (window.__DBD_TOOL) scales damage, speed and reach.
+   */
+  function planStats(shed, pl, P) {
+    const T = window.__DBD_TOOL || {};
+    const dmg =
+      Math.pow(1.2, shed.scythe) *
+      (1 + 0.2 * count(P, 'spite')) *
+      (hasSkill('reap_root') ? 1.25 : 1) *
+      (hasSkill('core_awakening') ? 1.1 : 1) *
+      (T.dmg || 1);
+    const tick =
+      3.2 *
+      (1 + 0.05 * shed.hands) *
+      (1 + 0.15 * count(P, 'coffee')) *
+      (hasSkill('reap_swift') ? 1.18 : 1) *
+      (T.speed || 1);
+    const R =
+      42 *
+      (1 + 0.06 * shed.swing) *
+      (1 + 0.18 * count(P, 'elbow')) *
+      (hasSkill('reap_dash') ? 1.12 : 1) *
+      (T.reach || 1);
+    const day =
+      14 +
+      shed.days +
+      2 * count(P, 'saving') +
+      (hasSkill('core_awakening') ? 1 : 0) +
+      (hasSkill('soil_sun') ? 2 : 0) +
+      (pl.dayBonus || 0);
+    const maxCrops = 7 + shed.soil + 3 * count(P, 'hungry') + (hasSkill('soil_root') ? 2 : 0);
+    const spawnRate = 0.82 / (1 + 0.1 * shed.soil + 0.08 * count(P, 'hungry')) / (hasSkill('soil_root') ? 1.12 : 1);
+    const vm =
+      (1 + 0.1 * shed.market) *
+      (1 + 0.22 * count(P, 'fever')) *
+      (hasSkill('gold_root') ? 1.15 : 1) *
+      (T.value || 1) *
+      planVal();
+    const dens =
+      (worldW ? FarmScene_clamp(((worldW * (HW - FIELD_TOP)) / (900 * 412)) * 0.62, 0.8, 1.3) : 1) * (pl.density || 1);
+    return {
+      dmg: dmg < 10 ? Math.round(dmg * 10) / 10 : Math.round(dmg),
+      tick,
+      R,
+      day,
+      max: Math.round(maxCrops * dens),
+      spawn: spawnRate / dens / (pl.spawn || 1),
+      vm,
+      cc: Math.min(0.65, 0.04 + 0.02 * shed.clover + 0.07 * count(P, 'clover') + (T.crit || 0)),
+      cm: count(P, 'heavy') ? 4.5 : 2.8,
+      gold: 0.015 + 0.005 * shed.clover + 0.035 * count(P, 'gold') + (T.gold || 0),
+      comboCap: 2,
+      chainGrace: count(P, 'combo') ? 1.45 : 0.9,
+      radishSlow: count(P, 'whisper') || T.frost ? 0.5 : 1,
+      radishBonus: count(P, 'whisper') ? 1.5 : 1,
+      treaty: count(P, 'treaty') > 0 || hasSkill('gold_treaty') || hasSkill('gold_herd'),
+      storm: count(P, 'storm') > 0 || hasSkill('reap_exec') || !!T.storm,
       cleaver: count(P, 'cleaver') > 0 || hasSkill('reap_cleave'),
     };
   }
@@ -16691,12 +16766,44 @@ export function startGeminiEngine() {
   function heirCost(def, lvl) {
     return lvl >= def.max ? null : Math.round(def.base * Math.pow(def.g, lvl));
   }
+  /* ---- city plan from the game shell (window.__DBD_PLAN): bills, difficulty, crops, record ---- */
+  function plan() {
+    return window.__DBD_PLAN || null;
+  }
+  function billList() {
+    const p = plan();
+    return p && p.bills && p.bills.length ? p.bills : FarmScene_BILLS;
+  }
+  function billCount() {
+    return billList().length;
+  }
+  /** Content gating (goat, crows, extra crops): the city's level plus bills paid on this farm. */
+  function unlockLevel() {
+    const p = plan();
+    return (p ? p.unlock || 0 : 0) + farm.billsPaid;
+  }
+  function planVal() {
+    const p = plan();
+    return p ? p.val || 1 : 1;
+  }
+  /** The shell hears about everything that matters to the game around the field. */
+  function dbdEvent(type, detail) {
+    try {
+      if (window.__dbdEvent) window.__dbdEvent(type, detail || {});
+    } catch (e) {
+      console.error('[shell event]', type, e);
+    }
+  }
   function hpMul() {
-    return (1 + 0.13 * (farm.day - 1)) * Math.pow(1.24, farm.billsPaid);
+    const p = plan();
+    const perDay = p && p.hpDay != null ? p.hpDay : 0.13,
+      perBill = p && p.hpBill != null ? p.hpBill : 1.24;
+    return (1 + perDay * (farm.day - 1)) * Math.pow(perBill, farm.billsPaid) * (p ? p.hp || 1 : 1);
   }
   function billObj(idx) {
-    const raw = FarmScene_BILLS[FarmScene_clamp(idx, 0, FarmScene_BILLS.length - 1)];
-    const m = curBiome().mul * (hasSkill('gold_lawyer') ? 0.88 : 1.0);
+    const list = billList();
+    const raw = list[FarmScene_clamp(idx, 0, list.length - 1)];
+    const m = (list === FarmScene_BILLS ? curBiome().mul : 1) * (hasSkill('gold_lawyer') ? 0.88 : 1.0);
     return { name: raw.name, days: raw.days, note: raw.note, amt: Math.max(10, Math.round(raw.amt * m)) };
   }
   function billStatus() {
@@ -16947,12 +17054,16 @@ export function startGeminiEngine() {
     r: Math.random() * 1.3 + 0.4,
     tw: Math.random() * 6.3,
   }));
+  // Dawn (rose and gold) -> noon (clear blue) -> golden hour -> dusk -> night. The time of day shows in
+  // the colour of the whole scene; there is no sun disc (the HUD dial shows the time left).
   const SKY = [
-    [0.0, '#8ebbd0', '#ffe2af'],
-    [0.3, '#66aaca', '#d9f0dc'],
-    [0.7, '#7e9abf', '#ffe1ab'],
-    [0.9, '#716f9f', '#f9b27e'],
-    [1.0, '#505d8a', '#d28c91'],
+    [0.0, '#e9a9a1', '#ffd39b'],
+    [0.1, '#b7c6dd', '#ffe6bf'],
+    [0.28, '#62b3e6', '#d6f1ff'],
+    [0.6, '#5aa9de', '#e3f3ff'],
+    [0.78, '#8b93c4', '#ffd596'],
+    [0.92, '#6e67a6', '#f7a274'],
+    [1.0, '#4f5a8b', '#d98b8b'],
     [1.3, '#182c4c', '#52628c'],
   ].map((s) => [s[0], hex(s[1]), hex(s[2])]);
   function skyAt(p) {
@@ -16970,11 +17081,17 @@ export function startGeminiEngine() {
   }
   const WHITE = [255, 255, 255],
     WARM = hex('#ffe4bf'),
+    DAWN = hex('#ffd2c2'),
     NIGHT = hex('#b8c7e6');
+  /** Fraction of dawn light still in the scene: full at sunrise, gone by mid-morning. */
+  function dawnAmt(p) {
+    return mode === 'day' ? 1 - smooth(0, 0.2, p) : 0;
+  }
   function lightMul(p) {
     const warm = smooth(0.6, 1.0, p) * 0.75,
-      night = smooth(1.0, 1.3, p);
-    return mixc(mixc(WHITE, WARM, warm), NIGHT, night);
+      night = smooth(1.0, 1.3, p),
+      dawn = dawnAmt(p) * 0.8;
+    return mixc(mixc(mixc(WHITE, DAWN, dawn), WARM, warm), NIGHT, night);
   }
   function ell(g, x, y, rx, ry, rot) {
     g.beginPath();
@@ -17186,13 +17303,18 @@ export function startGeminiEngine() {
   function ensureScenery() {
     const bm = curBiome();
     const phaserScene = window.__PHASER_FARM_SCENE;
-    const fgTex = phaserScene && phaserScene.textures ? phaserScene.textures.get(`env_${bm.countryCode}_fg`) : null;
+    const texOf = (k) => {
+      const t = phaserScene && phaserScene.textures ? phaserScene.textures.get(k) : null;
+      return t && t.source && t.source.width > 0 ? t : null;
+    };
+    const fgTex = texOf('band_' + curCity().id) || texOf('band_' + bm.countryCode) || texOf(`env_${bm.countryCode}_fg`);
     const fullTex = phaserScene && phaserScene.textures ? phaserScene.textures.get(`env_${bm.countryCode}`) : null;
     const hasTex = !!(fgTex && fgTex.source && fgTex.source.width > 0);
     const key = [
       Math.round(worldW),
       Math.round(scale * dpr * 100),
       farm.billsPaid,
+      curCity().id,
       bm.countryCode,
       bm.subTheme,
       hasTex ? 'tex' : 'proc',
@@ -17408,6 +17530,14 @@ export function startGeminiEngine() {
     vortexes = /* unused pure expression or super */ null && [];
   let dailyEvent = FarmScene_GAZETTE_EVENTS[0];
   function rollDailyEvent() {
+    const pl = plan();
+    if (pl && pl.signatureEvent && farm.day % 2 === 1) {
+      const sig = FarmScene_GAZETTE_EVENTS.find((e) => e.id === pl.signatureEvent);
+      if (sig) {
+        dailyEvent = sig;
+        return;
+      }
+    }
     dailyEvent =
       FarmScene_GAZETTE_EVENTS[(farm.day * 7 + farm.no * 3 + (meta.biome || 0)) % FarmScene_GAZETTE_EVENTS.length];
   }
@@ -17435,20 +17565,24 @@ export function startGeminiEngine() {
     return 1.2 * (0.8 + 0.45 * FarmScene_clamp((y - FIELD_TOP) / (HW - FIELD_TOP), 0, 1));
   }
   function pickType() {
-    const paid = farm.billsPaid;
-    if (Math.random() < cur.gold) return 'golden';
-    const T = [
-      ['lavender', 30, 0],
-      ['echalote', 24, 0],
-      ['artichaut', 24, 0],
-      ['carrot', 18, 0],
-      ['radish', 16, 0],
-      ['cabbage', 12, 1],
-      ['onion', 12, 1],
-      ['berry', 12, 2],
-      ['pumpkin', 6, 2],
-      ['potato', 5, 2],
-    ];
+    const paid = unlockLevel();
+    const pl = plan();
+    if (Math.random() < cur.gold && (!pl || paid >= (pl.goldAt || 0))) return 'golden';
+    const T =
+      pl && pl.crops
+        ? pl.crops
+        : [
+            ['lavender', 30, 0],
+            ['echalote', 24, 0],
+            ['artichaut', 24, 0],
+            ['carrot', 18, 0],
+            ['radish', 16, 0],
+            ['cabbage', 12, 1],
+            ['onion', 12, 1],
+            ['berry', 12, 2],
+            ['pumpkin', 6, 2],
+            ['potato', 5, 2],
+          ];
     const w = T.filter((t) => paid >= t[2] && CROP[t[0]]);
     let r = Math.random() * w.reduce((a, b) => a + b[1], 0);
     for (const t of w) {
@@ -17566,14 +17700,14 @@ export function startGeminiEngine() {
     combo = 0;
     comboTimer = 0;
     propTimer = 3.8;
-    crowTimer = farm.billsPaid >= 2 ? 5.5 : 999;
+    crowTimer = unlockLevel() >= 2 ? 5.5 : 999;
     chargeT = 0;
     chargeReady = false;
     rushTimer = 0;
     rushCharge = 0;
     paused = false;
     today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0 };
-    goatTimer = farm.billsPaid >= 2 ? 3 + Math.random() * 5 : Infinity;
+    goatTimer = unlockLevel() >= 2 ? 3 + Math.random() * 5 : Infinity;
     goat = null;
     const initCount = Math.min(cur.max, 4 + Math.floor(cur.max * 0.35) + (hasSkill('soil_dew') ? 3 : 0));
     for (let i = 0; i < initCount; i++) spawnCrop(0.08 + i * 0.04);
@@ -17585,7 +17719,14 @@ export function startGeminiEngine() {
     if (pointer.kind === 'key') pointer.active = false;
     coinTarget = null;
     if (window.__odDayStart) window.__odDayStart({ id: dailyEvent.id, title: dailyEvent.title, desc: dailyEvent.desc });
-    Sound.dawn();
+    dbdEvent('dayStart', {
+      day: farm.day,
+      dayLen,
+      event: { id: dailyEvent.id, title: dailyEvent.title, desc: dailyEvent.desc },
+    });
+    if (window.__dbdRooster && window.__dbdRooster()) {
+      // the shell played the rooster instead of the dawn chime
+    } else Sound.dawn();
     renderAll();
   }
   function endDay() {
@@ -17620,16 +17761,11 @@ export function startGeminiEngine() {
     }
     const ct = curCity();
     if (!meta.cityRecords) meta.cityRecords = {};
-    if (!meta.cityOwned) meta.cityOwned = {};
     meta.cityRecords[ct.id] = Math.max(meta.cityRecords[ct.id] || 0, Math.floor(today.earned));
-    if (today.earned >= ct.record && !meta.cityOwned[ct.id]) {
-      meta.cityOwned[ct.id] = true;
-      meta.diamonds = (meta.diamonds || 0) + 1;
-      toast(`👑 Dethroned ${ct.rival} in ${ct.name}! Earned +1 💎 Diamond & Regional Tribute!`, 4200);
-    }
     Sound.sunset();
     save();
     renderAll();
+    dbdEvent('dayEnd', { today: Object.assign({}, today), day: farm.day - 1, cash: farm.cash });
   }
   function chainMultiplier() {
     let value = 1;
@@ -17765,7 +17901,7 @@ export function startGeminiEngine() {
             }
           }
         } else {
-          const bonus = 5 + farm.billsPaid * 2;
+          const bonus = Math.round((5 + unlockLevel() * 2) * planVal());
           farm.cash += bonus;
           farm.earned += bonus;
           today.earned += bonus;
@@ -17784,7 +17920,7 @@ export function startGeminiEngine() {
         arthurAngerTimer = 2.4;
         cr.vx = (cr.x < pointer.x ? -1 : 1) * 260;
         cr.vy = -220;
-        const tip = 3 + farm.billsPaid * 2;
+        const tip = Math.round((3 + unlockLevel() * 2) * planVal());
         farm.cash += tip;
         farm.earned += tip;
         today.earned += tip;
@@ -18358,7 +18494,7 @@ export function startGeminiEngine() {
       if (!goat.petted) {
         goat.petted = true;
         goat.hop = 1.0;
-        const tip = 2 + 3 * farm.billsPaid;
+        const tip = Math.round((2 + 3 * unlockLevel()) * planVal());
         farm.cash += tip;
         farm.earned += tip;
         today.earned += tip;
@@ -18583,7 +18719,7 @@ export function startGeminiEngine() {
         spawnFieldProp();
       }
       crowTimer -= dt;
-      if (crowTimer <= 0 && farm.billsPaid >= 2) {
+      if (crowTimer <= 0 && unlockLevel() >= 2) {
         crowTimer = 8.5 + Math.random() * 5;
         spawnCrow();
       }
@@ -18602,7 +18738,7 @@ export function startGeminiEngine() {
       }
       if (!goat) {
         goatTimer -= dt;
-        if (goatTimer <= 0 && farm.billsPaid >= 2) spawnGoat();
+        if (goatTimer <= 0 && unlockLevel() >= 2) spawnGoat();
       }
       const sec = Math.ceil(time);
       if (time < 3.2 && sec !== lastSec && sec > 0) {
@@ -18618,6 +18754,7 @@ export function startGeminiEngine() {
       if (duskT >= 1.3) {
         mode = 'idle';
         renderAll();
+        dbdEvent('idle', { day: farm.day });
       }
     }
     if (goat) {
@@ -20900,27 +21037,13 @@ export function startGeminiEngine() {
     const ridgeY = mountainRidgeY(sx / worldW); // Positive when the sun's center is above the mountain ridge; <= 0 when behind the mountain
     const sunClearance = ridgeY - sy;
     const beamVisibility = FarmScene_clamp((sunClearance - 8) / 28, 0, 1) * (1 - night);
-    if (p < 1.06) {
-      const sun = mixc(hex('#ffd45c'), hex('#ff9e58'), warm);
-      ctx.fillStyle = radial(ctx, sx, sy, 4, sx, sy, 66, rgba(sun, 0.4), rgba(sun, 0));
-      circ(ctx, sx, sy, 66);
-      ctx.fillStyle = rgba(sun);
-      circ(ctx, sx, sy, 15);
-      ctx.strokeStyle = '#2B1708';
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 15, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(255,243,196,.9)';
-      circ(ctx, sx - 4.5, sy - 4.5, 4.2);
-    }
     drawSkyLife(p, night);
     ensureScenery();
     ctx.drawImage(sceneryLayer, 0, 0, worldW, FIELD_TOP);
     ctx.drawImage(fieldLayer, 0, FIELD_TOP - 14, worldW, HW - FIELD_TOP + 14);
     drawScarecrowAndSmoke(night); // Sunbeams ("God Rays") ONLY when the sun is strictly above the mountain ridge!
     // As the sun drops behind the mountain (beamVisibility -> 0), beams vanish completely.
-    if (beamVisibility > 0.01 && mode === 'day') {
+    if (false && beamVisibility > 0.01 && mode === 'day') {
       const rayCol = mixc(hex('#fff6c8'), hex('#ffc078'), warm);
       for (let i = -1; i <= 1; i++) {
         ctx.save();
@@ -20973,7 +21096,7 @@ export function startGeminiEngine() {
     for (const c of list) drawHpBar(c);
     drawParts();
     drawPropsCrowsAndWeather(); // Seamless full-canvas evening/night atmospheric tint (NO horizontal cut line at y=105!)
-    if (warm > 0.05 || night > 0.05) {
+    if (warm > 0.05 || night > 0.05 || dawnAmt(p) > 0.02) {
       const ambGrad = ctx.createLinearGradient(0, 0, 0, HW);
       ambGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
       ambGrad.addColorStop(0.28, rgba(mixc([255, 255, 255], m, 0.45)));
@@ -21131,13 +21254,13 @@ export function startGeminiEngine() {
       proj = `At yesterday's pace you'll have about ${fmt$(est)} by then.`;
       projCls = est >= b.amt ? 'ok' : 'bad';
     }
-    const next = farm.bill + 1 < FarmScene_BILLS.length ? billObj(farm.bill + 1) : null;
+    const next = farm.bill + 1 < billCount() ? billObj(farm.bill + 1) : null;
     const key = farm.bill + ':' + stamp;
     const pop = key !== lastStampKey && lastStampKey !== '' ? ' pop' : '';
     lastStampKey = key;
     el.notice.innerHTML =
       `<div class="n-lh"><strong>Grumble &amp; Sons</strong> Savings &amp; Loan</div>` +
-      `<div class="n-lh">Acct 0047-FARM · Notice ${farm.bill + 1} of ${FarmScene_BILLS.length}</div>` +
+      `<div class="n-lh">Acct 0047-FARM · Notice ${farm.bill + 1} of ${billCount()}</div>` +
       `<div class="n-name">${b.name}</div>` +
       `<p class="n-note">${b.note}</p>` +
       `<div class="n-amtrow"><div class="n-amt">$${b.amt.toLocaleString('en-US')}<small>.00</small></div><span class="stamp ${stampCls}${pop}">${stamp}</span></div>` +
@@ -21303,16 +21426,19 @@ export function startGeminiEngine() {
     farm.paidTotal += b.amt;
     farm.billsPaid += 1;
     arthurAngerTimer = 3.0;
-    if (farm.billsPaid % 2 === 0) {
-      meta.diamonds = (meta.diamonds || 0) + 1;
-      toast('Bill milestone! Earned +1 💎 Diamond for the Skill Tree!', 3200);
-    }
-    if (farm.bill === FarmScene_BILLS.length - 1) {
+    dbdEvent('billPaid', {
+      index: farm.bill,
+      name: b.name,
+      amt: b.amt,
+      day: farm.day,
+      last: farm.bill === billCount() - 1,
+    });
+    if (farm.bill === billCount() - 1) {
       win();
       return;
     }
     farm.bill += 1;
-    farm.due = farm.day - 1 + FarmScene_BILLS[farm.bill].days;
+    farm.due = farm.day - 1 + billList()[farm.bill].days;
     const pool = shuffle(
       FarmScene_PERKS.filter((p) => (!p.req || p.req(farm)) && (!p.once || !farm.perks.includes(p.id))).map(
         (p) => p.id,
@@ -21323,14 +21449,22 @@ export function startGeminiEngine() {
     fillIdle();
     save();
     renderAll();
-    openPerkModal();
+    if (window.__dbdEvent)
+      dbdEvent('perks', {
+        ids: farm.pendingPerks.slice(),
+        perks: farm.pendingPerks.map((id) => {
+          const p = FarmScene_PERKS.find((x) => x.id === id);
+          return { id, name: p.name, line: p.line };
+        }),
+      });
+    else openPerkModal();
   }
   function openPerkModal() {
     const paid = billObj(farm.bill - 1),
       nextB = billObj(farm.bill),
       unlock = UNLOCKS[farm.billsPaid];
     openModal(
-      `<div class="mtop"><p class="eyebrow">Notice ${farm.bill} of ${FarmScene_BILLS.length} · ${paid.name}</p><span class="stamp ok pop">Paid</span></div>` +
+      `<div class="mtop"><p class="eyebrow">Notice ${farm.bill} of ${billCount()} · ${paid.name}</p><span class="stamp ok pop">Paid</span></div>` +
         `<h3 class="mtitle" id="mTitle">Bill paid. Pick a perk for this farm.</h3>` +
         `<div class="perkgrid">${farm.pendingPerks
           .map((id) => {
@@ -21396,55 +21530,41 @@ export function startGeminiEngine() {
     meta.grit += g.total;
     meta.lost += 1;
     meta.best = Math.max(meta.best, old.billsPaid);
-    farm = newFarm();
-    cur = stats();
-    mode = 'idle';
-    goat = null;
-    fillIdle();
-    lastStampKey = '';
+    farm.lost = true;
     save();
     renderAll();
     Sound.sad();
-    openModal(
-      `<div class="letter"><p class="eyebrow">Grumble &amp; Sons Savings &amp; Loan</p>` +
-        `<h3 class="mtitle" id="mTitle">The bank took the farm.</h3>` +
-        `<p>Dear farmer,</p><p>Regarding your ${lc(b.name)}: you were ${fmt$(short)} short. The farm, the tractor and the goat now belong to us. The goat is already a problem.</p>` +
-        `<p>You keep your heirlooms and your Grit.</p><p class="sig">A. Grumble, Junior Loan Officer</p></div>` +
-        `<dl class="tally"><div><dt>Days survived</dt><dd>${old.day - 1}</dd></div><div><dt>Bills paid</dt><dd>${old.billsPaid} of ${FarmScene_BILLS.length}</dd></div><div><dt>Paid to the bank</dt><dd>${fmt$(old.paidTotal)}</dd></div></dl>` +
-        `<p class="gritline">Grit earned: <b>${g.total}</b> <span>(${g.a} from payments, ${g.b} for bills, ${g.c} for days, ${g.d} from saved cash)</span></p>` +
-        `<div class="mact"><button class="btn" type="button" data-close>Start farm No. ${farm.no}</button></div>`,
-    );
+    dbdEvent('foreclosed', {
+      bill: b.name,
+      amt: b.amt,
+      short,
+      grit: g.total,
+      days: old.day - 1,
+      billsPaid: old.billsPaid,
+      billTotal: billCount(),
+      paidTotal: old.paidTotal,
+      cash: old.cash,
+    });
   }
   function win() {
-    if (farm.bill !== FarmScene_BILLS.length - 1 || farm.billsPaid !== FarmScene_BILLS.length) return;
+    if (farm.bill !== billCount() - 1 || farm.billsPaid !== billCount()) return;
     const old = farm,
-      g = gritFor(old),
-      bonus = 25;
-    meta.grit += g.total + bonus;
+      g = gritFor(old);
+    meta.grit += g.total;
     meta.owned += 1;
-    meta.best = FarmScene_BILLS.length;
-    if (!meta.cityOwned) meta.cityOwned = {};
-    meta.cityOwned[curCity().id] = true;
-    meta.diamonds = (meta.diamonds || 0) + 2;
-    sceneryKey = '';
-    buildFieldLayer();
-    farm = newFarm();
-    cur = stats();
-    mode = 'idle';
-    goat = null;
-    fillIdle();
-    lastStampKey = '';
+    farm.won = true;
     save();
     renderAll();
     Sound.fanfare();
-    openModal(
-      `<div class="letter"><div class="mtop"><p class="eyebrow">Grumble &amp; Sons Savings &amp; Loan</p><span class="stamp ok pop">Paid in full</span></div>` +
-        `<h3 class="mtitle" id="mTitle">The farm is yours.</h3>` +
-        `<p>Dear former customer,</p><p>Enclosed is the deed. We are, frankly, upset. The scarecrow sends his regards and has withdrawn his lawsuit.</p><p class="sig">A. Grumble, Junior Loan Officer</p></div>` +
-        `<dl class="tally"><div><dt>Days</dt><dd>${old.day - 1}</dd></div><div><dt>Crops cut</dt><dd>${old.harvested.toLocaleString('en-US')}</dd></div><div><dt>Earned</dt><dd>${fmt$(old.earned)}</dd></div></dl>` +
-        `<p class="gritline">Grit earned: <b>${g.total + bonus}</b> <span>(including ${bonus} for owning the farm outright)</span></p>` +
-        `<div class="mact"><button class="btn" type="button" data-close>Buy another run-down farm</button></div>`,
-    );
+    dbdEvent('cityWon', {
+      days: old.day - 1,
+      harvested: old.harvested,
+      earned: old.earned,
+      paidTotal: old.paidTotal,
+      cash: old.cash,
+      grit: g.total,
+      bestChain: old.bestChain || 0,
+    });
   }
   let atlasView = 'world'; // 'world' | 'country'
   let atlasCountryCode = 'CA';
@@ -22164,6 +22284,199 @@ export function startGeminiEngine() {
       if (document.fonts && document.fonts.load) {
         document.fonts.load('800 24px "Big Shoulders Stencil"').catch(() => {});
       } // Expose programmatic test hooks for automated headless verification
+      const engineApi = {
+        state: () => ({
+          mode,
+          paused,
+          day: farm.day,
+          cash: farm.cash,
+          bill: farm.bill,
+          billsPaid: farm.billsPaid,
+          billCount: billCount(),
+          due: farm.due,
+          played: farm.played,
+          won: !!farm.won,
+          lost: !!farm.lost,
+          pendingPerks: farm.pendingPerks ? farm.pendingPerks.slice() : null,
+          perks: farm.perks.slice(),
+          extraDayUsed: !!farm.extraDayUsed,
+          lastEarn: farm.lastEarn,
+          lastCount: farm.lastCount,
+          lastBest: farm.lastBest,
+          harvested: farm.harvested,
+          earned: farm.earned,
+          paidTotal: farm.paidTotal,
+          bestChain: farm.bestChain || 0,
+          cityId: meta.cityId,
+          country: meta.country,
+          sound: !!meta.sound,
+          diamonds: meta.diamonds || 0,
+          grit: meta.grit || 0,
+          learnedSkills: (meta.learnedSkills || []).slice(),
+          shed: Object.assign({}, farm.shed),
+          time,
+          dayLen,
+        }),
+        bill: () => {
+          const st = billStatus();
+          return {
+            index: farm.bill,
+            count: billCount(),
+            name: st.b.name,
+            amt: st.b.amt,
+            note: st.b.note,
+            left: st.left,
+            tonight: st.tonight,
+            dueDay: farm.due,
+            canPay: farm.cash >= st.b.amt,
+          };
+        },
+        bills: () => billList().map((b, i) => Object.assign({ index: i }, billObj(i))),
+        perkInfo: (id) => {
+          const p = FarmScene_PERKS.find((x) => x.id === id);
+          return p ? { id: p.id, name: p.name, line: p.line } : null;
+        },
+        stats: () => Object.assign({}, cur),
+        hud: () => {
+          const b = billObj(farm.bill);
+          return {
+            mode,
+            paused,
+            cash: farm.cash,
+            today: today.earned,
+            count: today.count,
+            best: today.best,
+            bill: b ? { name: b.name, amt: b.amt } : null,
+            billNo: farm.bill + 1,
+            billTotal: billCount(),
+            combo,
+            comboT: comboTimer,
+            grace: cur ? cur.chainGrace : 0.9,
+            mult: incomeMultiplier(),
+            tiers: CHAIN_TIERS,
+            rushCharge,
+            rushGoal: RUSH_GOAL,
+            rushT: rushTimer,
+            rushDur: RUSH_DURATION,
+            time,
+            dayLen,
+            sound: meta.sound,
+          };
+        },
+        /** Start a fresh farm in a city. The shell owns the wallet, the workshop and the plan. */
+        beginCity: (o) => {
+          if (mode !== 'idle') return false;
+          window.__DBD_PLAN = o.plan;
+          meta.country = o.country;
+          meta.cityId = o.cityId;
+          farm = newFarm();
+          farm.cash = Math.max(0, o.cash || 0);
+          if (o.shed) for (const k of FarmScene_SHED_IDS) farm.shed[k] = Math.max(0, Math.floor(o.shed[k] || 0));
+          dayCheckpoint = null;
+          goat = null;
+          sceneryKey = '';
+          buildFieldLayer();
+          cur = stats();
+          fillIdle();
+          lastStampKey = '';
+          closeModal();
+          save();
+          renderAll();
+          return true;
+        },
+        /** Re-apply the plan after a reload (the farm itself comes from the engine's save). */
+        setPlan: (p) => {
+          window.__DBD_PLAN = p;
+          sceneryKey = '';
+          buildFieldLayer();
+          cur = stats();
+          if (mode === 'idle') fillIdle();
+          renderAll();
+        },
+        startDay: () => {
+          startDay();
+          return mode === 'day';
+        },
+        payBill: () => {
+          const before = farm.billsPaid;
+          payBill();
+          return farm.billsPaid > before;
+        },
+        choosePerk: (id) => {
+          choosePerk(id);
+          return !farm.pendingPerks;
+        },
+        foreclose: () => {
+          foreclose();
+          return !!farm.lost;
+        },
+        /** Rewarded ad: one more day on the bill that is due tonight, once per farm. */
+        extraDay: () => {
+          if (mode !== 'idle' || farm.extraDayUsed || !billStatus().tonight) return false;
+          farm.due += 1;
+          farm.extraDayUsed = true;
+          save();
+          renderAll();
+          return true;
+        },
+        addCash: (amt) => {
+          if (!(amt > 0)) return false;
+          farm.cash += amt;
+          farm.earned += amt;
+          save();
+          renderAll();
+          return true;
+        },
+        spendCash: (amt) => {
+          if (!(amt > 0) || farm.cash < amt) return false;
+          farm.cash -= amt;
+          save();
+          renderAll();
+          return true;
+        },
+        setCash: (amt) => {
+          farm.cash = Math.max(0, amt || 0);
+          save();
+          renderAll();
+        },
+        setShed: (levels) => {
+          for (const k of FarmScene_SHED_IDS) farm.shed[k] = Math.max(0, Math.floor((levels && levels[k]) || 0));
+          cur = stats();
+          if (mode === 'idle') fillIdle();
+          save();
+          renderAll();
+        },
+        refreshStats: () => {
+          cur = stats();
+          if (mode === 'idle') fillIdle();
+        },
+        addDiamonds: (n) => {
+          meta.diamonds = (meta.diamonds || 0) + n;
+          save();
+        },
+        setSound: (on) => {
+          meta.sound = !!on;
+          Sound.on = meta.sound;
+          if (meta.sound) Sound.init();
+          save();
+          renderAll();
+        },
+        setPaused: (v) => setPaused(v),
+        initAudio: () => Sound.init(),
+        nextEvent: () => {
+          rollDailyEvent();
+          return { id: dailyEvent.id, title: dailyEvent.title, desc: dailyEvent.desc };
+        },
+      };
+      /** Read-only peek for automated tests (crop positions in world units, the world-to-CSS scale). */
+      engineApi.peek = () => ({
+        scale,
+        worldW,
+        crops: crops.map((c) => ({ x: c.x, y: c.y, r: c.r, ds: c.ds, hp: c.hp, type: c.type, dead: c.dead, age: c.age })),
+        chargeT,
+        today: Object.assign({}, today),
+      });
+      window.__DBD_ENGINE = engineApi;
       window.__DBD_TEST = {
         getScene: () => this,
         claudeApply: (raw) => {
@@ -22271,7 +22584,7 @@ export function startGeminiEngine() {
             best: today.best,
             bill: b ? { name: b.name, amt: b.amt } : null,
             billNo: farm.bill + 1,
-            billTotal: FarmScene_BILLS.length,
+            billTotal: billCount(),
             combo,
             comboT: comboTimer,
             grace: cur ? cur.chainGrace : 0.9,
