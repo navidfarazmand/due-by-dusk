@@ -272,3 +272,161 @@
 .test-ad div { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px 26px; border: 3px dashed #fff; border-radius: 16px; }
 .test-ad b { font: 400 28px var(--ui-display); }
 .test-ad span { font-weight: 800; font-size: 13px; }
+
+/* settings: music tracks */
+.music-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 2.5px solid var(--dbd-ink); border-radius: 12px; background: #fff; cursor: pointer;
+  font: 800 12.5px var(--ui-body); color: var(--dbd-ink); text-align: left; }
+.music-row .mr-k { font: 400 15px var(--ui-display); }
+.music-row .mr-v { flex: 1; min-width: 0; color: var(--dbd-muted); line-height: 1.3; }
+.music-row .mr-v b { color: var(--dbd-ink); font-weight: 900; }
+.track-list { display: flex; flex-direction: column; gap: 5px; max-height: calc(100vh / var(--s) - 150px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+.track-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 2.5px solid var(--dbd-ink); border-radius: 12px; background: #fff; }
+.track-row.playing { background: #FFF0C2; }
+.tr-play { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border: 2.5px solid var(--dbd-ink); border-radius: 50%; background: var(--dbd-gold);
+  box-shadow: 0 2px 0 var(--dbd-ink); cursor: pointer; padding: 0; }
+.tr-play:active { transform: translateY(2px); box-shadow: none; }
+.tr-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.tr-info b { font: 400 15px var(--ui-display); line-height: 1.1; }
+.tr-info span { font-weight: 800; font-size: 11px; color: var(--dbd-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-slot { height: 28px; padding: 0 9px; border: 2.5px solid var(--dbd-ink); border-radius: 9px; background: #fff; font: 900 11.5px var(--ui-body); color: var(--dbd-muted); cursor: pointer; flex: none; }
+.tr-slot.on { background: var(--dbd-green); color: #fff; }
+
+/* menu: daily farm and duel beside Play, the dock with skills, Bling Barn and crowns */
+.menu-row { display: flex; align-items: center; gap: 12px; }
+.side-btn { position: relative; height: 50px; padding: 0 14px 0 10px; gap: 7px; font-size: 17px; white-space: nowrap; border-radius: 16px; }
+.side-mark { position: absolute; right: -9px; top: -10px; padding: 0 6px; height: 19px; box-sizing: border-box; border: 2.5px solid var(--dbd-ink); border-radius: 999px;
+  background: #E5484D; color: #fff; font: 900 10px/14px var(--ui-body); font-style: normal; letter-spacing: .4px; }
+.side-mark.medal { width: 22px; height: 22px; padding: 0; border-radius: 50%; background: var(--dbd-gold); color: var(--dbd-ink); font-size: 11px; line-height: 17px; text-align: center; }
+.dock { position: absolute; right: 0; bottom: 12px; display: flex; gap: 8px; }
+.dock-btn { position: relative; flex-direction: column; gap: 1px; width: 92px; height: 62px; font-size: 13.5px; line-height: 1; white-space: nowrap; border-radius: 16px; }
+.dock-badge { position: absolute; right: -7px; top: -9px; min-width: 22px; height: 22px; box-sizing: border-box; padding: 0 5px; border: 2.5px solid var(--dbd-ink); border-radius: 11px;
+  background: #E5484D; color: #fff; font: 900 12px/17px var(--ui-body); font-style: normal; text-align: center; }
+.side-tint { position: absolute; inset: 0; background: rgba(43, 28, 74, .58); }
+.scr-daily, .scr-duel, .scr-side { background: #3E2868; }
+
+/* skill map */
+.scr-skills { background: linear-gradient(180deg, #211943 0%, #3E2868 100%); }
+.sk-map .sk-sky { position: absolute; left: 0; top: 0; z-index: 0 !important; }
+.sk-node { position: absolute; box-sizing: border-box; padding: 0; border: 3px solid var(--dbd-ink); border-radius: 50%; display: grid; place-items: center; cursor: pointer; }
+.sk-node.own { background: var(--c); box-shadow: 0 3px 0 var(--dbd-ink); }
+.sk-node.ready { background: var(--dbd-cream); outline: 3px solid rgba(255, 244, 220, .95); outline-offset: 3px; }
+.sk-node.dim { background: #3A3166; border-color: #6B5E9E; }
+.sk-node.dim svg { opacity: .42; filter: grayscale(.5) brightness(1.6); }
+.sk-node.sel { box-shadow: 0 0 0 4px var(--dbd-cream), 0 0 0 7px var(--dbd-ink); z-index: 4 !important; }
+@media (prefers-reduced-motion: no-preference) {
+  .sk-node.ready { animation: dbdSkGlow 1.4s ease-in-out infinite; }
+  @keyframes dbdSkGlow { 0%, 100% { outline-offset: 2px; outline-color: rgba(255, 244, 220, .95); } 50% { outline-offset: 8px; outline-color: rgba(255, 244, 220, 0); } }
+}
+.sk-cloud { position: absolute; opacity: .86; pointer-events: none; z-index: 3 !important; filter: drop-shadow(0 3px 0 rgba(20, 12, 40, .35)); }
+.sk-lbl { position: absolute; font: 900 11px var(--ui-body); letter-spacing: 1.6px; pointer-events: none; z-index: 5 !important; text-shadow: 0 1px 0 #211943, 0 0 6px #211943; }
+.sk-titles { position: absolute; left: 54px; top: 11px; white-space: nowrap; }
+.sk-titles h2 { margin: 0; font: 400 26px var(--ui-display); line-height: 1; color: var(--dbd-cream); }
+.sk-titles p { margin: 3px 0 0; font: 900 12px var(--ui-body); color: #C9BDF0; }
+.sk-gems { position: absolute; right: 30px; top: 14px; margin: 0; display: flex; align-items: center; gap: 6px; height: 36px; box-sizing: border-box; padding: 0 12px 0 9px;
+  border: 3px solid var(--dbd-ink); border-radius: 999px; background: var(--dbd-cream); box-shadow: 0 3px 0 var(--dbd-ink); font: 900 12.5px var(--ui-body); color: var(--dbd-ink); white-space: nowrap; }
+.sk-gems b { font: 400 18px var(--ui-display); }
+.sk-card { position: absolute; right: 30px; top: 60px; bottom: 14px; width: 220px; padding: 11px 13px 12px; border-radius: 18px; box-shadow: 0 5px 0 var(--dbd-ink);
+  display: flex; flex-direction: column; gap: 7px; }
+.sk-head { display: flex; align-items: center; gap: 6px; }
+.sk-dot { width: 12px; height: 12px; box-sizing: border-box; flex: none; border: 2.5px solid var(--dbd-ink); border-radius: 50%; }
+.sk-pill { margin-left: auto; padding: 1px 8px; border: 2px solid var(--dbd-ink); border-radius: 999px; font: 900 11px var(--ui-body); background: #fff; }
+.sk-pill.learned { background: var(--dbd-green); }
+.sk-pill.ready { background: var(--dbd-gold); }
+.sk-pill.locked { background: #D9D0F5; }
+.sk-name { display: flex; align-items: center; gap: 9px; }
+.sk-ic { width: 42px; height: 42px; flex: none; box-sizing: border-box; border: 3px solid var(--dbd-ink); border-radius: 50%; display: grid; place-items: center; }
+.sk-name h3 { margin: 0; font: 400 19px var(--ui-display); line-height: 1.05; }
+.sk-desc { margin: 0; font: 800 12.5px/1.35 var(--ui-body); color: var(--dbd-muted); }
+.sk-rel { margin: 0; padding-top: 6px; border-top: 2px dashed #E0CFB2; font: 800 11px/1.35 var(--ui-body); color: var(--dbd-muted); }
+.sk-rel b { color: var(--dbd-ink); font-weight: 900; }
+.sk-foot { margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
+.sk-learn { height: 44px; font-size: 19px; }
+.sk-why, .bb-why { margin: 0; min-height: 44px; box-sizing: border-box; padding: 6px 10px; border: 2.5px dashed #8C7A66; border-radius: 12px; display: flex; align-items: center;
+  font: 900 12px/1.3 var(--ui-body); color: var(--dbd-muted); }
+.sk-reset { align-self: center; font-size: 12px !important; }
+
+/* Bling Barn */
+.scr-barn { background: #E6C98F; }
+.bb-planks { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, #F0D6A2 0 42px, #E6C98F 42px 45px); }
+.bb-titles { position: absolute; left: 54px; top: 10px; white-space: nowrap; }
+.bb-titles h2 { margin: 0; font: 400 28px var(--ui-display); line-height: 1; }
+.bb-titles p { margin: 3px 0 0; font: 900 12px var(--ui-body); color: var(--dbd-muted); }
+.bb-tabs { position: absolute; left: 0; top: 70px; display: flex; gap: 7px; }
+.bb-tab { height: 34px; padding: 0 12px; box-sizing: border-box; border: 3px solid var(--dbd-ink); border-radius: 12px; background: var(--dbd-cream); box-shadow: 0 3px 0 var(--dbd-ink);
+  font: 400 15px var(--ui-display); color: var(--dbd-ink); cursor: pointer; white-space: nowrap; }
+.bb-tab.on { background: var(--dbd-gold); }
+.bb-grid { position: absolute; left: 0; top: 116px; width: 470px; display: grid; grid-template-columns: repeat(3, 150px); gap: 10px; }
+.bb-card { position: relative; height: 122px; box-sizing: border-box; padding: 6px; border: 3px solid var(--dbd-ink); border-radius: 16px; background: var(--dbd-cream);
+  box-shadow: 0 3px 0 var(--dbd-ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; font-family: var(--ui-body); color: var(--dbd-ink); }
+.bb-card.sel { background: #fff; box-shadow: 0 0 0 3px var(--dbd-cream), 0 0 0 6px var(--dbd-ink); }
+.bb-card b { font: 400 15px var(--ui-display); line-height: 1.1; }
+.bb-price { display: flex; align-items: center; gap: 4px; font: 900 12px var(--ui-body); color: var(--dbd-muted); }
+.bb-on { position: absolute; right: 8px; top: 8px; padding: 0 7px; border: 2.5px solid var(--dbd-ink); border-radius: 999px; background: var(--dbd-green); font: 900 11px/17px var(--ui-body); }
+.bb-chips { position: absolute; right: 30px; top: 14px; display: flex; gap: 8px; align-items: center; }
+.bb-ribbons { margin: 0; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px 0 8px; border-radius: 999px; font: 900 12.5px var(--ui-body); white-space: nowrap; }
+.bb-ribbons b { font: 400 18px var(--ui-display); }
+.bb-panel { position: absolute; right: 30px; top: 60px; bottom: 14px; width: 236px; padding: 10px 11px 12px; border-radius: 18px; box-shadow: 0 5px 0 var(--dbd-ink);
+  display: flex; flex-direction: column; gap: 6px; }
+.bb-scene-box { height: 118px; flex: none; box-sizing: border-box; border: 3px solid var(--dbd-ink); border-radius: 14px; overflow: hidden; }
+.bb-scene { display: block; width: 100%; height: 100%; }
+.bb-panel h3 { margin: 0; font: 400 21px var(--ui-display); line-height: 1.05; }
+.bb-line { margin: 0; font: 800 12.5px/1.35 var(--ui-body); color: var(--dbd-muted); }
+.bb-foot { margin-top: auto; }
+.bb-act { width: 100%; height: 44px; font-size: 18px; }
+
+/* daily farm and duel */
+.dl-card, .du-card { position: absolute; left: 0; top: 0; width: 100%; box-sizing: border-box; padding: 13px 18px 15px; border-radius: 20px; box-shadow: 0 6px 0 var(--dbd-ink);
+  display: flex; flex-direction: column; gap: 8px; }
+.dl-head { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+.dl-cal { display: flex; }
+.dl-medal { margin-left: auto; display: flex; }
+.dl-farm { display: flex; gap: 12px; align-items: center; }
+.dl-strip { width: 170px; height: 58px; flex: none; box-sizing: border-box; border: 3px solid var(--dbd-ink); border-radius: 12px; background: #8FCBEA 38% 100% / cover no-repeat; }
+.dl-strip.empty { background: repeating-linear-gradient(135deg, #EFE6D2 0 10px, #E4DACA 10px 20px); }
+.dl-farm-txt h2 { margin: 0; font: 400 26px var(--ui-display); line-height: 1; }
+.dl-tool { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 1px 12px 1px 3px; border: 2.5px solid var(--dbd-ink); border-radius: 999px; background: #fff; }
+.dl-tool b { font: 400 15px var(--ui-display); }
+.dl-text { margin: 0; font: 800 12.5px/1.35 var(--ui-body); color: var(--dbd-muted); }
+.dl-targets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.dl-t { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 2.5px solid var(--dbd-ink); border-radius: 12px; background: #fff; }
+.dl-t span { display: flex; flex-direction: column; font: 400 17px var(--ui-display); line-height: 1.05; }
+.dl-t b { font: 900 9.5px var(--ui-body); letter-spacing: .7px; color: var(--dbd-muted); }
+.dl-t.got { background: #FFF0C2; }
+.dl-best { margin: 0; font: 900 12.5px var(--ui-body); }
+.dl-best b { font: 400 16px var(--ui-display); }
+.dl-rew { margin: 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font: 800 11.5px var(--ui-body); color: var(--dbd-muted); }
+.dl-done { flex: 1; margin: 0; min-height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 0 10px; border: 2.5px dashed #8C7A66;
+  border-radius: 12px; font: 900 12.5px var(--ui-body); color: var(--dbd-muted); text-align: center; }
+.dl-card .r-actions > .st-btn:first-child, .du-card .r-actions > .st-btn:first-child { padding: 0 18px; }
+.dl-res-top { display: flex; align-items: center; gap: 14px; }
+.dl-res-medal { display: flex; }
+.dl-res-medal.pop { animation: dbdStarIn .6s cubic-bezier(.2, 1.6, .4, 1) both; }
+.dl-score { margin: 3px 0 0; font: 400 30px var(--ui-display); line-height: 1; color: var(--dbd-deep-green); }
+.r-gains { display: flex; gap: 12px; align-items: center; }
+.dia-btn { border: 0; background: none; padding: 0; cursor: pointer; color: var(--dbd-ink); }
+.du-title { margin: 0; font: 400 24px var(--ui-display); line-height: 1.05; }
+.du-row { display: flex; align-items: center; gap: 8px; }
+.du-k { width: 40px; flex: none; font: 900 11px var(--ui-body); letter-spacing: .7px; color: var(--dbd-muted); text-transform: uppercase; }
+.du-arrow { width: 38px; height: 38px; flex: none; }
+.du-farm { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.du-farm .dl-strip { width: 140px; height: 42px; }
+.du-farm b { font: 400 20px var(--ui-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.du-tools { display: flex; gap: 6px; }
+.du-tool { display: flex; align-items: center; gap: 4px; height: 40px; padding: 0 9px 0 3px; box-sizing: border-box; border: 2.5px solid var(--dbd-ink); border-radius: 12px; background: #fff;
+  font: 400 13.5px var(--ui-display); color: var(--dbd-ink); cursor: pointer; white-space: nowrap; }
+.du-tool.on { background: #FFF0C2; box-shadow: inset 0 0 0 2px var(--dbd-gold); }
+.du-hand { display: flex; justify-content: center; }
+.du-scores { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.du-score { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px; border: 3px solid var(--dbd-ink); border-radius: 14px; background: #fff; }
+.du-score span { font: 900 12px var(--ui-body); color: var(--dbd-muted); }
+.du-score b { font: 400 28px var(--ui-display); line-height: 1; }
+.du-score.win { background: #FFF0C2; }
+.du-score svg { position: absolute; right: 10px; top: -14px; transform: rotate(12deg); }
+.du-rib { position: absolute; right: 0; top: -2px; display: flex; align-items: center; gap: 3px; font: 400 16px var(--ui-display); }
+.grp.bl > .bl-row { position: absolute; left: 0; bottom: 12px; display: flex; gap: 8px; align-items: center; }
+.gem-chip { cursor: pointer; font: 400 20px var(--ui-display); color: var(--dbd-ink); }
+.gem-chip small { font: 900 11px var(--ui-body); color: var(--dbd-muted); }
+/* savings (for upgrades and tools) beside the farm's cash (for its bills) */
+.save-chip { gap: 6px; }
+.fh-top .save-chip { height: 36px; padding: 0 10px 0 7px; font-size: 17px; }
+.fh-top .save-chip svg { width: 19px; height: 19px; }

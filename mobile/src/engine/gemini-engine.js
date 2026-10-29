@@ -16835,6 +16835,7 @@ export function startGeminiEngine() {
     return { a, b, c, d, total: a + b + c + d };
   }
   /* save */ function save() {
+    if (savingOff) return;
     const savedFarm = dayCheckpoint && mode === 'day' ? dayCheckpoint : farm;
     SaveSystem.save(meta, savedFarm);
   }
@@ -17601,10 +17602,31 @@ export function startGeminiEngine() {
   function depth(y) {
     return 1.2 * (0.8 + 0.45 * FarmScene_clamp((y - FIELD_TOP) / (HW - FIELD_TOP), 0, 1));
   }
-  function pickType() {
+  /* ---- seeded fields (daily farm, duels): each spawn, prop, crow, goat and timer gets its own seeded
+     stream, so the n-th crop is the same for everyone playing that seed ---- */
+  var fieldSeed = 0,
+    savingOff = false;
+  var fieldSeq = { crop: 0, prop: 0, crow: 0, goat: 0, timer: 0 };
+  var FIELD_SALT = { crop: 0x1f3a5c7, prop: 0x2b4d6e9, crow: 0x3c5e7fa, goat: 0x4d6f80b, timer: 0x5e7091c };
+  function mulberry32(a) {
+    return function () {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function fieldRng(kind) {
+    if (!fieldSeed) return Math.random;
+    const n = fieldSeq[kind]++;
+    return mulberry32((fieldSeed ^ Math.imul(n + 1, 0x9e3779b1) ^ FIELD_SALT[kind]) >>> 0);
+  }
+  function pickType(R) {
+    R = R || Math.random;
     const paid = unlockLevel();
     const pl = plan();
-    if (Math.random() < cur.gold && (!pl || paid >= (pl.goldAt || 0))) return 'golden';
+    if (R() < cur.gold && (!pl || paid >= (pl.goldAt || 0))) return 'golden';
     const T =
       pl && pl.crops
         ? pl.crops
@@ -17621,7 +17643,7 @@ export function startGeminiEngine() {
             ['potato', 5, 2],
           ];
     const w = T.filter((t) => paid >= t[2] && CROP[t[0]]);
-    let r = Math.random() * w.reduce((a, b) => a + b[1], 0);
+    let r = R() * w.reduce((a, b) => a + b[1], 0);
     for (const t of w) {
       r -= t[1];
       if (r <= 0) return t[0];
@@ -17643,20 +17665,21 @@ export function startGeminiEngine() {
     return clumps;
   }
   function spawnCrop(delay, at) {
-    const type = at && at.type && CROP[at.type] ? at.type : pickType(),
+    const R = fieldRng('crop');
+    const type = at && at.type && CROP[at.type] ? at.type : pickType(R),
       def = CROP[type];
     let x = 0,
       y = 0,
       ok = false;
     for (let i = 0; i < 14 && !ok; i++) {
       if (at) {
-        const a = Math.random() * Math.PI * 2,
-          d = (at.d || 90) * (0.75 + Math.random() * 0.6);
+        const a = R() * Math.PI * 2,
+          d = (at.d || 90) * (0.75 + R() * 0.6);
         x = FarmScene_clamp(at.x + Math.cos(a) * d, PAD, worldW - PAD);
         y = FarmScene_clamp(at.y + Math.sin(a) * d * 0.55, FIELD_TOP + 32, HW - 22);
       } else {
-        x = PAD + Math.random() * (worldW - PAD * 2);
-        y = FIELD_TOP + 32 + Math.random() * (HW - FIELD_TOP - 54);
+        x = PAD + R() * (worldW - PAD * 2);
+        y = FIELD_TOP + 32 + R() * (HW - FIELD_TOP - 54);
       }
       const rr = def.r * depth(y);
       ok = crops.every((c) => {
@@ -17699,9 +17722,9 @@ export function startGeminiEngine() {
       crownPop: 0,
       hatProgress: 0,
       scarfProgress: 0,
-      frosted: !!(dailyEvent && dailyEvent.frost && Math.random() < 0.55),
+      frosted: !!(dailyEvent && dailyEvent.frost && R() < 0.55),
       dead: false,
-      lucky: Math.random() < 0.03 + 0.008 * (meta.heir.horseshoe || 0),
+      lucky: R() < 0.03 + 0.008 * (meta.heir.horseshoe || 0),
     });
     return true;
   }
@@ -17751,11 +17774,13 @@ export function startGeminiEngine() {
     rushCharge = 0;
     paused = false;
     today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0, boss: 0 };
-    goatTimer = unlockLevel() >= 2 ? 3 + Math.random() * 5 : Infinity;
+    if (fieldSeed) for (const k in fieldSeq) fieldSeq[k] = 0;
+    goatTimer = unlockLevel() >= 2 ? 3 + fieldRng('timer')() * 5 : Infinity;
     goat = null;
     const initCount = Math.min(cur.max, 4 + Math.floor(cur.max * 0.35) + (hasSkill('soil_dew') ? 3 : 0));
     for (let i = 0; i < initCount; i++) spawnCrop(0.08 + i * 0.04);
     seeds = [];
+    dbdVortexes = [];
     bossCrop = null;
     initBoss();
     spawnBoss();
@@ -17803,7 +17828,8 @@ export function startGeminiEngine() {
     pointer.active = false;
     pointer.down = false;
     if (hasSkill('gold_interest') && farm.cash > 0) {
-      const interest = Math.min(300, Math.floor(farm.cash * 0.12));
+      const pl = plan();
+      const interest = Math.min(Math.max(300, Math.round(0.4 * ((pl && pl.dayRef) || 0))), Math.floor(farm.cash * 0.12));
       if (interest > 0) {
         farm.cash += interest;
         farm.earned += interest;
@@ -17890,14 +17916,18 @@ export function startGeminiEngine() {
       c.flash = 1;
       c.hpShow = 1.6;
       c.eye = 1.45;
-      c.stretch = -0.45;
-      c.stretchVel = -9.0;
+      c.stretch = c.boss ? -0.1 : -0.45;
+      c.stretchVel = c.boss ? -2 : -9.0;
       debris(c, 5);
-      if (c.hp <= 1e-6 || (hasSkill('reap_exec') && c.hp / c.maxHp <= 0.25)) {
+      if (c.boss) bossHit(c, true);
+      if (c.hp <= 1e-6 || (hasSkill('reap_exec') && !c.boss && c.hp / c.maxHp <= 0.25)) {
         harvest(c);
         killed++;
       }
     }
+    // Whirlwind Echo: a golden vortex keeps chopping where the cleave landed
+    if (hasSkill('reap_vortex'))
+      dbdVortexes.push({ x: pointer.x, y: pointer.y, r: cleaveR * 0.55, t: 1.8, acc: 0, a: 0 });
     if (killed) crops = crops.filter((c) => !c.dead); // Calm angry goat if caught in Charge Cleave!
     if (goat && goat.bumped && Math.hypot(goat.x - pointer.x, goat.y - pointer.y) <= cleaveR + 35) {
       goat.bumped = false;
@@ -17913,18 +17943,20 @@ export function startGeminiEngine() {
   }
   function spawnFieldProp() {
     if (fieldProps.length >= 2) return;
-    const kind = goat && !cur.treaty && Math.random() < 0.45 ? 'treat' : 'fertilizer';
-    const x = PAD + 40 + Math.random() * (worldW - PAD * 2 - 80);
-    const y = FIELD_TOP + 45 + Math.random() * (HW - FIELD_TOP - 80);
+    const R = fieldRng('prop');
+    const kind = goat && !cur.treaty && R() < 0.45 ? 'treat' : 'fertilizer';
+    const x = PAD + 40 + R() * (worldW - PAD * 2 - 80);
+    const y = FIELD_TOP + 45 + R() * (HW - FIELD_TOP - 80);
     fieldProps.push({ kind, x, y, ds: depth(y), age: 0, life: 9.5 });
   }
   function spawnCrow() {
     if (crows.length >= 2 || !crops.length) return;
-    const target = crops[Math.floor(Math.random() * crops.length)];
-    const fromLeft = Math.random() < 0.5;
+    const R = fieldRng('crow');
+    const target = crops[Math.floor(R() * crops.length)];
+    const fromLeft = R() < 0.5;
     crows.push({
       x: fromLeft ? -30 : worldW + 30,
-      y: 45 + Math.random() * 55,
+      y: 45 + R() * 55,
       tx: target.x,
       ty: target.y - 18,
       vx: 0,
@@ -18182,8 +18214,54 @@ export function startGeminiEngine() {
     seeds = seeds.filter((sd) => !sd.done);
     if (killed) crops = crops.filter((c) => !c.dead);
   }
+  var dbdVortexes = [];
+  function updateVortexes(dt) {
+    if (!dbdVortexes.length) return;
+    let killed = 0;
+    for (const v of dbdVortexes) {
+      v.t -= dt;
+      v.a += dt * 14;
+      v.acc += dt;
+      while (v.acc >= 0.15) {
+        v.acc -= 0.15;
+        for (const c of crops) {
+          if (c.dead || c.age < 0.04) continue;
+          const cy = c.y - c.r * c.ds * 0.55;
+          if (Math.hypot(c.x - v.x, cy - v.y) > v.r + c.r * c.ds * 0.5) continue;
+          if (hitCrop(c, cy, cur.dmg * 0.6, false, 'flame') === 2) killed++;
+        }
+      }
+    }
+    dbdVortexes = dbdVortexes.filter((v) => v.t > 0);
+    if (killed) crops = crops.filter((c) => !c.dead);
+  }
+  function drawVortexes() {
+    for (const v of dbdVortexes) {
+      const k = Math.min(1, v.t / 0.4);
+      ctx.save();
+      ctx.translate(v.x, v.y);
+      ctx.globalAlpha = 0.85 * k;
+      ctx.strokeStyle = 'rgba(253, 224, 71, .9)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, v.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.rotate(v.a);
+      ctx.fillStyle = 'rgba(255, 244, 200, .9)';
+      for (let i = 0; i < 4; i++) {
+        ctx.rotate(Math.PI / 2);
+        ctx.beginPath();
+        ctx.moveTo(v.r * 0.2, 0);
+        ctx.quadraticCurveTo(v.r * 0.7, -v.r * 0.35, v.r * 0.95, 0);
+        ctx.quadraticCurveTo(v.r * 0.6, -v.r * 0.1, v.r * 0.2, 0);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
   /** Per-frame tool work during the day: seeds in flight, flame particles, burning crops, the boss walking. */
   function toolUpdate(dt) {
+    updateVortexes(dt);
     flameT = Math.max(0, flameT - dt);
     updateSeeds(dt);
     if ((cur.style || 'sickle') === 'flame' && pointer.active) {
@@ -18481,6 +18559,59 @@ export function startGeminiEngine() {
     circ(ctx, w + 1, -h, 1.6);
     ctx.restore();
   }
+  /* ---- looks: colours from the shell's cosmetics (window.__DBD_LOOK), with Gemini's as defaults ---- */
+  const LOOK_METAL = ['#ffffff', '#e2e8f0', '#94a3b8', '#475569', '#334155'];
+  const LOOK_WOOD = ['#78350f', '#c27838', '#f6d096', '#d97706'];
+  function lookOf() {
+    return window.__DBD_LOOK || {};
+  }
+  function rainbowStops(n, sat, light) {
+    const h = (tNow * 90) % 360;
+    return Array.from({ length: n }, (_, i) => `hsl(${(h + i * 40) % 360}, ${sat}%, ${light - i * 12}%)`);
+  }
+  function lookMetal() {
+    const L = lookOf();
+    if (L.rainbow) return [...rainbowStops(4, 85, 92), '#334155'];
+    return L.metal && L.metal.length >= 5 ? L.metal : LOOK_METAL;
+  }
+  function lookWood() {
+    const L = lookOf();
+    return L.wood && L.wood.length >= 4 ? L.wood : LOOK_WOOD;
+  }
+  function lookTrail(alphaOuter, alphaInner) {
+    const L = lookOf();
+    const t = L.trail || 'classic';
+    if (t === 'rainbow') {
+      const h = (tNow * 240) % 360;
+      return [`hsla(${h}, 95%, 65%, ${alphaOuter})`, `hsla(${(h + 60) % 360}, 95%, 85%, ${alphaInner})`];
+    }
+    const C = {
+      classic: [
+        [255, 224, 130],
+        [255, 251, 235],
+      ],
+      fire: [
+        [255, 120, 40],
+        [255, 220, 120],
+      ],
+      ice: [
+        [120, 200, 255],
+        [230, 248, 255],
+      ],
+      leaf: [
+        [110, 200, 80],
+        [220, 255, 190],
+      ],
+      candy: [
+        [255, 120, 200],
+        [255, 230, 245],
+      ],
+    }[t] || [
+      [255, 224, 130],
+      [255, 251, 235],
+    ];
+    return [`rgba(${C[0].join(',')}, ${alphaOuter})`, `rgba(${C[1].join(',')}, ${alphaInner})`];
+  }
   /* ---- tool drawings (the sickle keeps Gemini's drawing in drawCursor) ---- */
   function drawOtherTool(x, y, R) {
     const style = cur.style;
@@ -18514,9 +18645,11 @@ export function startGeminiEngine() {
       ctx.quadraticCurveTo(10 + dx, 4 + dy, 0 + dx, -30 + dy);
       ctx.stroke();
     };
-    shaft('#4a2a0e', 7.5, 0, 0);
-    shaft('#b8793c', 4.8, 0, 0);
-    shaft('#e8b276', 1.4, -1.4, -1.5);
+    const SW = lookWood(),
+      SM = lookMetal();
+    shaft(SW[0], 7.5, 0, 0);
+    shaft(SW[1], 4.8, 0, 0);
+    shaft(SW[2], 1.4, -1.4, -1.5);
     ctx.strokeStyle = '#4a2a0e';
     ctx.lineWidth = 5;
     ctx.beginPath();
@@ -18530,12 +18663,12 @@ export function startGeminiEngine() {
     ctx.lineTo(22, 3);
     ctx.stroke();
     const bg = ctx.createLinearGradient(-62, -44, 0, -18);
-    bg.addColorStop(0, '#ffffff');
-    bg.addColorStop(0.4, '#e2e8f0');
-    bg.addColorStop(0.8, '#94a3b8');
-    bg.addColorStop(1, '#475569');
+    bg.addColorStop(0, SM[0]);
+    bg.addColorStop(0.4, SM[1]);
+    bg.addColorStop(0.8, SM[2]);
+    bg.addColorStop(1, SM[3]);
     ctx.fillStyle = bg;
-    ctx.strokeStyle = '#334155';
+    ctx.strokeStyle = SM[4];
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(3, -27);
@@ -18594,7 +18727,7 @@ export function startGeminiEngine() {
     ctx.save();
     ctx.translate(52, 50);
     ctx.rotate(-0.75);
-    ctx.fillStyle = '#ef4444';
+    ctx.fillStyle = lookOf().accent || '#ef4444';
     ctx.strokeStyle = '#2B1708';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -18676,7 +18809,7 @@ export function startGeminiEngine() {
     ctx.beginPath();
     ctx.roundRect(28, -5, 4, 9, 1.5);
     ctx.fill();
-    ctx.fillStyle = '#6dbe45';
+    ctx.fillStyle = lookOf().toy || '#6dbe45';
     ctx.beginPath();
     ctx.roundRect(-15, -9, 27, 15, 6);
     ctx.fill();
@@ -18947,6 +19080,12 @@ export function startGeminiEngine() {
           'habanero',
           'sweetcorn',
           'brisket_onion',
+          'chickpea',
+          'eggplant',
+          'olive',
+          'bittermelon',
+          'bokchoy',
+          'lotusroot',
         ].includes(c.type))
         ? 1.5
         : 1;
@@ -19158,12 +19297,13 @@ export function startGeminiEngine() {
     el.classList.add('bump');
   }
   /* the goat: peaceful white goat that only gets angry when touched! */ function spawnGoat() {
-    const left = Math.random() < 0.5;
+    const R = fieldRng('goat');
+    const left = R() < 0.5;
     goat = {
       x: left ? -50 : worldW + 50,
-      y: FIELD_TOP + 70 + Math.random() * (HW - FIELD_TOP - 120),
+      y: FIELD_TOP + 70 + R() * (HW - FIELD_TOP - 120),
       dir: left ? 1 : -1,
-      speed: 56 + Math.random() * 22,
+      speed: 56 + R() * 22,
       t: 0,
       bumped: false,
       petted: false,
@@ -19402,12 +19542,12 @@ export function startGeminiEngine() {
       propTimer -=
         dt * (dailyEvent && dailyEvent.propBoost ? dailyEvent.propBoost : 1) * (hasSkill('soil_bounty') ? 2.0 : 1.0);
       if (propTimer <= 0) {
-        propTimer = 6.5 + Math.random() * 4;
+        propTimer = 6.5 + fieldRng('timer')() * 4;
         spawnFieldProp();
       }
       crowTimer -= dt;
       if (crowTimer <= 0 && unlockLevel() >= 2) {
-        crowTimer = 8.5 + Math.random() * 5;
+        crowTimer = 8.5 + fieldRng('timer')() * 5;
         spawnCrow();
       }
       const spawnInterval =
@@ -19473,7 +19613,7 @@ export function startGeminiEngine() {
       }
       if (goat.x < -90 || goat.x > worldW + 90) {
         goat = null;
-        goatTimer = 7 + Math.random() * 7;
+        goatTimer = 7 + fieldRng('timer')() * 7;
       }
     }
     perfumeSparkleTimer = Math.max(0, perfumeSparkleTimer - dt);
@@ -21141,18 +21281,19 @@ export function startGeminiEngine() {
         ctx.stroke();
         ctx.restore();
       }
-      ctx.fillStyle = '#a56d24';
+      const CN = lookOf().coin || ['#a56d24', '#f6cf6d', '#fff0ab', '#b08429', '#fff7c9'];
+      ctx.fillStyle = CN[0];
       circ(ctx, x, y + 1, r);
-      ctx.fillStyle = '#f6cf6d';
+      ctx.fillStyle = CN[1];
       circ(ctx, x, y, r);
-      ctx.strokeStyle = '#fff0ab';
+      ctx.strokeStyle = CN[2];
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.arc(x, y, r * 0.65, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = '#b08429';
+      ctx.fillStyle = CN[3];
       ctx.fillRect(x - 0.6, y - r * 0.4, 1.2, r * 0.8);
-      ctx.fillStyle = '#fff7c9';
+      ctx.fillStyle = CN[4];
       circ(ctx, x - r * 0.3, y - r * 0.3, r * 0.2);
     }
   }
@@ -21186,12 +21327,13 @@ export function startGeminiEngine() {
       const span = Math.PI * 1.28 * t;
       ctx.save();
       ctx.lineCap = 'round';
-      ctx.strokeStyle = `rgba(255, 224, 130, ${0.45 * (1 - t)})`;
+      const trailC = lookTrail(0.45 * (1 - t), 0.92 * (1 - t));
+      ctx.strokeStyle = trailC[0];
       ctx.lineWidth = 12 * (1 - t) + 2;
       ctx.beginPath();
       ctx.arc(x, y, R * 0.88, sweepA, sweepA + span);
       ctx.stroke();
-      ctx.strokeStyle = `rgba(255, 251, 235, ${0.92 * (1 - t)})`;
+      ctx.strokeStyle = trailC[1];
       ctx.lineWidth = 5.5 * (1 - t) + 1;
       ctx.beginPath();
       ctx.arc(x, y, R * 0.91, sweepA + span * 0.15, sweepA + span);
@@ -21220,13 +21362,15 @@ export function startGeminiEngine() {
     ctx.arc(-6, -18, 18, 0.2, Math.PI * 1.18, true);
     ctx.stroke();
     ctx.restore(); // Forged crescent steel blade (outer spine + honed inner bevel)
+    const MT = lookMetal(),
+      WD = lookWood();
     const bladeGrad = ctx.createLinearGradient(-28, -36, 18, -6);
-    bladeGrad.addColorStop(0, '#ffffff');
-    bladeGrad.addColorStop(0.35, '#e2e8f0');
-    bladeGrad.addColorStop(0.75, '#94a3b8');
-    bladeGrad.addColorStop(1, '#475569');
+    bladeGrad.addColorStop(0, MT[0]);
+    bladeGrad.addColorStop(0.35, MT[1]);
+    bladeGrad.addColorStop(0.75, MT[2]);
+    bladeGrad.addColorStop(1, MT[3]);
     ctx.fillStyle = bladeGrad;
-    ctx.strokeStyle = '#334155';
+    ctx.strokeStyle = MT[4];
     ctx.lineWidth = 1.4;
     ctx.beginPath();
     ctx.moveTo(6, -12); // Tang at collar
@@ -21251,8 +21395,8 @@ export function startGeminiEngine() {
     ctx.save();
     ctx.translate(4, -10);
     ctx.rotate(0.48);
-    ctx.fillStyle = '#eab308';
-    ctx.strokeStyle = '#78350f';
+    ctx.fillStyle = lookOf().trim || '#eab308';
+    ctx.strokeStyle = WD[0];
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.roundRect(-4.2, -3.5, 8.4, 7, 2);
@@ -21261,20 +21405,20 @@ export function startGeminiEngine() {
     ctx.fillStyle = '#fef08a';
     circ(ctx, 0, 0, 1.3);
     ctx.restore(); // Ergonomic turned ash-wood handle with leather grip wraps
-    ctx.strokeStyle = '#78350f';
+    ctx.strokeStyle = WD[0];
     ctx.lineWidth = 7.2;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(2, -7);
     ctx.quadraticCurveTo(-5, 8, -14, 23);
     ctx.stroke();
-    ctx.strokeStyle = '#c27838';
+    ctx.strokeStyle = WD[1];
     ctx.lineWidth = 5.0;
     ctx.beginPath();
     ctx.moveTo(2, -7);
     ctx.quadraticCurveTo(-5, 8, -14, 23);
     ctx.stroke();
-    ctx.strokeStyle = '#f6d096';
+    ctx.strokeStyle = WD[2];
     ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.moveTo(1, -7);
@@ -21290,7 +21434,7 @@ export function startGeminiEngine() {
       ctx.lineTo(gx + 2.6, gy + 1.2);
       ctx.stroke();
     } // Brass pommel cap at bottom of handle
-    ctx.fillStyle = '#d97706';
+    ctx.fillStyle = WD[3];
     ctx.strokeStyle = '#451a03';
     ctx.lineWidth = 1.2;
     circ(ctx, -14.5, 23.5, 3.8);
@@ -21642,14 +21786,15 @@ export function startGeminiEngine() {
       ctx.save();
       ctx.translate(cr.x, cr.y);
       if (cr.vx < 0 || (!cr.scared && cr.tx < cr.x)) ctx.scale(-1, 1);
-      ctx.fillStyle = '#1e293b';
+      const BD = lookOf().bird || ['#1e293b', '#f59e0b'];
+      ctx.fillStyle = BD[0];
       ell(ctx, 0, 0, 11, 6.5);
       ctx.beginPath();
       ctx.moveTo(-4, -2);
       ctx.lineTo(-12, -10 + wing);
       ctx.lineTo(4, -3);
       ctx.fill();
-      ctx.fillStyle = '#f59e0b';
+      ctx.fillStyle = BD[1];
       ctx.beginPath();
       ctx.moveTo(10, -2);
       ctx.lineTo(17, 0);
@@ -21804,6 +21949,7 @@ export function startGeminiEngine() {
     for (const c of list) drawHpBar(c);
     drawParts();
     drawSeeds();
+    drawVortexes();
     drawPropsCrowsAndWeather(); // Seamless full-canvas evening/night atmospheric tint (NO horizontal cut line at y=105!)
     if (warm > 0.05 || night > 0.05 || dawnAmt(p) > 0.02) {
       const ambGrad = ctx.createLinearGradient(0, 0, 0, HW);
@@ -23183,6 +23329,44 @@ export function startGeminiEngine() {
         setTool: (t) => {
           window.__DBD_TOOL = t || null;
           cur = stats();
+        },
+        /** The whole engine state as JSON, to run a side farm (daily, duel) and come back. */
+        snapshot: () => JSON.stringify({ meta, farm }),
+        restore: (json) => {
+          if (mode === 'day') return false;
+          const o = JSON.parse(json);
+          if (!o || !o.meta || !o.farm) return false;
+          meta = o.meta;
+          farm = o.farm;
+          mode = 'idle';
+          goat = null;
+          crops = [];
+          seeds = [];
+          dbdVortexes = [];
+          bossCrop = null;
+          dayCheckpoint = null;
+          sceneryKey = '';
+          buildFieldLayer();
+          cur = stats();
+          fillIdle();
+          renderAll();
+          return true;
+        },
+        /** Side farms don't save: their days must not overwrite the real farm. */
+        setSaving: (on) => {
+          savingOff = !on;
+          if (on) save();
+        },
+        /** Seeded field (0 = normal randomness). */
+        setFieldSeed: (seedValue) => {
+          fieldSeed = seedValue >>> 0 || 0;
+          for (const k in fieldSeq) fieldSeq[k] = 0;
+        },
+        /** Skills come from the game save (bought with diamonds on the skill map). */
+        setSkills: (ids) => {
+          meta.learnedSkills = Array.isArray(ids) ? ids.filter((id) => typeof id === 'string') : [];
+          cur = stats();
+          if (mode === 'idle') fillIdle();
         },
         /** Stats as they would be with another tool in hand (nothing changes). */
         statsWith: (t) => {

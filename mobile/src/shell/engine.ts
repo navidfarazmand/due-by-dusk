@@ -137,6 +137,15 @@ export interface EngineApi {
   statsWith(t: unknown): Record<string, number | string | boolean>;
   initAudio(): void;
   nextEvent(): DayEvent;
+  /** The whole engine state as JSON, to run a side farm (daily farm, duel) and come back. */
+  snapshot(): string;
+  restore(json: string): boolean;
+  /** Side farms don't save, so their day can't overwrite the real farm. */
+  setSaving(on: boolean): void;
+  /** Seeded field: the n-th crop, prop, crow and goat are the same for everyone on that seed (0 = random). */
+  setFieldSeed(seed: number): void;
+  /** The skills learned on the skill map. */
+  setSkills(ids: string[]): void;
 }
 
 export interface EngineEvents {

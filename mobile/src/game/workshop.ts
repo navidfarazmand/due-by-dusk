@@ -20,31 +20,31 @@ export interface UpgradeDef {
 
 export const UPGRADES: UpgradeDef[] = [
   {
-    id: 'scythe', name: 'Sharper blade', line: '+20% damage', max: 40, base: 30, growth: 1.3, freeUpTo: 4,
+    id: 'scythe', name: 'Sharper blade', line: '+20% damage', max: 40, base: 60, growth: 1.4, freeUpTo: 2,
     effect: l => `×${Math.pow(1.2, l).toFixed(l < 12 ? 2 : 0)} damage`,
   },
   {
-    id: 'swing', name: 'Longer handle', line: '+6% reach', max: 15, base: 40, growth: 1.38, freeUpTo: 3,
+    id: 'swing', name: 'Longer handle', line: '+6% reach', max: 15, base: 90, growth: 1.5, freeUpTo: 1,
     effect: l => `${Math.round(100 + 6 * l)}% reach`,
   },
   {
-    id: 'hands', name: 'Quicker hands', line: '+5% swing speed', max: 15, base: 45, growth: 1.38, freeUpTo: 3,
+    id: 'hands', name: 'Quicker hands', line: '+5% swing speed', max: 15, base: 100, growth: 1.5, freeUpTo: 1,
     effect: l => `${(3.2 * (1 + 0.05 * l)).toFixed(1)} swings a second`,
   },
   {
-    id: 'days', name: 'Longer days', line: '+1 s of daylight', max: 10, base: 60, growth: 1.45, freeUpTo: 2,
+    id: 'days', name: 'Longer days', line: '+1 s of daylight', max: 10, base: 150, growth: 1.6, freeUpTo: 1,
     effect: l => `+${l} s of daylight`,
   },
   {
-    id: 'soil', name: 'Richer soil', line: '+1 crop on the field', max: 15, base: 50, growth: 1.4, freeUpTo: 3,
+    id: 'soil', name: 'Richer soil', line: '+1 crop on the field', max: 15, base: 110, growth: 1.5, freeUpTo: 1,
     effect: l => `${7 + l} crops at once`,
   },
   {
-    id: 'market', name: 'Market stall', line: '+10% crop prices', max: 20, base: 70, growth: 1.36, freeUpTo: 3,
+    id: 'market', name: 'Market stall', line: '+10% crop prices', max: 20, base: 130, growth: 1.45, freeUpTo: 1,
     effect: l => `prices ×${(1 + 0.1 * l).toFixed(1)}`,
   },
   {
-    id: 'clover', name: 'Lucky clover', line: '+2% crit chance', max: 10, base: 90, growth: 1.5, freeUpTo: 2,
+    id: 'clover', name: 'Lucky clover', line: '+2% crit chance', max: 10, base: 160, growth: 1.6, freeUpTo: 1,
     effect: l => `${4 + 2 * l}% crit chance`,
   },
 ];
@@ -88,7 +88,7 @@ export function upgradeCost(id: UpgradeId, level: number): number | null {
 export function upgradeDuration(id: UpgradeId, level: number): number {
   const d = upgradeDef(id);
   if (level < d.freeUpTo) return 0;
-  const minutes = Math.min(60, 1 * Math.pow(1.45, level - d.freeUpTo));
+  const minutes = Math.min(60, 2 * Math.pow(1.45, level - d.freeUpTo));
   return Math.round(minutes * 60) * 1000;
 }
 

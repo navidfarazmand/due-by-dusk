@@ -1,4 +1,4 @@
-# Due by Dusk — mobile development v0.8.0
+# Due by Dusk — mobile development v0.9.0
 
 Landscape farm game: Gemini's farm engine for the harvest days, Claude's game around it, packaged with Vite and Capacitor 8. Use Node 22.12+ (Node 24 recommended).
 
@@ -18,11 +18,11 @@ npm run mobile:sync
 - [Android/iOS setup and native limitations](docs/mobile.md)
 - [Release plan and remaining device/store work](docs/release-plan.md)
 
-The game: 7 countries and 30 farms on one route, each farm a few days long with bills from Grumble & Sons. Win farms for stars and diamonds; stars and each country's boss open the next country. Between days, the farmhouse has the workshop, tools and attachments, perks and the bill list. Rewarded ads are optional: double a day, free coins, finish an upgrade now, or one more day on a bill you can't pay.
+The game: 7 countries and 30 farms on one route, each farm a few days long with bills from Grumble & Sons. Win farms for stars, ribbons and diamonds; stars and each country's boss open the next country. Between days, the farmhouse has the workshop, tools and attachments, perks and the bill list. From the menu: the skill map (diamonds buy permanent skills, reset free), the daily farm (the same seeded farm, tool and upgrades for everyone, with bronze, silver and gold), duels (two players, one phone, the same field in turn) and the Bling Barn (looks only, bought with ribbons). Settings → Tracks picks the music for the field and the menus. Rewarded ads are optional: double a day, free coins, finish an upgrade now, one more day on a bill you can't pay, a free ribbon, or another daily try.
 
 For a computer, `npm run build:pc` and `node scripts/inline-html.mjs dist-pc Due-by-Dusk.html` make one HTML file that opens straight from disk.
 
-[Download the Android test APK](https://github.com/navidfarazmand/due-by-dusk/releases/download/android-v0.8.0/Due-by-Dusk-Test.apk). It installs as **Due by Dusk Test** alongside the old app. v0.8.0 starts a fresh game (the farm engine changed); older test saves stay untouched in their own storage.
+[Download the Android test APK](https://github.com/navidfarazmand/due-by-dusk/releases/download/android-v0.9.0/Due-by-Dusk-Test.apk). It installs as **Due by Dusk Test** alongside the old app and updates v0.8 in place, keeping the saved game (the new prices apply from now on; Settings → Start over plays the new economy from the first farm).
 
 Android test APKs are development builds from GitHub prereleases and CI artifacts, not Play Store releases. iOS requires a Mac and signing. Test builds show Google demo ads. No purchases, accounts or analytics. The Play app ID is `com.khoreh.duebydusk`; see the [release plan](docs/release-plan.md#google-play-and-admob-v072). Music and sound credits are in `licenses/README.md` and in the game under Settings → Credits.
 

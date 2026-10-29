@@ -7,7 +7,7 @@
 // A player who keeps upgrading in the workshop keeps pace; one who doesn't falls behind and has to
 // replay earlier farms for coins and stars. Numbers here are the first balance pass; tune freely.
 
-import { COUNTRIES, ROUTE, type CityDef, type CountryCode, countryOf, isBossCity, routeIndex } from './world';
+import { COUNTRIES, ROUTE, type CityDef, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from './world';
 
 export interface Bill {
   name: string;
@@ -63,6 +63,8 @@ export interface CityPlan {
   signatureEvent: string;
   /** What a steady player earns on a day here (used for bills, records, ad rewards). */
   dayRef: number;
+  /** How heavy this farm's bills are against dayRef. */
+  billMul: number;
   /** Only on boss farms. The deed cannot be paid until the boss is knocked out. */
   bossFight?: BossFight;
 }
@@ -90,10 +92,22 @@ const BILL_DAYS: Record<CountryCode, number[]> = {
 };
 
 /**
- * Bill pressure per country. Balance runs (a bot playing the whole route) found the USA and Brazil too
- * relaxed next to Morocco onwards, where bosses and long farms already bite, and Japan a little too steep.
+ * Bill pressure. The first two farms stay gentle (no ads needed); from the third farm on the bills take most of
+ * a good player's day, so rewarded ads, replays and smart upgrades matter. Navid (29 Oct): upgrades and bills
+ * were far too cheap; two farms' earnings paid a whole country. Tuned with bot playthroughs that learn skills:
+ * without ads a player at Navid's speed needs replays now and then; with an ad after most days, rarely.
  */
-const BILL_MUL: Record<CountryCode, number> = { CA: 1, US: 1.3, BR: 1.3, MA: 1, FR: 1, CN: 1, JP: 0.9 };
+const CANADA_MUL = [1.0, 1.1, 1.25, 1.3, 1.35, 1.4];
+const BILL_MUL: Record<CountryCode, number> = { CA: 1.4, US: 1.45, BR: 1.3, MA: 1.15, FR: 1.1, CN: 1.05, JP: 0.95 };
+export function billMul(cityId: string): number {
+  const c = cityById(cityId);
+  if (!c) return 1;
+  if (c.country === 'CA') {
+    const i = countryOf('CA').cities.findIndex(x => x.id === cityId);
+    return CANADA_MUL[Math.max(0, i)] ?? BILL_MUL.CA;
+  }
+  return BILL_MUL[c.country];
+}
 
 /** Share of a steady day's earnings each bill asks for, per day it gives you; it rises through the farm. */
 function billShare(i: number, n: number): number {
@@ -222,12 +236,13 @@ export function planFor(cityId: string): CityPlan {
   const days = BILL_DAYS[city.country].slice();
   if (boss) days.push(2); // the boss farm has one more bill: the deed, due after two more days
   const ref = dayRef(k);
+  const mul = billMul(cityId);
   const names = pickBillNames(city, k, days.length);
   const bills: Bill[] = days.map((d, i) => ({
     name: names[i][0],
     note: names[i][1],
     days: d,
-    amt: roundMoney(ref * d * billShare(i, days.length) * BILL_MUL[city.country] * (boss && i === days.length - 1 ? 1.15 : 1)),
+    amt: roundMoney(ref * d * billShare(i, days.length) * mul * (boss && i === days.length - 1 ? 1.15 : 1)),
   }));
   const unlock = Math.min(5, Math.floor(k / 2));
   const [lead, second, third] = country.trio;
@@ -245,7 +260,7 @@ export function planFor(cityId: string): CityPlan {
   // Bosses take longer in later countries: 14 s of steady hitting in Canada, 38 s in Japan.
   const ci = COUNTRIES.findIndex(c => c.code === city.country);
   const bossFight: BossFight | undefined = boss
-    ? { ...BOSSES[city.country], focusSec: 14 + 4 * ci, hpMul: Math.round(0.6 * (12 + 0.45 * k) * totalDays), bounty: roundMoney(ref * 1.2) }
+    ? { ...BOSSES[city.country], focusSec: 14 + 4 * ci, hpMul: Math.round(0.6 * (12 + 0.45 * k) * totalDays), bounty: roundMoney(ref * mul) }
     : undefined;
   return {
     cityId,
@@ -270,6 +285,7 @@ export function planFor(cityId: string): CityPlan {
     par: Math.max(2, totalDays - 1),
     signatureEvent: SIGNATURE[cityId] || 'market',
     dayRef: ref,
+    billMul: mul,
     ...(bossFight ? { bossFight } : {}),
   };
 }

@@ -46,8 +46,12 @@ export const ICON = {
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="#FFC23D" stroke="${INK}" stroke-width="2.4"/><circle cx="12" cy="12" r="5.6" fill="none" stroke="#E3961C" stroke-width="2.2"/></svg>`,
   play: () =>
     `<svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M2 2 L12 8 L2 14 Z" fill="${INK}" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/></svg>`,
+  pause: () =>
+    `<svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><rect x="1.5" y="1.5" width="4" height="13" rx="1.2" fill="${INK}"/><rect x="8.5" y="1.5" width="4" height="13" rx="1.2" fill="${INK}"/></svg>`,
   clock: (size = 14) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5V8l2.5 1.6"/></svg>`,
+  piggy: (size = 22) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 C4.5 8.2 8.2 5.6 12.6 5.6 C16.4 5.6 19.4 7.6 20.2 10.6 L22 11 L21.7 14 L20 14.6 C19.4 16.3 18.1 17.6 16.4 18.3 L16 21 H13.4 L13 19 H10.4 L10 21 H7.4 L7 18 C5.4 16.8 4.5 14.8 4.5 12.5 Z" fill="#F4A5B8" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/><path d="M10 5.9 L12.4 3.2 L13.6 6" fill="#F4A5B8" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16.6" cy="10.4" r="1.2" fill="${INK}"/><path d="M9.5 8.6 H13.6" stroke="${INK}" stroke-width="2" stroke-linecap="round"/><path d="M4.6 12 C3.2 11.8 2.4 10.8 2.6 9.6" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linecap="round"/></svg>`,
   diamond: (size = 16) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6 L6 2.5 H10 L13 6 L8 14 Z" fill="#7FD1F5" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 6 H13 M6 2.5 L8 6 L10 2.5 M8 6 V14" stroke="${INK}" stroke-width="1.1" fill="none"/></svg>`,
   gear: () =>

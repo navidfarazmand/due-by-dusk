@@ -4,6 +4,8 @@
 import { COUNTRIES, ROUTE, type CountryCode, countryOf, cityById } from './world';
 import { emptyLevels, type WorkshopState } from './workshop';
 import { newTools, parseTools, toolDef, type ToolId, type ToolsState } from './tools';
+import { newFlair, parseFlair, type FlairState } from './flair';
+import { newDaily, type DailyState } from './daily';
 
 export const GAME_SAVE_KEY = 'dbd-game-v3';
 
@@ -22,7 +24,7 @@ export interface CityProgress {
 
 export interface RunInfo {
   cityId: string;
-  /** Wallet when the farm started: a foreclosure gives back at most this much. */
+  /** Cash the farm started with (always 0 since v0.9: savings never pay a farm's bills). */
   startCash: number;
   startedAt: number;
   bestDay: number;
@@ -34,12 +36,17 @@ export interface AdCounters {
   coins: number;
   doubles: number;
   finishes: number;
+  /** Free-ribbon ads in the Bling Barn. */
+  ribbons: number;
   lastCoinsAt: number;
 }
 
 export interface Settings {
   music: boolean;
   haptics: boolean;
+  /** Track ids for the field and for the menus (see shell/music.ts). */
+  fieldTrack: string;
+  menuTrack: string;
 }
 
 export interface GameSave {
@@ -47,10 +54,23 @@ export interface GameSave {
   createdAt: number;
   cities: Record<string, CityProgress>;
   run: RunInfo | null;
-  /** Wallet between farms (while a farm runs, the engine's cash is the wallet). */
+  /** Savings. Since v0.9 a farm starts with $0 and its bills are paid from what is harvested there; savings
+   * (what is left after each deed, free-coin ads between farms) buy upgrades and tools. */
   wallet: number;
+  /** Set once the save uses separate savings (v0.9). Older saves kept savings inside a running farm's cash. */
+  splitWallet: boolean;
   workshop: WorkshopState;
   tools: ToolsState;
+  /** Skills learned on the skill map (diamonds come from wins; see skills.ts). */
+  skills: string[];
+  /** Diamonds from outside the route (daily gold medals). */
+  bonusDiamonds: number;
+  /** County-fair ribbons for the Bling Barn, and what's bought there. */
+  ribbons: number;
+  flair: FlairState;
+  daily: DailyState;
+  /** Duel wins today, capped for ribbons. */
+  duelDay: { date: string; rewarded: number };
   ads: AdCounters;
   settings: Settings;
   seen: Record<string, boolean>;
@@ -64,10 +84,17 @@ export function newGame(now = Date.now()): GameSave {
     cities: {},
     run: null,
     wallet: 0,
+    splitWallet: true,
     workshop: { levels: emptyLevels(), job: null },
     tools: newTools(),
-    ads: { date: '', coins: 0, doubles: 0, finishes: 0, lastCoinsAt: 0 },
-    settings: { music: true, haptics: true },
+    skills: [],
+    bonusDiamonds: 0,
+    ribbons: 0,
+    flair: newFlair(),
+    daily: newDaily(),
+    duelDay: { date: '', rewarded: 0 },
+    ads: { date: '', coins: 0, doubles: 0, finishes: 0, ribbons: 0, lastCoinsAt: 0 },
+    settings: { music: true, haptics: true, fieldTrack: 'meatball', menuTrack: 'gone_fishin' },
     seen: {},
     totals: { days: 0, crops: 0, earned: 0 },
   };
@@ -112,6 +139,9 @@ export function parseGame(raw: string | null): GameSave {
     };
   }
   g.wallet = Math.max(0, num(o.wallet));
+  // before v0.9 a running farm's cash already held the savings it started with: don't count them twice
+  if (o.splitWallet !== true && g.run) g.wallet = 0;
+  g.splitWallet = true;
   if (o.workshop && typeof o.workshop === 'object') {
     const lv = o.workshop.levels || {};
     for (const k of Object.keys(g.workshop.levels) as Array<keyof typeof g.workshop.levels>) {
@@ -123,21 +153,53 @@ export function parseGame(raw: string | null): GameSave {
     }
   }
   g.tools = parseTools(o.tools);
+  if (Array.isArray(o.skills)) g.skills = o.skills.filter((s: unknown) => typeof s === 'string' && /^[a-z_]{3,30}$/.test(s as string)).slice(0, 40);
+  g.bonusDiamonds = Math.max(0, Math.floor(num(o.bonusDiamonds)));
+  g.flair = parseFlair(o.flair);
+  if (o.daily && typeof o.daily === 'object' && typeof o.daily.date === 'string') {
+    g.daily = {
+      date: o.daily.date,
+      plays: Math.max(0, Math.floor(num(o.daily.plays))),
+      adPlays: Math.max(0, Math.floor(num(o.daily.adPlays))),
+      best: Math.max(0, num(o.daily.best)),
+      medal: Math.max(0, Math.min(3, Math.floor(num(o.daily.medal)))),
+      goldDiamond: !!o.daily.goldDiamond,
+    };
+  }
+  if (o.duelDay && typeof o.duelDay === 'object') g.duelDay = { date: String(o.duelDay.date || ''), rewarded: Math.max(0, Math.floor(num(o.duelDay.rewarded))) };
   if (o.ads && typeof o.ads === 'object') {
     g.ads = {
       date: typeof o.ads.date === 'string' ? o.ads.date : '',
       coins: Math.floor(num(o.ads.coins)),
       doubles: Math.floor(num(o.ads.doubles)),
       finishes: Math.floor(num(o.ads.finishes)),
+      ribbons: Math.floor(num(o.ads.ribbons)),
       lastCoinsAt: num(o.ads.lastCoinsAt),
     };
   }
   if (o.settings && typeof o.settings === 'object') {
-    g.settings = { music: o.settings.music !== false, haptics: o.settings.haptics !== false };
+    const str = (v: unknown, d: string) => (typeof v === 'string' && /^[a-z_]{2,24}$/.test(v) ? v : d);
+    g.settings = {
+      music: o.settings.music !== false,
+      haptics: o.settings.haptics !== false,
+      fieldTrack: str(o.settings.fieldTrack, g.settings.fieldTrack),
+      menuTrack: str(o.settings.menuTrack, g.settings.menuTrack),
+    };
   }
   if (o.seen && typeof o.seen === 'object') for (const k of Object.keys(o.seen)) g.seen[k] = !!o.seen[k];
   if (o.totals && typeof o.totals === 'object') {
     g.totals = { days: num(o.totals.days), crops: num(o.totals.crops), earned: num(o.totals.earned) };
+  }
+  // ribbons arrived in v0.8.1: older saves get them for the stars, crowns and bosses they already have
+  if (typeof o.ribbons === 'number' && Number.isFinite(o.ribbons)) g.ribbons = Math.max(0, Math.floor(o.ribbons));
+  else {
+    let r = 0;
+    for (const c of ROUTE) {
+      const p = g.cities[c.id];
+      if (!p) continue;
+      r += p.stars + (p.crown ? 2 : 0) + (p.won && countryOf(c.country).cities[countryOf(c.country).cities.length - 1].id === c.id ? 3 : 0);
+    }
+    g.ribbons = r;
   }
   return g;
 }

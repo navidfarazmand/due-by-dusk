@@ -87,7 +87,7 @@ test('the farmhouse fits the screen on every tab', async ({ page }) => {
 });
 
 test('tools: buy the scythe, put it in hand and add an attachment', async ({ page }) => {
-  await boot(page, seeded(CA, 5000));
+  await boot(page, seeded(CA, 8000));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('us_austin'));
   await act(page, 'tab', 'tools');
   await act(page, 'tool', 'scythe');
@@ -154,4 +154,133 @@ test('settings show the credits and keep the toggles', async ({ page }) => {
   await act(page, 'close');
   const g = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g.settings.music).toBe(false);
+});
+
+type Box = { l: number; r: number; t: number; b: number };
+
+async function boxes(page: Page, sels: string[]): Promise<{ vw: number; vh: number; b: Record<string, Box[]> }> {
+  return page.evaluate(list => {
+    const out: Record<string, { l: number; r: number; t: number; b: number }[]> = {};
+    for (const sel of list)
+      out[sel] = [...document.querySelectorAll(sel)]
+        .filter(e => (e as HTMLElement).offsetParent !== null)
+        .map(e => {
+          const r = e.getBoundingClientRect();
+          return { l: r.left, r: r.right, t: r.top, b: r.bottom };
+        });
+    return { vw: innerWidth, vh: innerHeight, b: out };
+  }, sels);
+}
+
+const inside = (x: Box, vw: number, vh: number) => x.l >= -1 && x.t >= -1 && x.r <= vw + 1 && x.b <= vh + 1;
+const apart = (a: Box, c: Box) => a.r <= c.l + 1 || c.r <= a.l + 1 || a.b <= c.t + 1 || c.b <= a.t + 1;
+
+test('skill map: learn a skill, the farm uses it, reset gives the diamonds back', async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 3), 0));
+  await act(page, 'skills');
+  await expect(page.locator('.scr-skills .sk-card')).toContainText("Harvester's Awakening");
+  await expect(page.locator('.scr-skills .sk-gems')).toContainText('3 to spend');
+  const L = await boxes(page, ['.scr-skills .sk-node', '.scr-skills .sk-card', '.scr-skills .sk-gems', '.scr-skills .top-btn']);
+  const card = L.b['.scr-skills .sk-card'][0];
+  for (const n of L.b['.scr-skills .sk-node']) {
+    expect(inside(n, L.vw, L.vh)).toBe(true);
+    expect(apart(n, card)).toBe(true);
+  }
+  expect(inside(card, L.vw, L.vh)).toBe(true);
+  await act(page, 'skill-learn', 'core_awakening');
+  await act(page, 'skill', 'reap_root');
+  await act(page, 'skill-learn', 'reap_root');
+  await expect(page.locator('.scr-skills .sk-gems')).toContainText('0 to spend');
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().learnedSkills)).toEqual(['core_awakening', 'reap_root']);
+  await act(page, 'skill-reset');
+  await expect(page.locator('.scr-skills .sk-gems')).toContainText('3 to spend');
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().learnedSkills)).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('Bling Barn: buy a bird with ribbons and the field uses its colours', async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 2), 0, { ribbons: 10 }));
+  await act(page, 'barn');
+  await act(page, 'barn-tab', 'bird');
+  await act(page, 'barn-pick', 'bird_jay');
+  await expect(page.locator('.scr-barn .bb-panel h3')).toHaveText('Blue jay');
+  const L = await boxes(page, ['.scr-barn .bb-card', '.scr-barn .bb-panel', '.scr-barn .bb-tab', '.scr-barn .bb-chips']);
+  const panel = L.b['.scr-barn .bb-panel'][0];
+  for (const c of [...L.b['.scr-barn .bb-card'], ...L.b['.scr-barn .bb-tab']]) {
+    expect(inside(c, L.vw, L.vh)).toBe(true);
+    expect(apart(c, panel)).toBe(true);
+  }
+  await act(page, 'barn-buy', 'bird_jay');
+  await expect(page.locator('.scr-barn .bb-ribbons')).toContainText('6');
+  const g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g.flair.equipped.bird).toBe('bird_jay');
+  expect(await page.evaluate(() => (window as any).__DBD_LOOK.bird)).toEqual(['#3b82f6', '#1f2937']);
+  expect(errors).toEqual([]);
+});
+
+test('daily farm: one try on a seeded field, then the real farm is back as it was', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = await boot(page, seeded(CA.slice(0, 2), 150, { run: { cityId: 'ca_toronto', startCash: 150, startedAt: 1, bestDay: 0 } }));
+  const before = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
+  expect(before.cityId).toBe('ca_toronto');
+  await act(page, 'daily');
+  await expect(page.locator('.scr-daily .dl-card')).toContainText('1 try left');
+  const L = await boxes(page, ['.scr-daily .dl-card']);
+  expect(inside(L.b['.scr-daily .dl-card'][0], L.vw, L.vh)).toBe(true);
+  await fast(page, 10);
+  await act(page, 'daily-play');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().cityId)).not.toBe('');
+  await expect(page.locator('.scr-side .dl-res')).toBeVisible({ timeout: 25_000 });
+  const after = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
+  expect(after.cityId).toBe('ca_toronto');
+  expect(after.cash).toBe(before.cash);
+  expect(after.day).toBe(before.day);
+  const g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g.daily.plays).toBe(1);
+  // the second try is a rewarded ad, never forced
+  await expect(page.locator('.scr-side [data-act="ad-daily"]')).toBeVisible();
+  await page.locator('.scr-side [data-act="go"]').click();
+  await act(page, 'continue');
+  await expect(page.locator('.scr-farmhouse .fh-title')).toContainText('Toronto');
+  expect(errors).toEqual([]);
+});
+
+test('duel: two players take a turn each on the same field', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = await boot(page, seeded(CA.slice(0, 3), 0));
+  await act(page, 'duel');
+  await expect(page.locator('.scr-duel .du-card')).toBeVisible();
+  const L = await boxes(page, ['.scr-duel .du-card']);
+  expect(inside(L.b['.scr-duel .du-card'][0], L.vw, L.vh)).toBe(true);
+  await act(page, 'duel-tool', 'scythe');
+  await fast(page, 10);
+  await act(page, 'duel-start');
+  await expect(page.locator('.scr-side .du-pass')).toBeVisible({ timeout: 25_000 });
+  const seed1 = await page.evaluate(() => (window as any).__DBD_APP.duel.seed);
+  await act(page, 'duel-p2');
+  await expect(page.locator('.scr-side .du-end')).toBeVisible({ timeout: 25_000 });
+  const du = await page.evaluate(() => (window as any).__DBD_APP.duel);
+  expect(du.seed).toBe(seed1);
+  expect(du.tool).toBe('scythe');
+  await page.locator('.scr-side [data-act="go"]').click();
+  await expect(page.locator('.scr-menu')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('music: pick a field track and a menu track in Settings', async ({ page }) => {
+  const errors = await boot(page);
+  await act(page, 'settings');
+  await act(page, 'music-picker');
+  await expect(page.locator('.scr-modal .track-row')).toHaveCount(8);
+  await expect(page.locator('.scr-modal .tr-slot.on[data-act="track-field"]')).toHaveAttribute('data-arg', 'meatball');
+  await expect(page.locator('.scr-modal .tr-slot.on[data-act="track-menu"]')).toHaveAttribute('data-arg', 'gone_fishin');
+  await act(page, 'track-field', 'hillbilly');
+  await act(page, 'track-menu', 'fireflies');
+  const s = await page.evaluate(() => (window as any).__DBD_APP.g.settings);
+  expect(s.fieldTrack).toBe('hillbilly');
+  expect(s.menuTrack).toBe('fireflies');
+  const L = await boxes(page, ['.scr-modal .modal-card']);
+  expect(inside(L.b['.scr-modal .modal-card'][0], L.vw, L.vh)).toBe(true);
+  expect(errors).toEqual([]);
 });

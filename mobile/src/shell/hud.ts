@@ -81,6 +81,9 @@ export const HUD_HTML = `<div id="dbdHud" hidden>
 
 type El = Record<string, HTMLElement & SVGElement>;
 
+/** On side farms (daily, duel) the bank chip shows a target instead of a bill. */
+export type HudGoal = (cash: number) => { name: string; amt: number };
+
 export class FarmHud {
   private root: HTMLElement;
   private E: El = {} as El;
@@ -90,6 +93,7 @@ export class FarmHud {
   private lastT = 0;
   private bannerT = 0;
   private ev: DayEvent | null = null;
+  private goal: HudGoal | null = null;
   visible = false;
 
   constructor(stage: HTMLElement, private onSound: () => void) {
@@ -103,6 +107,10 @@ export class FarmHud {
     this.E.Sound.addEventListener('click', () => this.onSound());
     this.E.Badge.addEventListener('click', () => this.showBanner(false));
     (window as any).__dbdCoin = () => this.coin();
+  }
+
+  setGoal(g: HudGoal | null): void {
+    this.goal = g;
   }
 
   show(on: boolean): void {
@@ -161,13 +169,15 @@ export class FarmHud {
     else this.shown += (h.cash - this.shown) * Math.min(1, dt * 0.9);
     if (Math.abs(h.cash - this.shown) < 0.5) this.shown = h.cash;
     E.Cash.textContent = money(this.shown);
-    const amt = h.bill ? h.bill.amt : 1,
+    const goal = this.goal ? this.goal(h.cash) : null;
+    const bill = goal || h.bill;
+    const amt = bill ? bill.amt : 1,
       prog = clamp(this.shown / amt, 0, 1),
       covered = this.shown >= amt;
     E.BillFill.style.width = (prog * 100).toFixed(1) + '%';
     E.JarGold.setAttribute('transform', 'translate(0 ' + (22 * (1 - prog)).toFixed(2) + ')');
     E.Bank.classList.toggle('covered', covered);
-    E.BillName.textContent = h.bill ? SHORT[h.bill.name] || h.bill.name : '';
+    E.BillName.textContent = bill ? SHORT[bill.name] || bill.name : '';
     E.BillAmt.textContent = covered ? '✓' : money(amt);
     const tiers = h.tiers;
     let ti = 0;

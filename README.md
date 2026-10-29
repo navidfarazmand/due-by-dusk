@@ -4,11 +4,11 @@ A farming game prototype. You sweep a scythe over crops, each crop sells the mom
 
 Not published to any app store yet.
 
-## Mobile development (v0.7.2)
+## Mobile development (v0.9.0)
 
-[Download Android test APK](https://github.com/navidfarazmand/due-by-dusk/releases/download/android-v0.7.2/Due-by-Dusk-Test.apk) · [Test release and save transfer instructions](https://github.com/navidfarazmand/due-by-dusk/releases/tag/android-v0.7.2)
+[Download Android test APK](https://github.com/navidfarazmand/due-by-dusk/releases/download/android-v0.9.0/Due-by-Dusk-Test.apk) · [Test release](https://github.com/navidfarazmand/due-by-dusk/releases/tag/android-v0.9.0)
 
-The maintained TypeScript/Phaser/Capacitor project is now in [mobile/](mobile/). It continues the supplied v0.6.00 game. Landscape gameplay fills the screen; a gear button opens management and pauses an active harvest.
+The maintained TypeScript/Capacitor project is in [mobile/](mobile/): Gemini's farm engine for the harvest days inside Claude's game shell. 7 countries and 30 farms with bosses, tools, a workshop, a skill map, a daily farm, two-player duels on one phone, looks-only cosmetics (the Bling Barn) and optional rewarded ads.
 
 From mobile/, run npm ci, npm run dev, npm test and npm run build. See [architecture](mobile/ARCHITECTURE.md), [native setup](mobile/docs/mobile.md) and [release plan](mobile/docs/release-plan.md). GitHub Actions checks updates and builds a debug Android APK. The app has not been published to a store.
 
