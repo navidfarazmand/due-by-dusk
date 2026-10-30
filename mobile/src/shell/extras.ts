@@ -10,6 +10,9 @@ import type { GameSave } from '../game/progress';
 import { ART, PREVIEW, bandFor } from './art';
 import { ICON, TOOL_ICON, INK, esc, money } from './dom';
 import { barnPreview, flairIcon, ribbonIcon, skillGlyph } from './looks';
+import { lang, t, tn } from '../i18n/i18n';
+
+const LOCALE = { en: 'en-US', fr: 'fr-FR', es: 'es-ES', pt: 'pt-BR', de: 'de-DE' } as const;
 
 export const BRANCH_COL: Record<Branch, string> = { core: '#FFF4DC', reap: '#F07A62', soil: '#6DBE45', gold: '#FFC23D' };
 
@@ -58,19 +61,19 @@ export function skillMapHtml(g: GameSave, sel: string): string {
     const own = learned(d.id);
     const ready = !own && reqsMet(g, d);
     const state = own ? 'own' : ready ? 'ready' : 'dim';
-    const label = `${d.name}, ${own ? 'learned' : ready ? `ready, ${d.cost} diamond${d.cost > 1 ? 's' : ''}` : 'locked'}`;
+    const label = `${t(d.name)}, ${own ? t('learned') : ready ? `${t('ready')}, ${tn(d.cost, '{n} diamond', '{n} diamonds')}` : t('locked')}`;
     nodes += `<button type="button" class="sk-node ${state}${sel === d.id ? ' sel' : ''}" data-act="skill" data-arg="${d.id}" aria-label="${esc(label)}" aria-pressed="${sel === d.id}"
       style="left: ${d.x - r}px; top: ${d.y - r}px; width: ${2 * r}px; height: ${2 * r}px; --c: ${BRANCH_COL[d.branch]}">${skillGlyph(d.id, Math.round(r * 1.08))}</button>`;
   }
-  const labels = `<span class="sk-lbl" style="left: 92px; top: 221px; color: ${BRANCH_COL.reap}">REAP</span>
-    <span class="sk-lbl" style="left: 391px; top: 184px; color: ${BRANCH_COL.soil}">SOIL</span>
-    <span class="sk-lbl" style="left: 397px; top: 232px; color: ${BRANCH_COL.gold}">FORTUNE</span>`;
+  const labels = `<span class="sk-lbl" style="left: 92px; top: 221px; color: ${BRANCH_COL.reap}">${t('REAP')}</span>
+    <span class="sk-lbl" style="left: 391px; top: 184px; color: ${BRANCH_COL.soil}">${t('SOIL')}</span>
+    <span class="sk-lbl" style="left: 397px; top: 232px; color: ${BRANCH_COL.gold}">${t('FORTUNE')}</span>`;
   const left = diamondsLeft(g), earned = diamondsEarned(g);
   return `<div class="bg fit sk-map"><svg class="sk-sky" viewBox="0 0 844 390" width="844" height="390" aria-hidden="true">${STARS}${links}</svg>${labels}${nodes}${clouds}</div>
-    <div class="grp tl" style="width: 330px; height: 64px"><button type="button" class="st-btn st-sq top-btn" data-act="back" aria-label="Back">${ICON.back()}</button>
-      <div class="sk-titles"><h2>Skill map</h2><p>Win a farm, earn a diamond. Boss farms give two.</p></div></div>
+    <div class="grp tl" style="width: 330px; height: 64px"><button type="button" class="st-btn st-sq top-btn" data-act="back" aria-label="${t('Back')}">${ICON.back()}</button>
+      <div class="sk-titles"><h2>${t('Skill map')}</h2><p>${t('Win a farm, earn a diamond. Boss farms give two.')}</p></div></div>
     <div class="grp tr" style="width: 250px; height: 390px">
-      <p class="sk-gems">${ICON.diamond(18)}<b>${left}</b> to spend · ${earned} earned</p>
+      <p class="sk-gems">${ICON.diamond(18)}<b>${left}</b> ${t('to spend · {n} earned', { n: earned })}</p>
       <div class="st-chip sk-card">${skillCardHtml(g, sel)}</div></div>`;
 }
 
@@ -79,24 +82,25 @@ function skillCardHtml(g: GameSave, id: string): string {
   const own = g.skills.includes(d.id);
   const chk = canLearn(g, d.id);
   const status = own ? 'Learned' : chk.ok ? 'Ready' : reqsMet(g, d) ? 'Ready' : 'Locked';
+  const statusTxt = t(status);
   const kids = SKILLS.filter(s => s.reqs.includes(d.id));
-  const kidNames = kids.map(k => (revealed(g, k) || own ? k.name : '?')).join(', ');
-  const needs = d.reqs.map(r => skillDef(r)!.name).join(d.reqMode === 'any' ? ' or ' : ', ');
+  const kidNames = kids.map(k => (revealed(g, k) || own ? t(k.name) : '?')).join(', ');
+  const needs = d.reqs.map(r => t(skillDef(r)!.name)).join(d.reqMode === 'any' ? ` ${t('or')} ` : ', ');
   const rel = !d.reqs.length
-    ? `<b>Leads to:</b> ${esc(kidNames)}`
+    ? `<b>${t('Leads to:')}</b> ${esc(kidNames)}`
     : kids.length
-      ? `<b>Needs:</b> ${esc(needs)}<br><b>Leads to:</b> ${esc(kidNames)}`
-      : `<b>Needs:</b> ${esc(needs)}`;
+      ? `<b>${t('Needs:')}</b> ${esc(needs)}<br><b>${t('Leads to:')}</b> ${esc(kidNames)}`
+      : `<b>${t('Needs:')}</b> ${esc(needs)}`;
   let foot: string;
-  if (own) foot = `<p class="sk-why">Learned. Reset any time to move your diamonds.</p>`;
+  if (own) foot = `<p class="sk-why">${t('Learned. Reset any time to move your diamonds.')}</p>`;
   else if (chk.ok)
-    foot = `<button type="button" class="st-btn gold sk-learn" data-act="skill-learn" data-arg="${d.id}">Learn · ${d.cost} ${ICON.diamond(18)}</button>`;
-  else foot = `<p class="sk-why">${esc(chk.reason || 'Not yet.')}</p>`;
-  const reset = g.skills.length ? `<button type="button" class="linkish sk-reset" data-act="skill-reset">Reset all skills · diamonds back</button>` : '';
-  return `<div class="sk-head"><span class="sk-dot" style="background: ${BRANCH_COL[d.branch]}"></span><span class="eyebrow">${esc(BRANCH_NAME[d.branch].toUpperCase())} · ${d.cost} ◆</span>
-      <span class="sk-pill ${status.toLowerCase()}">${status}</span></div>
-    <div class="sk-name"><span class="sk-ic" style="background: ${BRANCH_COL[d.branch]}">${skillGlyph(d.id, 26)}</span><h3>${esc(d.name)}</h3></div>
-    <p class="sk-desc">${esc(d.effect)}</p><p class="sk-rel">${rel}</p>
+    foot = `<button type="button" class="st-btn gold sk-learn" data-act="skill-learn" data-arg="${d.id}">${t('Learn · {n}', { n: d.cost })} ${ICON.diamond(18)}</button>`;
+  else foot = `<p class="sk-why">${esc(t(chk.reason || 'Not yet.'))}</p>`;
+  const reset = g.skills.length ? `<button type="button" class="linkish sk-reset" data-act="skill-reset">${t('Reset all skills · diamonds back')}</button>` : '';
+  return `<div class="sk-head"><span class="sk-dot" style="background: ${BRANCH_COL[d.branch]}"></span><span class="eyebrow">${esc(t(BRANCH_NAME[d.branch]).toUpperCase())} · ${d.cost} ◆</span>
+      <span class="sk-pill ${status.toLowerCase()}">${statusTxt}</span></div>
+    <div class="sk-name"><span class="sk-ic" style="background: ${BRANCH_COL[d.branch]}">${skillGlyph(d.id, 26)}</span><h3>${esc(t(d.name))}</h3></div>
+    <p class="sk-desc">${esc(t(d.effect))}</p><p class="sk-rel">${rel}</p>
     <div class="sk-foot">${foot}${reset}</div>`;
 }
 
@@ -110,37 +114,37 @@ export function firstSkill(g: GameSave): string {
 
 export function barnHtml(g: GameSave, tab: FlairKind, sel: string, ribbonAd: boolean): string {
   const tabs = FLAIR_KINDS.map(
-    k => `<button type="button" role="tab" class="bb-tab${tab === k.kind ? ' on' : ''}" aria-selected="${tab === k.kind}" data-act="barn-tab" data-arg="${k.kind}">${esc(k.name)}</button>`,
+    k => `<button type="button" role="tab" class="bb-tab${tab === k.kind ? ' on' : ''}" aria-selected="${tab === k.kind}" data-act="barn-tab" data-arg="${k.kind}">${esc(t(k.name))}</button>`,
   ).join('');
   const items = FLAIR.filter(f => f.kind === tab);
   const cur = flairById(sel) && flairById(sel)!.kind === tab ? flairById(sel)! : flairById(g.flair.equipped[tab])!;
   const cards = items
     .map(it => {
       const own = g.flair.owned.includes(it.id), on = g.flair.equipped[tab] === it.id;
-      const price = on ? 'In use' : own ? 'Owned' : it.price === 0 ? 'Free' : `${ribbonIcon(14)}${it.price}`;
-      return `<button type="button" class="bb-card${cur.id === it.id ? ' sel' : ''}" data-act="barn-pick" data-arg="${it.id}" aria-pressed="${cur.id === it.id}" aria-label="${esc(it.name)}, ${on ? 'in use' : own ? 'owned' : it.price + ' ribbons'}">
-        ${on ? '<span class="bb-on">ON</span>' : ''}${flairIcon(it, 76, 60)}<b>${esc(it.name)}</b><span class="bb-price">${price}</span></button>`;
+      const price = on ? t('In use') : own ? t('Owned') : it.price === 0 ? t('Free') : `${ribbonIcon(14)}${it.price}`;
+      return `<button type="button" class="bb-card${cur.id === it.id ? ' sel' : ''}" data-act="barn-pick" data-arg="${it.id}" aria-pressed="${cur.id === it.id}" aria-label="${esc(t(it.name))}, ${on ? t('in use') : own ? t('owned') : tn(it.price, '{n} ribbon', '{n} ribbons')}">
+        ${on ? `<span class="bb-on">${t('ON')}</span>` : ''}${flairIcon(it, 76, 60)}<b>${esc(t(it.name))}</b><span class="bb-price">${price}</span></button>`;
     })
     .join('');
   const look = (k: FlairKind) => (tab === k ? cur : flairById(g.flair.equipped[k])!);
   const own = g.flair.owned.includes(cur.id), on = g.flair.equipped[tab] === cur.id;
   let action: string;
-  if (on) action = `<p class="bb-why">In use on your farm.</p>`;
-  else if (own) action = `<button type="button" class="st-btn blue bb-act" data-act="barn-equip" data-arg="${cur.id}">Use this</button>`;
-  else if (g.ribbons >= cur.price) action = `<button type="button" class="st-btn gold bb-act" data-act="barn-buy" data-arg="${cur.id}">Buy · ${ribbonIcon(20)} ${cur.price}</button>`;
-  else action = `<p class="bb-why">Needs ${cur.price} ribbons. You have ${g.ribbons}. Win stars, crowns and daily medals to earn more.</p>`;
-  const ad = ribbonAd ? `<button type="button" class="ad-chip" data-act="ad-ribbon">${ICON.play()}<span>Free ribbon</span></button>` : '';
+  if (on) action = `<p class="bb-why">${t('In use on your farm.')}</p>`;
+  else if (own) action = `<button type="button" class="st-btn blue bb-act" data-act="barn-equip" data-arg="${cur.id}">${t('Use this')}</button>`;
+  else if (g.ribbons >= cur.price) action = `<button type="button" class="st-btn gold bb-act" data-act="barn-buy" data-arg="${cur.id}">${t('Buy')} · ${ribbonIcon(20)} ${cur.price}</button>`;
+  else action = `<p class="bb-why">${t('Needs {n} ribbons. You have {have}. Win stars, crowns and daily medals to earn more.', { n: cur.price, have: g.ribbons })}</p>`;
+  const ad = ribbonAd ? `<button type="button" class="ad-chip" data-act="ad-ribbon">${ICON.play()}<span>${t('Free ribbon')}</span></button>` : '';
   return `<div class="bb-planks"></div>
     <div class="grp tl" style="width: 480px; height: 390px">
-      <button type="button" class="st-btn st-sq top-btn" data-act="back" aria-label="Back">${ICON.back()}</button>
-      <div class="bb-titles"><h2>Bling Barn</h2><p>Looks only. Never changes your stats.</p></div>
-      <div class="bb-tabs" role="tablist" aria-label="Bling Barn shelves">${tabs}</div>
+      <button type="button" class="st-btn st-sq top-btn" data-act="back" aria-label="${t('Back')}">${ICON.back()}</button>
+      <div class="bb-titles"><h2>${t('Bling Barn')}</h2><p>${t('Looks only. Never changes your stats.')}</p></div>
+      <div class="bb-tabs" role="tablist" aria-label="${t('Bling Barn shelves')}">${tabs}</div>
       <div class="bb-grid">${cards}</div></div>
     <div class="grp tr" style="width: 266px; height: 390px">
-      <div class="bb-chips">${ad}<p class="st-chip bb-ribbons">${ribbonIcon(20)}<b>${g.ribbons}</b> ribbons</p></div>
+      <div class="bb-chips">${ad}<p class="st-chip bb-ribbons">${ribbonIcon(20)}<b>${g.ribbons}</b> ${t('ribbons')}</p></div>
       <div class="st-chip bb-panel">
       <div class="bb-scene-box">${barnPreview(look('finish'), look('trail'), look('bird'), look('coin'))}</div>
-      <h3>${esc(cur.name)}</h3><p class="bb-line">${esc(cur.line)}</p><div class="bb-foot">${action}</div></div></div>`;
+      <h3>${esc(t(cur.name))}</h3><p class="bb-line">${esc(t(cur.line))}</p><div class="bb-foot">${action}</div></div></div>`;
 }
 
 // ------------------------------------------------------------------ daily farm and duel
@@ -172,17 +176,17 @@ export function duelIcon(size = 24): string {
 function farmStrip(cityId: string): string {
   const ct = cityById(cityId)!;
   const pv = PREVIEW[cityId] || bandFor(cityId, ct.country);
-  return pv ? `<div class="dl-strip" style="background-image: url('${pv}')" role="img" aria-label="The ${esc(ct.short)} farm"></div>` : `<div class="dl-strip empty"></div>`;
+  return pv ? `<div class="dl-strip" style="background-image: url('${pv}')" role="img" aria-label="${t('The {farm} farm', { farm: esc(ct.short) })}"></div>` : `<div class="dl-strip empty"></div>`;
 }
 
 function toolChip(tool: ToolId): string {
-  return `<span class="dl-tool">${TOOL_ICON[tool] ? TOOL_ICON[tool](30) : ''}<b>${esc(toolDef(tool).name)}</b></span>`;
+  return `<span class="dl-tool">${TOOL_ICON[tool] ? TOOL_ICON[tool](30) : ''}<b>${esc(t(toolDef(tool).name))}</b></span>`;
 }
 
 function targetsRow(targets: [number, number, number], best: number): string {
   const m = medalOf(targets, best);
   return `<div class="dl-targets">${[1, 2, 3]
-    .map(i => `<div class="dl-t${m >= i ? ' got' : ''}">${medalIcon(i, 26)}<span><b>${MEDAL_NAME[i].toUpperCase()}</b>${money(targets[i - 1])}</span></div>`)
+    .map(i => `<div class="dl-t${m >= i ? ' got' : ''}">${medalIcon(i, 26)}<span><b>${t(MEDAL_NAME[i]).toUpperCase()}</b>${money(targets[i - 1])}</span></div>`)
     .join('')}</div>`;
 }
 
@@ -191,22 +195,24 @@ export function dailyHtml(def: SideDef & { date: string }, d: DailyState, tries:
   const c = countryOf(ct.country);
   const medal = d.medal;
   const when = new Date(def.date + 'T12:00:00');
-  const dateTxt = isNaN(when.getTime()) ? def.date : when.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const dateTxt = isNaN(when.getTime()) ? def.date : when.toLocaleDateString(LOCALE[lang()], { weekday: 'long', month: 'long', day: 'numeric' });
   let play: string;
-  if (tries > 0) play = `<button type="button" class="st-btn gold btn-md flex1" data-act="daily-play">${ICON.play()}<span>Play · ${tries} ${tries === 1 ? 'try' : 'tries'} left</span></button>`;
-  else if (adTry) play = `<button type="button" class="st-btn blue btn-md flex1 ad-btn" data-act="ad-daily">${ICON.play()}<span>Watch an ad: one more try</span></button>`;
-  else play = `<p class="dl-done">That's all for today. A new farm opens tomorrow.</p>`;
+  if (tries > 0) play = `<button type="button" class="st-btn gold btn-md flex1" data-act="daily-play">${ICON.play()}<span>${tn(tries, 'Play · {n} try left', 'Play · {n} tries left')}</span></button>`;
+  else if (adTry) play = `<button type="button" class="st-btn blue btn-md flex1 ad-btn" data-act="ad-daily">${ICON.play()}<span>${t('Watch an ad: one more try')}</span></button>`;
+  else play = `<p class="dl-done">${t("That's all for today. A new farm opens tomorrow.")}</p>`;
   const bestTxt = d.plays
-    ? `Your best today: <b>${money(d.best)}</b>${medal ? ` · ${MEDAL_NAME[medal]}` : ''}`
-    : `One free try today${adTry ? ', and up to two more with a short video' : ''}. Your best try counts.`;
+    ? `${t('Your best today:')} <b>${money(d.best)}</b>${medal ? ` · ${t(MEDAL_NAME[medal])}` : ''}`
+    : adTry
+      ? t('One free try today, and up to two more with a short video. Your best try counts.')
+      : t('One free try today. Your best try counts.');
   return `<div class="grp mc" style="width: 500px; height: 350px"><div class="st-chip dl-card">
-    <div class="dl-head"><span class="dl-cal">${calendarIcon(22)}</span><span class="eyebrow">DAILY FARM · ${esc(dateTxt.toUpperCase())}</span>${medal ? `<span class="dl-medal">${medalIcon(medal, 30)}</span>` : ''}</div>
-    <div class="dl-farm">${farmStrip(def.cityId)}<div class="dl-farm-txt"><h2>${esc(ct.short)}, ${esc(c.code === 'US' ? 'USA' : c.name)}</h2>${toolChip(def.tool)}</div></div>
-    <p class="dl-text">One day, no bills. Everyone gets the same field and the same upgrades, so it's all down to your swipes.</p>
+    <div class="dl-head"><span class="dl-cal">${calendarIcon(22)}</span><span class="eyebrow">${t('DAILY FARM')} · ${esc(dateTxt.toUpperCase())}</span>${medal ? `<span class="dl-medal">${medalIcon(medal, 30)}</span>` : ''}</div>
+    <div class="dl-farm">${farmStrip(def.cityId)}<div class="dl-farm-txt"><h2>${esc(ct.short)}, ${esc(c.code === 'US' ? t('USA') : t(c.name))}</h2>${toolChip(def.tool)}</div></div>
+    <p class="dl-text">${t("One day, no bills. Everyone gets the same field and the same upgrades, so it's all down to your swipes.")}</p>
     ${targetsRow(def.targets, d.best)}
     <p class="dl-best">${bestTxt}</p>
-    <p class="dl-rew">${medalIcon(1, 16)} ${MEDAL_RIBBONS[1]} ${ribbonIcon(14)} · ${medalIcon(2, 16)} ${MEDAL_RIBBONS[2]} ${ribbonIcon(14)} · ${medalIcon(3, 16)} ${MEDAL_RIBBONS[3]} ${ribbonIcon(14)} and a ${ICON.diamond(14)} once a day</p>
-    <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="go" data-arg="menu">Back</button>${play}</div>
+    <p class="dl-rew">${medalIcon(1, 16)} ${MEDAL_RIBBONS[1]} ${ribbonIcon(14)} · ${medalIcon(2, 16)} ${MEDAL_RIBBONS[2]} ${ribbonIcon(14)} · ${medalIcon(3, 16)} ${MEDAL_RIBBONS[3]} ${ribbonIcon(14)} ${t('and a {gem} once a day', { gem: ICON.diamond(14) })}</p>
+    <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="go" data-arg="menu">${t('Back')}</button>${play}</div>
   </div></div>`;
 }
 
@@ -221,19 +227,19 @@ export function duelHtml(s: DuelSetup, cities: string[], tools: ToolId[]): strin
   const i = cities.indexOf(s.cityId);
   const n = cities.length;
   const toolBtns = tools
-    .map(t => `<button type="button" class="du-tool${s.tool === t ? ' on' : ''}" data-act="duel-tool" data-arg="${t}" aria-pressed="${s.tool === t}">${TOOL_ICON[t](28)}<span>${esc(toolDef(t).name)}</span></button>`)
+    .map(tl => `<button type="button" class="du-tool${s.tool === tl ? ' on' : ''}" data-act="duel-tool" data-arg="${tl}" aria-pressed="${s.tool === tl}">${TOOL_ICON[tl](28)}<span>${esc(t(toolDef(tl).name))}</span></button>`)
     .join('');
   return `<div class="grp mc" style="width: 520px; height: 350px"><div class="st-chip du-card">
-    <div class="dl-head"><span class="dl-cal">${duelIcon(22)}</span><span class="eyebrow">DUEL · TWO PLAYERS, ONE PHONE</span></div>
-    <h2 class="du-title">Same farm. Same crops. Most money wins.</h2>
-    <p class="dl-text">Each player farms one day on the same field with the same tool and upgrades. Pass the phone in between.</p>
-    <div class="du-row"><span class="du-k">Farm</span>
-      <button type="button" class="st-btn st-sq du-arrow" data-act="duel-city" data-arg="${cities[(i - 1 + n) % n]}" aria-label="Previous farm">${ICON.back()}</button>
+    <div class="dl-head"><span class="dl-cal">${duelIcon(22)}</span><span class="eyebrow">${t('DUEL · TWO PLAYERS, ONE PHONE')}</span></div>
+    <h2 class="du-title">${t('Same farm. Same crops. Most money wins.')}</h2>
+    <p class="dl-text">${t('Each player farms one day on the same field with the same tool and upgrades. Pass the phone in between.')}</p>
+    <div class="du-row"><span class="du-k">${t('Farm')}</span>
+      <button type="button" class="st-btn st-sq du-arrow" data-act="duel-city" data-arg="${cities[(i - 1 + n) % n]}" aria-label="${t('Previous farm')}">${ICON.back()}</button>
       <div class="du-farm">${farmStrip(s.cityId)}<b>${esc(ct.short)}</b></div>
-      <button type="button" class="st-btn st-sq du-arrow" data-act="duel-city" data-arg="${cities[(i + 1) % n]}" aria-label="Next farm"><span style="transform: scaleX(-1); display: flex">${ICON.back()}</span></button></div>
-    <div class="du-row"><span class="du-k">Tool</span><div class="du-tools">${toolBtns}</div></div>
-    <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="go" data-arg="menu">Back</button>
-      <button type="button" class="st-btn gold btn-md flex1" data-act="duel-start">${ICON.play()}<span>${esc(s.names[0])} goes first</span></button></div>
+      <button type="button" class="st-btn st-sq du-arrow" data-act="duel-city" data-arg="${cities[(i + 1) % n]}" aria-label="${t('Next farm')}"><span style="transform: scaleX(-1); display: flex">${ICON.back()}</span></button></div>
+    <div class="du-row"><span class="du-k">${t('Tool')}</span><div class="du-tools">${toolBtns}</div></div>
+    <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="go" data-arg="menu">${t('Back')}</button>
+      <button type="button" class="st-btn gold btn-md flex1" data-act="duel-start">${ICON.play()}<span>${t('{name} goes first', { name: esc(s.names[0]) })}</span></button></div>
   </div></div>`;
 }
 
@@ -258,44 +264,44 @@ export function sideResultHtml(o: SideOutcome): string {
   if (o.kind === 'daily') {
     const m = o.medal || 0;
     const got = medalOf(o.def.targets, o.score);
-    const head = got ? `${MEDAL_NAME[got]}!` : 'No medal this time';
-    const next = got < 3 ? `${MEDAL_NAME[got + 1]} needs ${money(o.def.targets[got])}.` : 'The best a farmer can do. Come back tomorrow.';
+    const head = got ? `${t(MEDAL_NAME[got])}!` : t('No medal this time');
+    const next = got < 3 ? t('{medal} needs {amt}.', { medal: t(MEDAL_NAME[got + 1]), amt: money(o.def.targets[got]) }) : t('The best a farmer can do. Come back tomorrow.');
     const rew = [
       o.ribbons ? `<span class="dia">+${o.ribbons} ${ribbonIcon(18)}</span>` : '',
       o.diamond ? `<span class="dia">+1 ${ICON.diamond(16)}</span>` : '',
     ].join('');
     let again = '';
-    if (o.tries && o.tries > 0) again = `<button type="button" class="st-btn gold btn-md flex1" data-act="daily-play">Again · ${o.tries} left</button>`;
-    else if (o.adTry) again = `<button type="button" class="st-btn blue btn-md flex1 ad-btn" data-act="ad-daily">${ICON.play()}<span>One more try</span></button>`;
+    if (o.tries && o.tries > 0) again = `<button type="button" class="st-btn gold btn-md flex1" data-act="daily-play">${t('Again · {n} left', { n: o.tries })}</button>`;
+    else if (o.adTry) again = `<button type="button" class="st-btn blue btn-md flex1 ad-btn" data-act="ad-daily">${ICON.play()}<span>${t('One more try')}</span></button>`;
     return `<div class="grp mc" style="width: 440px; height: 320px"><div class="st-chip result-card dl-res">
-      <div class="letter-head"><span class="eyebrow">DAILY FARM · ${esc(ct.short.toUpperCase())}</span></div>
+      <div class="letter-head"><span class="eyebrow">${t('DAILY FARM')} · ${esc(ct.short.toUpperCase())}</span></div>
       <div class="dl-res-top"><span class="dl-res-medal${got ? ' pop' : ''}">${medalIcon(got, 64)}</span><div><h2 class="r-title">${head}</h2>
         <p class="dl-score">${money(o.score)}</p></div></div>
-      <p class="r-text">${got && o.newMedal ? `Your best medal today: ${MEDAL_NAME[m]}.` : m ? `Today's best stays ${MEDAL_NAME[m]}.` : ''} ${next}</p>
+      <p class="r-text">${got && o.newMedal ? t('Your best medal today: {medal}.', { medal: t(MEDAL_NAME[m]) }) : m ? t("Today's best stays {medal}.", { medal: t(MEDAL_NAME[m]) }) : ''} ${next}</p>
       ${targetsRow(o.def.targets, o.score)}
-      <div class="r-rewards"><span>${esc(ct.short)} · ${esc(toolDef(o.def.tool).name)}</span>${rew}</div>
-      <div class="r-actions"><button type="button" class="st-btn btn-md flex1" data-act="go" data-arg="menu">Menu</button>${again}</div></div></div>`;
+      <div class="r-rewards"><span>${esc(ct.short)} · ${esc(t(toolDef(o.def.tool).name))}</span>${rew}</div>
+      <div class="r-actions"><button type="button" class="st-btn btn-md flex1" data-act="go" data-arg="menu">${t('Menu')}</button>${again}</div></div></div>`;
   }
-  const names = o.names || ['Player 1', 'Player 2'];
+  const names = o.names || [t('Player 1'), t('Player 2')];
   const sc = o.scores || [0, 0];
   if (o.kind === 'duel-pass')
     return `<div class="grp mc" style="width: 420px; height: 300px"><div class="st-chip result-card du-pass">
-      <div class="letter-head"><span class="eyebrow">DUEL · ${esc(ct.short.toUpperCase())}</span></div>
-      <h2 class="r-title">${esc(names[0])} harvested ${money(sc[0])}.</h2>
-      <p class="r-text">Pass the phone to ${esc(names[1])}. Same field, same crops, same ${esc(toolDef(o.def.tool).name.toLowerCase())}. Beat ${money(sc[0])} to win.</p>
+      <div class="letter-head"><span class="eyebrow">${t('DUEL')} · ${esc(ct.short.toUpperCase())}</span></div>
+      <h2 class="r-title">${t('{name} harvested {amt}.', { name: esc(names[0]), amt: money(sc[0]) })}</h2>
+      <p class="r-text">${t('Pass the phone to {name}. Same field, same crops, same {tool}. Beat {amt} to win.', { name: esc(names[1]), tool: esc(t(toolDef(o.def.tool).name).toLowerCase()), amt: money(sc[0]) })}</p>
       <div class="du-hand" aria-hidden="true">${duelIcon(54)}</div>
-      <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="duel-quit">Stop</button>
-        <button type="button" class="st-btn gold btn-md flex1" data-act="duel-p2">${ICON.play()}<span>${esc(names[1])}, start</span></button></div></div></div>`;
+      <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="duel-quit">${t('Stop')}</button>
+        <button type="button" class="st-btn gold btn-md flex1" data-act="duel-p2">${ICON.play()}<span>${t('{name}, start', { name: esc(names[1]) })}</span></button></div></div></div>`;
   const win = sc[0] === sc[1] ? -1 : sc[0] > sc[1] ? 0 : 1;
-  const title = win < 0 ? "It's a tie!" : `${esc(names[win === 0 ? 0 : 1])} wins!`;
+  const title = win < 0 ? t("It's a tie!") : t('{name} wins!', { name: esc(names[win === 0 ? 0 : 1]) });
   const col = (i: number) => `<div class="du-score${win === i ? ' win' : ''}"><span>${esc(names[i])}</span><b>${money(sc[i])}</b>${win === i ? ICON.crown('#FFC23D', 26) : ''}</div>`;
   return `<div class="grp mc" style="width: 440px; height: 300px"><div class="st-chip result-card du-end">
-    <div class="letter-head"><span class="eyebrow">DUEL · ${esc(ct.short.toUpperCase())}</span>${o.ribbons ? `<span class="du-rib">+${o.ribbons} ${ribbonIcon(16)}</span>` : ''}</div>
+    <div class="letter-head"><span class="eyebrow">${t('DUEL')} · ${esc(ct.short.toUpperCase())}</span>${o.ribbons ? `<span class="du-rib">+${o.ribbons} ${ribbonIcon(16)}</span>` : ''}</div>
     <h2 class="r-title">${title}</h2>
     <div class="du-scores">${col(0)}${col(1)}</div>
-    <p class="r-text">${win < 0 ? 'Down to the last coin. Rematch?' : `By ${money(Math.abs(sc[0] - sc[1]))}. The rematch uses a new field.`}</p>
-    <div class="r-actions"><button type="button" class="st-btn btn-md flex1" data-act="go" data-arg="menu">Menu</button>
-      <button type="button" class="st-btn gold btn-md flex1" data-act="duel-rematch">Rematch</button></div></div></div>`;
+    <p class="r-text">${win < 0 ? t('Down to the last coin. Rematch?') : t('By {amt}. The rematch uses a new field.', { amt: money(Math.abs(sc[0] - sc[1])) })}</p>
+    <div class="r-actions"><button type="button" class="st-btn btn-md flex1" data-act="go" data-arg="menu">${t('Menu')}</button>
+      <button type="button" class="st-btn gold btn-md flex1" data-act="duel-rematch">${t('Rematch')}</button></div></div></div>`;
 }
 
 /** Cities a duel can be played on: every farm the player has opened. */

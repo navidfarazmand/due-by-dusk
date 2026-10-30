@@ -6,6 +6,7 @@
 // remembered in GameSave.seen. Field "moments" (the first runaway radish, goat, golden crop...) are spotted by
 // peeking at the engine each frame.
 
+import { t } from '../i18n/i18n';
 import { engine } from './engine';
 import { touchy } from './hud';
 
@@ -92,6 +93,7 @@ export class Coach {
     this.hands = Array.from(this.root.querySelectorAll<HTMLElement>('.co-hand'));
     this.boom = q('.co-boom');
     this.skip = q('.co-skip') as HTMLButtonElement;
+    this.skip.firstChild && (this.skip.firstChild.textContent = t('Skip'));
     this.skip.addEventListener('click', () => {
       const f = this.onSkip;
       this.onSkip = null;
@@ -351,6 +353,7 @@ export class Coach {
 
   /** Cinema bars and a Skip button; the player's own touches are held back meanwhile. */
   cinema(on: boolean, onSkip?: () => void): void {
+    if (this.skip.firstChild) this.skip.firstChild.textContent = t('Skip');
     this.root.classList.toggle('cinema', on);
     this.root.classList.toggle('blocking', on);
     this.skip.hidden = !on;
@@ -385,7 +388,7 @@ export class Coach {
   /** The bank's letter with PAID IN FULL stamped on it (the end of the intro). */
   async deed(): Promise<void> {
     const b = this.boom;
-    b.innerHTML = `<div class="co-deed"><div class="co-paper"><span class="co-bank">GRUMBLE &amp; SONS SAVINGS &amp; LOAN</span><b>The farm is yours.</b><span class="co-stamp">PAID IN FULL</span></div></div>`;
+    b.innerHTML = `<div class="co-deed"><div class="co-paper"><span class="co-bank">${t('GRUMBLE &amp; SONS SAVINGS &amp; LOAN')}</span><b>${t('The farm is yours.')}</b><span class="co-stamp">${t('PAID IN FULL')}</span></div></div>`;
     b.hidden = false;
     await this.wait(2600);
   }
@@ -410,7 +413,7 @@ export class Coach {
       if (!p0) return;
       this.spot(p0, 64);
       this.showHand(0, { x: p0.x - 120, y: p0.y + 40 });
-      this.say(touchy ? 'Drag over it' : 'Move over it', { x: p0.x, y: p0.y - 70 });
+      this.say(touchy ? t('Drag over it') : t('Move over it'), { x: p0.x, y: p0.y - 70 });
       await this.wait(700);
       this.live(my);
       // the ghost plays for real, in slow motion
@@ -431,7 +434,7 @@ export class Coach {
       if (jar) {
         this.spotEl(jar, 6);
         const r = jar.getBoundingClientRect();
-        this.say('Coins pay the bill', { x: r.left + r.width / 2 + 40, y: r.bottom + 44 }, 28);
+        this.say(t('Coins pay the bill'), { x: r.left + r.width / 2 + 40, y: r.bottom + 44 }, 28);
       }
       await this.wait(1500);
       // your turn: the field waits for the first touch
@@ -440,7 +443,7 @@ export class Coach {
       const next = nearestCrop(this, { x: innerWidth * 0.55, y: innerHeight * 0.6 });
       const p1 = next ? this.cropAt(next) : { x: innerWidth / 2, y: innerHeight * 0.6 };
       this.spot(p1, 70);
-      this.say('Your turn', { x: p1.x, y: p1.y - 76 });
+      this.say(t('Your turn'), { x: p1.x, y: p1.y - 76 });
       this.showHand(0, { x: p1.x - 60, y: p1.y + 30 });
       this.hands[0].classList.add('hint');
       const touched = await this.until(() => !!peek()?.pointer.active, 15000);
@@ -452,7 +455,7 @@ export class Coach {
       if (!touched) return;
       const count = peek()?.today.count || 0;
       if (await this.until(() => (peek()?.today.count || 0) > count, 6000)) {
-        this.say('Nice!', undefined, 40);
+        this.say(t('Nice!'), undefined, 40);
         await this.wait(800);
       }
     });
@@ -479,10 +482,10 @@ export class Coach {
         await this.wait(350);
         this.showHand(1, { x: p2.x + 60, y: p2.y + 60 });
         await this.glide(1, p2, 380);
-        this.say('Hold a 2nd finger', { x: p2.x, y: p2.y - 78 }, 28);
+        this.say(t('Hold a 2nd finger'), { x: p2.x, y: p2.y - 78 }, 28);
         this.press(1);
         await this.until(() => (peek()?.chargeT || 0) >= 0.98, 2500);
-        this.say('Lift!', { x: p2.x, y: p2.y - 78 }, 40);
+        this.say(t('Lift!'), { x: p2.x, y: p2.y - 78 }, 40);
         await this.wait(250);
         const n = cleaved();
         this.lift(1);
@@ -496,10 +499,10 @@ export class Coach {
         this.showHand(0, { x: p1.x - 90, y: p1.y + 60 });
         await this.glide(0, p1, 450);
         this.setTime(0.5);
-        this.say('Hold the button', { x: p1.x, y: p1.y - 90 }, 28);
+        this.say(t('Hold the button'), { x: p1.x, y: p1.y - 90 }, 28);
         this.hands[0].classList.add('down');
         await this.wait(1100);
-        this.say('Let go!', { x: p1.x, y: p1.y - 90 }, 40);
+        this.say(t('Let go!'), { x: p1.x, y: p1.y - 90 }, 40);
         this.hands[0].classList.remove('down');
         await this.wait(700);
         this.hideHand(0);
@@ -508,7 +511,7 @@ export class Coach {
       this.setTime(0.0001);
       this.spot(null);
       const q = densest(this) || p1;
-      this.say('Your turn', { x: q.x, y: q.y - 90 });
+      this.say(t('Your turn'), { x: q.x, y: q.y - 90 });
       if (touchy) {
         this.showHand(0, q);
         this.showHand(1, { x: Math.min(w - 70, q.x + 230), y: Math.min(h - 60, q.y + 70) });
@@ -524,7 +527,7 @@ export class Coach {
       const n0 = cleaved();
       learned = await this.until(() => cleaved() > n0, 9000);
       if (learned) {
-        this.say('Cleave!', undefined, 42);
+        this.say(t('Cleave!'), undefined, 42);
         await this.wait(900);
       }
     });

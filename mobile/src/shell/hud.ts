@@ -1,6 +1,7 @@
 // The farm HUD from Claude's v3 test: coin bank with the jar the coins fly into, chain pill, sun dial,
 // Harvest Rush chip, sound and pause buttons, and the day's event banner that shrinks into a badge.
 
+import { t } from '../i18n/i18n';
 import { clamp, money, cap } from './dom';
 import { engine, type DayEvent, type HudState } from './engine';
 import { rivalFace } from './rival';
@@ -180,7 +181,7 @@ export class FarmHud {
     const w = this.E.Sound.querySelector('.w') as SVGElement | null, x = this.E.Sound.querySelector('.x') as SVGElement | null;
     if (w) w.style.display = on ? '' : 'none';
     if (x) x.style.display = on ? 'none' : '';
-    this.E.Sound.setAttribute('aria-label', on ? 'Sound on' : 'Sound off');
+    this.E.Sound.setAttribute('aria-label', on ? t('Sound on') : t('Sound off'));
   }
 
   private coin(): void {
@@ -216,7 +217,7 @@ export class FarmHud {
     E.BillFill.style.width = (prog * 100).toFixed(1) + '%';
     E.JarGold.setAttribute('transform', 'translate(0 ' + (22 * (1 - prog)).toFixed(2) + ')');
     E.Bank.classList.toggle('covered', covered);
-    E.BillName.textContent = bill ? SHORT[bill.name] || bill.name : '';
+    E.BillName.textContent = bill ? t(SHORT[bill.name] || bill.name) : '';
     E.BillAmt.textContent = covered ? '✓' : money(amt);
     const tiers = h.tiers;
     let ti = 0;
@@ -226,10 +227,10 @@ export class FarmHud {
     E.Chain.classList.toggle('on', h.combo > 0);
     E.Chain.classList.toggle('rush', h.rushT > 0);
     E.Mult.textContent = '×' + String(Math.round(h.mult * 100) / 100);
-    E.ChainLbl.textContent = 'Chain ' + h.combo;
+    E.ChainLbl.textContent = t('Chain {n}', { n: h.combo });
     const fill = ti === last ? 1 : clamp((h.combo - tiers[ti].count) / Math.max(1, next.count - tiers[ti].count), 0, 1);
     E.ChainFill.style.width = (fill * 100).toFixed(1) + '%';
-    E.Next.textContent = h.rushT > 0 ? 'RUSH!' : ti === last ? 'max!' : '×' + next.mul + ' at ' + next.count;
+    E.Next.textContent = h.rushT > 0 ? t('RUSH!') : ti === last ? t('max!') : t('×{x} at {n}', { x: next.mul, n: next.count });
     E.ChainTimer.style.width = (242 * clamp(h.comboT / Math.max(0.01, h.grace), 0, 1)).toFixed(1) + 'px';
     if (ti > this.lastTier) {
       E.Chain.classList.remove('bump');
@@ -249,7 +250,7 @@ export class FarmHud {
     E.Secs.classList.toggle('late', late);
     const rushing = h.rushT > 0;
     E.Rush.classList.toggle('on', rushing);
-    E.RushLbl.textContent = rushing ? 'RUSH!' : 'RUSH';
+    E.RushLbl.textContent = rushing ? t('RUSH!') : t('RUSH');
     E.RushN.textContent = rushing ? h.rushT.toFixed(1) + 's' : h.rushCharge + '/' + h.rushGoal;
     E.RushFill.style.width = ((rushing ? h.rushT / h.rushDur : h.rushCharge / h.rushGoal) * 100).toFixed(1) + '%';
     const rv = this.rival;
@@ -259,7 +260,7 @@ export class FarmHud {
       if (got >= rv.record && h.mode === 'day') {
         rv.beaten = true;
         E.Rival.classList.add('beaten');
-        E.RivalAmt.textContent = 'Crown!';
+        E.RivalAmt.textContent = t('Crown!');
         setTimeout(() => E.Rival.classList.add('gone'), 2600);
         this.onRivalBeaten?.();
       }
@@ -281,8 +282,8 @@ export class FarmHud {
     const icon = eventIcon(this.ev.id);
     E.BannerIc.textContent = icon;
     E.Badge.textContent = icon;
-    E.BannerT.textContent = cap(this.ev.title);
-    E.BannerD.textContent = deviceText(this.ev.desc);
+    E.BannerT.textContent = cap(t(this.ev.title));
+    E.BannerD.textContent = t(deviceText(this.ev.desc));
     E.Banner.getAnimations().forEach(a => a.cancel());
     E.Banner.hidden = false;
     E.Banner.animate([{ opacity: 0, transform: 'translateY(12px) scale(.92)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }], { duration: 220, easing: 'ease-out' });

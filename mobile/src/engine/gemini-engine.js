@@ -19413,8 +19413,16 @@ export function startGeminiEngine() {
   function spark(x, y) {
     if (canAdd()) parts.push({ k: 'spark', x, y, s: 2 + Math.random() * 3, life: 0.5, max: 0.5 });
   }
+  /** The shell's translation of words drawn on the field (v0.11: French, Spanish, Portuguese, German). */
+  function trWord(s) {
+    try {
+      return window.__DBD_T ? window.__DBD_T(String(s)) : s;
+    } catch (e) {
+      return s;
+    }
+  }
   function addText(t, x, y, col, size, vy, life) {
-    texts.push({ t, x, y, col, size, vy, life, max: life });
+    texts.push({ t: trWord(t), x, y, col, size, vy, life, max: life });
   }
   function shake(a) {
     if (reduceMotion) return;
@@ -22180,7 +22188,7 @@ export function startGeminiEngine() {
   };
   let toastTimer = 0;
   function toast(msg, ms) {
-    el.toast.textContent = msg;
+    el.toast.textContent = trWord(msg);
     el.toast.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.toast.classList.remove('show'), ms || 2600);

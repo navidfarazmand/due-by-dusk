@@ -6,6 +6,7 @@
 //  - Seed blaster: shoots seeds at the nearest crops in range, so you don't have to reach them.
 // A new tool goes on sale when you beat the boss of a country. Attachments are bought per tool (3 levels each).
 
+import { t } from '../i18n/i18n';
 import type { CountryCode } from './world';
 
 export type ToolId = 'sickle' | 'scythe' | 'flame' | 'blaster';
@@ -173,12 +174,13 @@ export function parseTools(o: any): ToolsState {
 /** Short stat lines for the tool card, relative to the sickle. */
 export function toolSummary(s: ToolStats): string[] {
   const pct = (v: number) => `×${v.toFixed(2)}`;
-  const out = [`Damage ${pct(s.dmg)}`, `Speed ${pct(s.speed)}`];
-  if (s.style === 'blaster') out.push(`Range ${Math.round(s.range)}`, `${s.targets} seed${s.targets > 1 ? 's' : ''} a shot`);
-  else out.push(`Reach ${pct(s.reach)}`);
-  if (s.burn > 0) out.push(`Burns ${s.burn.toFixed(1)} s`);
-  if (s.crit > 0) out.push(`+${Math.round(s.crit * 100)}% crit`);
-  if (s.value > 1) out.push(`Prices ${pct(s.value)}`);
-  if (s.storm) out.push('Lightning on crits');
+  const out = [t('Damage {x}', { x: pct(s.dmg) }), t('Speed {x}', { x: pct(s.speed) })];
+  if (s.style === 'blaster')
+    out.push(t('Range {x}', { x: Math.round(s.range) }), s.targets > 1 ? t('{n} seeds a shot', { n: s.targets }) : t('{n} seed a shot', { n: s.targets }));
+  else out.push(t('Reach {x}', { x: pct(s.reach) }));
+  if (s.burn > 0) out.push(t('Burns {x} s', { x: s.burn.toFixed(1) }));
+  if (s.crit > 0) out.push(t('+{x}% crit', { x: Math.round(s.crit * 100) }));
+  if (s.value > 1) out.push(t('Prices {x}', { x: pct(s.value) }));
+  if (s.storm) out.push(t('Lightning on crits'));
   return out;
 }

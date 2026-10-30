@@ -20,6 +20,7 @@ import { CHEST_UP_ICON, chestBurst, chestName, chestSvg, newCropHtml, perkCard, 
 import { rivalFace } from './rival';
 import { FarmHud, deviceText, eventIcon, touchy } from './hud';
 import { Coach, peek, type FieldPeek, type Pt } from './coach';
+import { LANGS, deviceLang, isLang, lang, setLang, t, tn, tx, type Lang } from '../i18n/i18n';
 import { watchLayout, layout } from './layout';
 import { adsAvailable, canOffer, coinsWait, onAdsChanged, watch } from './offers';
 import { PINS } from './pins';
@@ -86,6 +87,9 @@ interface CityResult {
   bossKept?: boolean;
 }
 
+/** The language button's globe. */
+const GLOBE = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2B1708" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.2" fill="#6EC6F0"/><path d="M3 12h18M12 2.8c3 3.2 3 15.2 0 18.4M12 2.8c-3 3.2-3 15.2 0 18.4"/></svg>`;
+
 const EVENT_LINES: Record<string, string> = {
   market: 'Market days: prices are up.',
   gale: 'Windy days: leaves fly and crops sway.',
@@ -137,6 +141,10 @@ export class GameApp {
       /* private mode */
     }
     this.g = parseGame(raw);
+    // the player's language, else the phone's (when it is one of ours); the engine's field words follow it
+    setLang(isLang(this.g.settings.lang) ? this.g.settings.lang : deviceLang());
+    (window as unknown as { __DBD_T?: (s: string) => string }).__DBD_T = tx;
+    this.localizeStatic();
     // the workshop's step sizes, read by the engine's stats
     (window as any).__DBD_SHED_FX = SHED_FX;
     this.music = new Music(this.g.settings.music, { field: this.g.settings.fieldTrack, menu: this.g.settings.menuTrack });
@@ -169,7 +177,7 @@ export class GameApp {
       } catch {
         /* no vibration */
       }
-      if (!this.coach.busy && this.coachOn) void this.coach.momentEl(() => document.getElementById('dbdRival'), 'Crown!', 1300, 0.35);
+      if (!this.coach.busy && this.coachOn) void this.coach.momentEl(() => document.getElementById('dbdRival'), t('Crown!'), 1300, 0.35);
     };
     this.root.addEventListener('click', e => this.click(e));
     watchLayout(this.root);
@@ -201,7 +209,7 @@ export class GameApp {
       delete this.g.migratedFarm;
       e.setShed(this.g.workshop.levels);
       this.saveNow();
-      if (back > 0) setTimeout(() => this.toast(`New workshop and longer farms: ${money(back)} back in your savings.`), 900);
+      if (back > 0) setTimeout(() => this.toast(t('New workshop and longer farms: {amt} back in your savings.', { amt: money(back) })), 900);
     }
     const run = this.g.run;
     if (run) {
@@ -276,7 +284,7 @@ export class GameApp {
     engine().setShed(this.g.workshop.levels);
     this.save();
     const def = UPGRADES.find(u => u.id === job.id);
-    if (def) this.toast(`${def.name} ${job.level} is ready.`);
+    if (def) this.toast(t('{name} {level} is ready.', { name: t(def.name), level: job.level }));
     return true;
   }
 
@@ -418,7 +426,7 @@ export class GameApp {
       // after the stars have landed
       setTimeout(() => {
         if (this.scr === 'won' && !this.coach.busy)
-          void this.coach.point(() => this.sections.won.querySelector('.r-gains'), 'Spend them!', () => this.scr !== 'won', 4200);
+          void this.coach.point(() => this.sections.won.querySelector('.r-gains'), t('Spend them!'), () => this.scr !== 'won', 4200);
       }, 1700);
     }
   }
@@ -495,6 +503,8 @@ export class GameApp {
       case 'retry': this.farmHere(arg); break;
       case 'map': this.showCountryOf(arg || this.citySel); break;
       case 'settings': this.openSettings(); break;
+      case 'languages': this.openLanguages(); break;
+      case 'lang': this.chooseLang(arg); break;
       case 'crowns': this.openCrowns(); break;
       case 'workshop': this.openWorkshopModal(); break;
       case 'sound': this.toggleSound(); break;
@@ -563,9 +573,9 @@ export class GameApp {
     }
     if (this.g.run) {
       const cur = cityById(this.g.run.cityId)!;
-      this.openModal('confirm', `<h2 class="m-title">Leave ${esc(cur.short)}?</h2>
-        <p class="m-text">The bank keeps that farm and the cash on it. Your savings, tools and upgrades stay yours.</p>
-        <div class="m-row"><button type="button" class="st-btn" data-act="close">Stay</button><button type="button" class="st-btn gold" data-act="leave-yes" data-arg="${cityId}">Leave and start ${esc(cityById(cityId)!.short)}</button></div>`);
+      this.openModal('confirm', `<h2 class="m-title">${t('Leave {farm}?', { farm: esc(cur.short) })}</h2>
+        <p class="m-text">${t('The bank keeps that farm and the cash on it. Your savings, tools and upgrades stay yours.')}</p>
+        <div class="m-row"><button type="button" class="st-btn" data-act="close">${t('Stay')}</button><button type="button" class="st-btn gold" data-act="leave-yes" data-arg="${cityId}">${t('Leave and start {farm}', { farm: esc(cityById(cityId)!.short) })}</button></div>`);
       return;
     }
     this.beginRun(cityId);
@@ -749,7 +759,7 @@ export class GameApp {
   private pointAtStart(): void {
     if (this.g.seen.start || this.coach.busy || !this.coachOn) return;
     const btn = () => this.sections.farmhouse.querySelector('[data-act="start"]');
-    void this.coach.point(btn, 'Start', () => this.scr !== 'farmhouse' || !this.modal.hidden);
+    void this.coach.point(btn, t('Start'), () => this.scr !== 'farmhouse' || !this.modal.hidden);
   }
 
   /** Lessons at the start of a day on a real farm: cutting (a new player's first day), then the Charge Cleave.
@@ -828,15 +838,15 @@ export class GameApp {
     };
     const live = (pred: (c: FieldPeek['crops'][number]) => boolean) => () =>
       (peek()?.crops || []).filter(c => !c.dead && c.age > 0.4 && pred(c)).map(c => ({ x: c.x, y: c.y - c.r * c.ds * 0.55 }));
-    if (!seen.mBoss && show('mBoss', follow(live(c => c.boss)), 'Knock it out!', 110)) return;
-    if (!seen.mRadish && show('mRadish', follow(live(c => c.type === 'radish')), 'It runs!')) return;
-    if (!seen.mGolden && show('mGolden', follow(() => peek()?.lucky || []), 'Golden!')) return;
+    if (!seen.mBoss && show('mBoss', follow(live(c => c.boss)), t('Knock it out!'), 110)) return;
+    if (!seen.mRadish && show('mRadish', follow(live(c => c.type === 'radish')), t('It runs!'))) return;
+    if (!seen.mGolden && show('mGolden', follow(() => peek()?.lucky || []), t('Golden!'))) return;
     const treaty = engine().state().perks.includes('treaty') || this.g.skills.includes('gold_treaty') || this.g.skills.includes('gold_herd');
-    if (!seen.mGoat && !treaty && show('mGoat', follow(() => (peek()?.goat ? [peek()!.goat!] : []), 20), "Don't touch!", 70)) return;
-    if (!seen.mGoatPet && treaty && show('mGoatPet', follow(() => (peek()?.goat ? [peek()!.goat!] : []), 20), 'Pet it: tips!', 70)) return;
-    if (!seen.mCrow && show('mCrow', follow(() => peek()?.crows || []), 'Shoo it!')) return;
-    if (!seen.mProp && show('mProp', follow(() => peek()?.props || []), 'Grab it!')) return;
-    if (!seen.mBolt && p.bolts > 0 && show('mBolt', () => co.toScreen(p.pointer.x, p.pointer.y), 'Lightning!', 90)) return;
+    if (!seen.mGoat && !treaty && show('mGoat', follow(() => (peek()?.goat ? [peek()!.goat!] : []), 20), t("Don't touch!"), 70)) return;
+    if (!seen.mGoatPet && treaty && show('mGoatPet', follow(() => (peek()?.goat ? [peek()!.goat!] : []), 20), t('Pet it: tips!'), 70)) return;
+    if (!seen.mCrow && show('mCrow', follow(() => peek()?.crows || []), t('Shoo it!'))) return;
+    if (!seen.mProp && show('mProp', follow(() => peek()?.props || []), t('Grab it!'))) return;
+    if (!seen.mBolt && p.bolts > 0 && show('mBolt', () => co.toScreen(p.pointer.x, p.pointer.y), t('Lightning!'), 90)) return;
     // the HUD: the rival's record, the chain bonus, a harvest rush
     const hud = (key: string, id: string, word: string) => {
       const el = document.getElementById(id);
@@ -849,9 +859,9 @@ export class GameApp {
     };
     const h = engine().hud();
     const rv = this.rivalToday();
-    if (!seen.mRival && rv && p.today.earned > 0 && p.time < 15 && hud('mRival', 'dbdRival', `Beat ${money(rv.record)} today`)) return;
-    if (!seen.mChain && h.tiers.length > 1 && h.combo >= h.tiers[1].count && hud('mChain', 'dbdChain', 'Chain bonus!')) return;
-    if (!seen.mRush && h.rushT > 0 && hud('mRush', 'dbdRush', 'Rush!')) return;
+    if (!seen.mRival && rv && p.today.earned > 0 && p.time < 15 && hud('mRival', 'dbdRival', t('Beat {amt} today', { amt: money(rv.record) }))) return;
+    if (!seen.mChain && h.tiers.length > 1 && h.combo >= h.tiers[1].count && hud('mChain', 'dbdChain', t('Chain bonus!'))) return;
+    if (!seen.mRush && h.rushT > 0 && hud('mRush', 'dbdRush', t('Rush!'))) return;
   }
 
   private payBill(): void {
@@ -883,12 +893,12 @@ export class GameApp {
         btn?.classList.add('taken');
         btn?.setAttribute('aria-disabled', 'true');
         const sub = box.querySelector('.chest-sub');
-        if (sub) sub.textContent = 'Pick 1 more';
+        if (sub) sub.textContent = t('Pick 1 more');
         return;
       }
       this.closeModal();
       this.render('farmhouse');
-      if (info) this.toast(`${info.name}: ${deviceText(info.line)}`);
+      if (info) this.toast(`${t(info.name)}: ${t(deviceText(info.line))}`);
     };
     if (box && btn && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       this.picking = true;
@@ -936,7 +946,7 @@ export class GameApp {
     T.equipped = id;
     this.applyTool();
     this.saveNow();
-    this.toast(`${toolDef(id).name} in hand.`);
+    this.toast(t('{tool} in hand.', { tool: t(toolDef(id).name) }));
     this.refresh();
   }
 
@@ -949,7 +959,7 @@ export class GameApp {
     T.equipped = id;
     this.applyTool();
     this.saveNow();
-    this.toast(`${def.name} bought. It's in your hands.`);
+    this.toast(t("{tool} bought. It's in your hands.", { tool: t(def.name) }));
     this.refresh();
   }
 
@@ -1006,7 +1016,7 @@ export class GameApp {
       // free coins always go to savings (for upgrades and tools), whatever farm you are on
       const amt = this.coinsReward();
       this.g.wallet += amt;
-      this.toast(`+${money(amt)} in your savings.`);
+      this.toast(t('+{amt} in your savings.', { amt: money(amt) }));
       this.saveNow();
     }
     this.refresh();
@@ -1027,7 +1037,7 @@ export class GameApp {
     this.busy = true;
     const ok = await watch(this.g, 'extraDay');
     this.busy = false;
-    if (ok && engine().extraDay()) this.toast('One more day. The bank can wait until tomorrow.');
+    if (ok && engine().extraDay()) this.toast(t('One more day. The bank can wait until tomorrow.'));
     this.save();
     this.refresh();
   }
@@ -1060,7 +1070,7 @@ export class GameApp {
     resetSkills(this.g);
     this.applySkills();
     this.saveNow();
-    this.toast('Skills reset. Every diamond is back.');
+    this.toast(t('Skills reset. Every diamond is back.'));
     this.skillSel = firstSkill(this.g);
     this.render('skills');
   }
@@ -1140,7 +1150,7 @@ export class GameApp {
     this.duel = {
       cityId,
       tool: this.duel ? this.duel.tool : this.g.tools.equipped,
-      names: ['Player 1', 'Player 2'],
+      names: [t('Player 1'), t('Player 2')],
       seed: 0,
       scores: [0, 0],
       first: 0,
@@ -1177,7 +1187,7 @@ export class GameApp {
   private startSide(kind: SideRun['kind'], def: SideDef, turn: number): boolean {
     const e = engine();
     if (this.side || e.state().mode !== 'idle') {
-      this.toast('Finish the day on your farm first.');
+      this.toast(t('Finish the day on your farm first.'));
       return false;
     }
     const snap = e.snapshot();
@@ -1195,11 +1205,11 @@ export class GameApp {
     this.side = { kind, def, snap, sound, turn, score: 0, date: todayKey() };
     const du = this.duel;
     // the bank chip shows the next medal (or, for the second duel player, the score to beat)
-    if (kind === 'duel' && du && turn === 1) this.hud.setGoal(() => ({ name: 'To beat', amt: Math.max(1, du.scores[0] + 1) }));
+    if (kind === 'duel' && du && turn === 1) this.hud.setGoal(() => ({ name: t('To beat'), amt: Math.max(1, du.scores[0] + 1) }));
     else
       this.hud.setGoal(cash => {
         const m = medalOf(def.targets, cash);
-        return m >= 3 ? { name: 'Gold!', amt: def.targets[2] } : { name: MEDAL_NAME[m + 1], amt: def.targets[m] };
+        return m >= 3 ? { name: t('Gold!'), amt: def.targets[2] } : { name: t(MEDAL_NAME[m + 1]), amt: def.targets[m] };
       });
     this.show('farm');
     if (!e.startDay()) {
@@ -1316,13 +1326,13 @@ export class GameApp {
 
   private trio(code: CountryCode, h: number): string {
     const c = countryOf(code);
-    return c.trio.map((t, i) => spriteImg(t, h - (i ? 2 : 0), c.trioNames[i])).join('');
+    return c.trio.map((ty, i) => spriteImg(ty, h - (i ? 2 : 0), t(c.trioNames[i]))).join('');
   }
 
   /** A shortcut to the skill map while diamonds are waiting to be spent. */
   private gemChip(): string {
     const n = diamondsLeft(this.g);
-    return n ? `<button type="button" class="st-chip chip-row gem-chip" data-act="skills" aria-label="${n} diamonds to spend on the skill map">${ICON.diamond(20)}<span>${n}</span><small>Skills</small></button>` : '';
+    return n ? `<button type="button" class="st-chip chip-row gem-chip" data-act="skills" aria-label="${n} diamonds to spend on the skill map">${ICON.diamond(20)}<span>${n}</span><small>${t('Skills')}</small></button>` : '';
   }
 
   private walletChip(): string {
@@ -1330,7 +1340,7 @@ export class GameApp {
     if (!this.g.run)
       return `<div class="st-chip chip-row wallet-chip save-chip" aria-label="Savings ${money(this.g.wallet)}, for upgrades and tools">${ICON.piggy(22)}<span>${money(this.g.wallet)}</span></div>`;
     const save = this.g.wallet > 0 ? `<i class="wc-sep"></i>${ICON.piggy(18)}<span class="wc-save">${money(this.g.wallet)}</span>` : '';
-    return `<div class="st-chip chip-row wallet-chip" aria-label="Cash on this farm ${money(this.farmCash())}${save ? `, savings ${money(this.g.wallet)}` : ''}">${ICON.coin(22)}<span>${money(this.farmCash())}</span>${save}</div>`;
+    return `<div class="st-chip chip-row wallet-chip" aria-label="${t('Cash on this farm {amt}', { amt: money(this.farmCash()) })}${save ? `, ${t('savings {amt}', { amt: money(this.g.wallet) })}` : ''}">${ICON.coin(22)}<span>${money(this.farmCash())}</span>${save}</div>`;
   }
 
   // ------------------------------------------------------------------ menu
@@ -1339,33 +1349,34 @@ export class GameApp {
     const next = cityById(nextCity(this.g))!;
     const n = routeIndex(next.id) + 1;
     const cont = this.g.run
-      ? `Continue · ${esc(next.short)} · Day ${engine().state().day}`
-      : `Next · Farm ${n} · ${esc(next.short)}`;
+      ? t('Continue · {farm} · Day {day}', { farm: esc(next.short), day: engine().state().day })
+      : t('Next · Farm {n} · {farm}', { n, farm: esc(next.short) });
     const dl = this.dailyState();
-    const dailyMark = dl.medal ? `<i class="side-mark medal">${MEDAL_NAME[dl.medal].charAt(0)}</i>` : dl.plays ? '' : `<i class="side-mark">NEW</i>`;
+    const dailyMark = dl.medal ? `<i class="side-mark medal">${t(MEDAL_NAME[dl.medal]).charAt(0)}</i>` : dl.plays ? '' : `<i class="side-mark">${t('NEW')}</i>`;
     const gems = diamondsLeft(this.g);
     return `<div class="bg cover"><img class="art" src="${ART.menu}" alt="">
         ${this.menuSprite('lavender', 96, 230, 70, 'bob2')}${this.menuSprite('pei_russet', 168, 268, 100, 'bob')}
         ${this.menuSprite('carrot', 566, 238, 62, 'bob2')}${this.menuSprite('artichaut', 418, 270, 100, 'bob')}
         ${this.menuSprite('golden', 640, 252, 72, 'bob2')}${this.menuSprite('pumpkin', 700, 222, 100, 'bob')}</div>
       <div class="grp tc" style="width: 600px; height: 380px">
-        <div class="menu-title"><h1 class="ink-title">Due by Dusk</h1><p class="pill-dark">A little farm. A very big debt.</p></div>
+        <div class="menu-title"><h1 class="ink-title">${t('Due by Dusk')}</h1><p class="pill-dark">${t('A little farm. A very big debt.')}</p></div>
         <div class="menu-actions">
           <div class="menu-row">
-            <button type="button" class="st-btn side-btn" data-act="daily">${calendarIcon(26)}<span>Daily farm</span>${dailyMark}</button>
-            <button type="button" class="st-btn gold big-play" data-act="play">${ICON.play()}Play</button>
-            <button type="button" class="st-btn side-btn" data-act="duel">${duelIcon(26)}<span>Duel</span></button>
+            <button type="button" class="st-btn side-btn" data-act="daily">${calendarIcon(26)}<span>${t('Daily farm')}</span>${dailyMark}</button>
+            <button type="button" class="st-btn gold big-play" data-act="play">${ICON.play()}${t('Play')}</button>
+            <button type="button" class="st-btn side-btn" data-act="duel">${duelIcon(26)}<span>${t('Duel')}</span></button>
           </div>
           <button type="button" class="pill-cream" data-act="continue">${cont}</button>
         </div>
       </div>
-      <div class="grp bl" style="width: 110px; height: 64px"><div class="corner-row">
-        <button type="button" class="st-btn st-sq" data-act="settings" aria-label="Settings">${ICON.gear()}</button>
-        <button type="button" class="st-btn st-sq" data-act="sound" aria-label="Sound">${ICON.sound()}</button></div></div>
+      <div class="grp bl" style="width: 200px; height: 64px"><div class="corner-row">
+        <button type="button" class="st-btn st-sq" data-act="settings" aria-label="${t('Settings')}">${ICON.gear()}</button>
+        <button type="button" class="st-btn st-sq lang-btn" data-act="languages" aria-label="${t('Language')}">${GLOBE}<span>${lang().toUpperCase()}</span></button>
+        <button type="button" class="st-btn st-sq" data-act="sound" aria-label="${t('Sound')}">${ICON.sound()}</button></div></div>
       <div class="grp br" style="width: 300px; height: 80px"><div class="dock">
-        <button type="button" class="st-btn dock-btn" data-act="skills">${ICON.diamond(24)}<span>Skills</span>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
-        <button type="button" class="st-btn dock-btn" data-act="barn">${ribbonIcon(26)}<span>Bling Barn</span></button>
-        <button type="button" class="st-btn blue dock-btn" data-act="crowns">${ICON.crown('#FFC23D', 26)}<span>Crowns</span></button></div></div>`;
+        <button type="button" class="st-btn dock-btn" data-act="skills">${ICON.diamond(24)}<span>${t('Skills')}</span>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
+        <button type="button" class="st-btn dock-btn" data-act="barn">${ribbonIcon(26)}<span>${t('Bling Barn')}</span></button>
+        <button type="button" class="st-btn blue dock-btn" data-act="crowns">${ICON.crown('#FFC23D', 26)}<span>${t('Crowns')}</span></button></div></div>`;
   }
 
   /** The menu's farm at dusk, dimmed, behind the daily farm and duel cards. */
@@ -1389,9 +1400,9 @@ export class GameApp {
       const won = c.cities.filter(x => cityProgress(this.g, x.id).won).length;
       const flag = lock.open ? p.flag : p.flag.replace('<svg ', '<svg style="opacity: .6" ');
       const flagHtml = `<span class="flag">${flag}${lock.open ? '' : `<span class="lock">${ICON.lock('#2B1708', 11)}</span>`}</span>`;
-      const lbl = `<span class="lbl">${esc(c.code === 'US' ? 'USA' : c.name)} · ${won}/${c.cities.length}</span>`;
+      const lbl = `<span class="lbl">${esc(c.code === 'US' ? t('USA') : t(c.name))} · ${won}/${c.cities.length}</span>`;
       const cls = `pin${lock.open ? ' open' : ''}${this.worldSel === c.code ? ' sel' : ''}${won === c.cities.length ? ' done' : ''}`;
-      pins += `<button type="button" class="${cls}" data-act="country" data-arg="${c.code}" aria-label="${esc(c.name)}${lock.open ? '' : ', locked'}" style="left: ${p.left}px; top: ${p.top}px">${p.labelFirst ? lbl + flagHtml : flagHtml + lbl}</button>`;
+      pins += `<button type="button" class="${cls}" data-act="country" data-arg="${c.code}" aria-label="${esc(t(c.name))}${lock.open ? '' : `, ${t('locked')}`}" style="left: ${p.left}px; top: ${p.top}px">${p.labelFirst ? lbl + flagHtml : flagHtml + lbl}</button>`;
     }
     const clouds = ['a', 'b', 'c', 'd']
       .map((k, i) => {
@@ -1402,17 +1413,17 @@ export class GameApp {
     const c = countryOf(this.worldSel);
     const lock = countryLock(this.g, c.code);
     const st = countryStars(this.g, c.code);
-    let card = `<div class="card-head"><span class="card-name">${esc(c.name)}</span><span class="pill-dark pill-sm">${c.cities.length} farms</span></div>
-      <p class="card-text">${esc(c.blurb)}</p>`;
+    let card = `<div class="card-head"><span class="card-name">${esc(t(c.name))}</span><span class="pill-dark pill-sm">${tn(c.cities.length, '{n} farm', '{n} farms')}</span></div>
+      <p class="card-text">${esc(t(c.blurb))}</p>`;
     if (lock.open) {
       card += `<div class="card-foot"><div class="trio">${this.trio(c.code, 46)}</div><div class="card-stars">${ICON.star(true, 16)} ${st}/${c.cities.length * 3}</div>
-        <button type="button" class="st-btn gold btn-md" data-act="enter" data-arg="${c.code}">Enter</button></div>`;
+        <button type="button" class="st-btn gold btn-md" data-act="enter" data-arg="${c.code}">${t('Enter')}</button></div>`;
     } else {
       card += `<div class="locked-box">${ICON.lock()}<span>${esc(lock.reason)}</span></div>`;
     }
-    return `<div class="bg fit"><img class="art" id="dbdWorldArt" src="${ART.world}" alt="World map with the farm route">${pins}${clouds}</div>
-      <div class="grp tl" style="width: 330px; height: 64px"><button type="button" class="st-btn st-sq top-btn" data-act="go" data-arg="menu" aria-label="Back to menu">${ICON.back()}</button>
-        <h2 class="st-chip top-chip">World map</h2></div>
+    return `<div class="bg fit"><img class="art" id="dbdWorldArt" src="${ART.world}" alt="${t('World map with the farm route')}">${pins}${clouds}</div>
+      <div class="grp tl" style="width: 330px; height: 64px"><button type="button" class="st-btn st-sq top-btn" data-act="go" data-arg="menu" aria-label="${t('Back to menu')}">${ICON.back()}</button>
+        <h2 class="st-chip top-chip">${t('World map')}</h2></div>
       <div class="grp tr" style="width: 150px; height: 64px"><div class="st-chip top-chip right">${ICON.crown('#FFC23D', 24)}<span>${crownCount(this.g)} / ${ROUTE.length}</span></div></div>
       <div class="grp br" style="width: 300px; height: 200px"><div class="st-chip country-card">${card}</div></div>`;
   }
@@ -1471,17 +1482,17 @@ export class GameApp {
       const inner = p.crown ? ICON.crown('#FFF4DC', 22) : String(i + 1);
       if (isCur) {
         pins += `<span class="pulse" aria-hidden="true" style="left: ${(pos.x - 24).toFixed(1)}px; top: ${(pos.y - 24).toFixed(1)}px"></span>`;
-        pins += `<span class="pill-dark here" aria-hidden="true" style="left: ${(pos.x - 42).toFixed(1)}px; top: ${(pos.y - 50).toFixed(1)}px">${this.g.run && this.g.run.cityId === ct.id ? 'Your farm' : 'You are here'}</span>`;
+        pins += `<span class="pill-dark here" aria-hidden="true" style="left: ${(pos.x - 42).toFixed(1)}px; top: ${(pos.y - 50).toFixed(1)}px">${this.g.run && this.g.run.cityId === ct.id ? t('Your farm') : t('You are here')}</span>`;
       }
-      pins += `<button type="button" class="${cls}" data-act="city" data-arg="${ct.id}" aria-label="Farm ${i + 1}, ${esc(ct.short)}" style="left: ${(pos.x - size / 2).toFixed(1)}px; top: ${(pos.y - size / 2).toFixed(1)}px">${inner}</button>`;
-      if (isBossCity(ct.id)) pins += `<span class="boss-tag" aria-hidden="true" style="left: ${(pos.x + 14).toFixed(1)}px; top: ${(pos.y + 12).toFixed(1)}px">BOSS</span>`;
+      pins += `<button type="button" class="${cls}" data-act="city" data-arg="${ct.id}" aria-label="${t('Farm {n}, {farm}', { n: i + 1, farm: esc(ct.short) })}" style="left: ${(pos.x - size / 2).toFixed(1)}px; top: ${(pos.y - size / 2).toFixed(1)}px">${inner}</button>`;
+      if (isBossCity(ct.id)) pins += `<span class="boss-tag" aria-hidden="true" style="left: ${(pos.x + 14).toFixed(1)}px; top: ${(pos.y + 12).toFixed(1)}px">${t('BOSS')}</span>`;
     });
     const art = mapUrl
-      ? `<img class="art" src="${mapUrl}" alt="Map of ${esc(c.name)}">`
+      ? `<img class="art" src="${mapUrl}" alt="${t('Map of {country}', { country: esc(t(c.name)) })}">`
       : `<img class="art map-fallback" src="${ART.world}" alt="">`;
     return `<div class="bg fit">${art}${pins}</div>
-      <div class="grp tl" style="width: 400px; height: 64px"><button type="button" class="st-btn st-sq top-btn" data-act="go" data-arg="world" aria-label="Back to world map">${ICON.back()}</button>
-        <div class="st-chip top-chip"><h2>${esc(c.name)}</h2><span class="sub">${won} of ${c.cities.length} farms won</span></div></div>
+      <div class="grp tl" style="width: 400px; height: 64px"><button type="button" class="st-btn st-sq top-btn" data-act="go" data-arg="world" aria-label="${t('Back to world map')}">${ICON.back()}</button>
+        <div class="st-chip top-chip"><h2>${esc(t(c.name))}</h2><span class="sub">${t('{won} of {n} farms won', { won, n: c.cities.length })}</span></div></div>
       <div class="grp bl" style="width: 330px; height: 64px"><div class="bl-row">${this.walletChip()}${this.gemChip()}</div></div>
       <div class="grp tr" style="width: 262px; height: 390px"><div class="st-chip city-card">${this.cityCardHtml(this.citySel)}</div></div>`;
   }
@@ -1494,29 +1505,29 @@ export class GameApp {
     const lock = cityLock(this.g, cityId);
     const n = c.cities.findIndex(x => x.id === cityId) + 1;
     const preview = PREVIEW[cityId] || bandFor(cityId, ct.country);
-    let h = `<div class="cc-top"><span class="eyebrow">FARM ${n} OF ${c.cities.length}${plan.boss ? ' · BOSS' : ''}</span><span class="stars">${stars(p.stars)}</span></div>
+    let h = `<div class="cc-top"><span class="eyebrow">${t('FARM {n} OF {m}', { n, m: c.cities.length })}${plan.boss ? ` · ${t('BOSS')}` : ''}</span><span class="stars">${stars(p.stars)}</span></div>
       <h3 class="cc-name">${esc(ct.name)}</h3>`;
     if (lock.open) {
       const bossSpr = plan.bossFight ? SPRITE[plan.bossFight.type] : '';
       h += preview
-        ? `<div class="cc-preview" style="background-image: url('${preview}')" role="img" aria-label="The ${esc(ct.short)} farm">${bossSpr ? `<span class="cc-boss"><img src="${bossSpr}" alt="" draggable="false">${ICON.crown('#FFC23D', 26)}</span>` : ''}</div>`
+        ? `<div class="cc-preview" style="background-image: url('${preview}')" role="img" aria-label="${t('The {farm} farm', { farm: esc(ct.short) })}">${bossSpr ? `<span class="cc-boss"><img src="${bossSpr}" alt="" draggable="false">${ICON.crown('#FFC23D', 26)}</span>` : ''}</div>`
         : `<div class="cc-preview empty">${bossSpr ? `<span class="cc-boss"><img src="${bossSpr}" alt="" draggable="false">${ICON.crown('#FFC23D', 26)}</span>` : ''}</div>`;
       if (plan.bossFight)
-        h += `<div class="cc-twist boss">${ICON.crown('#FFC23D', 18)}<p><b>${esc(plan.bossFight.name)}</b> guards the deed. Knock ${pronoun(plan.bossFight.name)} out to win the farm.</p></div>`;
+        h += `<div class="cc-twist boss">${ICON.crown('#FFC23D', 18)}<p><b>${esc(t(plan.bossFight.name))}</b> ${pronoun(plan.bossFight.name) === 'her' ? t('guards the deed. Knock her out to win the farm.') : t('guards the deed. Knock him out to win the farm.')}</p></div>`;
       else
-        h += `<div class="cc-twist"><span class="tw-ic">${eventIcon(plan.signatureEvent)}</span><p>${esc(EVENT_LINES[plan.signatureEvent] || '')}</p></div>`;
+        h += `<div class="cc-twist"><span class="tw-ic">${eventIcon(plan.signatureEvent)}</span><p>${esc(t(EVENT_LINES[plan.signatureEvent] || ''))}</p></div>`;
     } else {
       h += `<div class="locked-box tall">${ICON.lock()}<span>${esc(lock.reason)}</span></div>`;
-      h += `<p class="cc-desc">${esc(ct.desc)}</p>`;
+      h += `<p class="cc-desc">${esc(t(ct.desc))}</p>`;
     }
-    h += `<div class="stat2"><div class="statbox"><div class="k">${plan.bills.length} BILLS</div><div class="v">${plan.totalDays} days</div></div>
-      <div class="statbox"><div class="k">CITY CROWN</div><div class="v">${p.crown ? 'Yours!' : money(plan.record)}</div></div></div>`;
-    if (p.won) h += `<p class="cc-best">Paid you so far: <b>${money(p.paid || 0)}</b>. Farming it again pays only what beats that.</p>`;
-    else if (p.bestDay > 0) h += `<p class="cc-best">Your best day here: <b>${money(p.bestDay)}</b></p>`;
-    h += `<div class="cc-rival"><div class="trio">${this.trio(ct.country, 30)}</div><span>Rival<br><b>${esc(ct.rival)}</b></span></div>`;
-    if (!lock.open) h += `<button type="button" disabled class="st-btn btn-lg off">Locked</button>`;
-    else if (this.g.run && this.g.run.cityId === cityId) h += `<button type="button" class="st-btn gold btn-lg" data-act="farm" data-arg="${cityId}">Continue · Day ${engine().state().day}</button>`;
-    else h += `<button type="button" class="st-btn gold btn-lg" data-act="farm" data-arg="${cityId}">${p.won ? 'Farm again' : 'Farm here'}</button>`;
+    h += `<div class="stat2"><div class="statbox"><div class="k">${t('{n} BILLS', { n: plan.bills.length })}</div><div class="v">${tn(plan.totalDays, '{n} day', '{n} days')}</div></div>
+      <div class="statbox"><div class="k">${t('CITY CROWN')}</div><div class="v">${p.crown ? t('Yours!') : money(plan.record)}</div></div></div>`;
+    if (p.won) h += `<p class="cc-best">${t('Paid you so far:')} <b>${money(p.paid || 0)}</b>${t('. Farming it again pays only what beats that.')}</p>`;
+    else if (p.bestDay > 0) h += `<p class="cc-best">${t('Your best day here:')} <b>${money(p.bestDay)}</b></p>`;
+    h += `<div class="cc-rival"><div class="trio">${this.trio(ct.country, 30)}</div><span>${t('Rival')}<br><b>${esc(ct.rival)}</b></span></div>`;
+    if (!lock.open) h += `<button type="button" disabled class="st-btn btn-lg off">${t('Locked')}</button>`;
+    else if (this.g.run && this.g.run.cityId === cityId) h += `<button type="button" class="st-btn gold btn-lg" data-act="farm" data-arg="${cityId}">${t('Continue · Day {day}', { day: engine().state().day })}</button>`;
+    else h += `<button type="button" class="st-btn gold btn-lg" data-act="farm" data-arg="${cityId}">${p.won ? t('Farm again') : t('Farm here')}</button>`;
     return h;
   }
 
@@ -1530,11 +1541,11 @@ export class GameApp {
     const ct = cityById(run.cityId)!;
     const plan = planFor(run.cityId);
     let action: string;
-    if (b.tonight && !b.canPay) action = `<button type="button" class="st-btn red btn-top" data-act="bank">Face the bank</button>`;
-    else if (b.tonight) action = `<button type="button" class="st-btn gold btn-top" data-act="pay">Pay ${money(b.amt)}</button>`;
-    else action = `<button type="button" class="st-btn gold btn-top" data-act="start">Start day ${st.day}${ICON.next()}</button>`;
+    if (b.tonight && !b.canPay) action = `<button type="button" class="st-btn red btn-top" data-act="bank">${t('Face the bank')}</button>`;
+    else if (b.tonight) action = `<button type="button" class="st-btn gold btn-top" data-act="pay">${t('Pay {amt}', { amt: money(b.amt) })}</button>`;
+    else action = `<button type="button" class="st-btn gold btn-top" data-act="start">${t('Start day {day}', { day: st.day })}${ICON.next()}</button>`;
     const coinsOffer = canOffer(this.g, 'coins')
-      ? `<button type="button" class="ad-chip" data-act="ad-coins">${ICON.play()}<span>Free ${money(this.coinsReward())}</span></button>`
+      ? `<button type="button" class="ad-chip" data-act="ad-coins">${ICON.play()}<span>${t('Free {amt}', { amt: money(this.coinsReward()) })}</span></button>`
       : '';
     const tabs = (['workshop', 'tools', 'perks', 'bills'] as const)
       .map(t => `<button type="button" class="${this.fhTab === t ? 'on' : ''}" data-act="tab" data-arg="${t}">${cap(t)}</button>`)
@@ -1546,8 +1557,8 @@ export class GameApp {
     else body = this.billsList();
     return `<div class="wood"></div>
       <div class="grp tl" style="width: 520px; height: 64px"><div class="fh-top">
-        <button type="button" class="st-btn st-sq" data-act="map" data-arg="${run.cityId}" aria-label="Back to the map">${ICON.back()}</button>
-        <div class="st-chip fh-title"><h2>${esc(ct.short)}</h2><span class="sub">Day ${st.day}${plan.boss ? ' · Boss' : ''}</span></div>
+        <button type="button" class="st-btn st-sq" data-act="map" data-arg="${run.cityId}" aria-label="${t('Back to the map')}">${ICON.back()}</button>
+        <div class="st-chip fh-title"><h2>${esc(ct.short)}</h2><span class="sub">${t('Day {day}', { day: st.day })}${plan.boss ? ` · ${t('Boss')}` : ''}</span></div>
         ${this.walletChip()}${coinsOffer}</div></div>
       <div class="grp tr" style="width: 230px; height: 64px">${action}</div>
       <div class="grp ml" style="width: 240px; height: 300px">${this.noticeHtml(b, st)}</div>
@@ -1556,32 +1567,32 @@ export class GameApp {
 
   private noticeHtml(b: BillInfo, st: EngineState): string {
     const pct = clamp(st.cash / Math.max(1, b.amt), 0, 1);
-    const due = b.tonight ? 'Due tonight' : `Due day ${b.dueDay} · ${b.left} ${b.left === 1 ? 'day' : 'days'} left`;
+    const due = b.tonight ? t('Due tonight') : `${t('Due day {day}', { day: b.dueDay })} · ${tn(b.left, '{n} day left', '{n} days left')}`;
     let offers = '';
     if (b.tonight && !b.canPay && !st.extraDayUsed && canOffer(this.g, 'extraDay'))
-      offers = `<button type="button" class="ad-chip" data-act="ad-extra">${ICON.play()}<span>+1 day</span></button>`;
+      offers = `<button type="button" class="ad-chip" data-act="ad-extra">${ICON.play()}<span>${t('+1 day')}</span></button>`;
     const boss = st.boss;
     let bossRow = '';
     if (boss && !boss.down) {
       const f = clamp(boss.hp / Math.max(1, boss.max), 0, 1);
       const txt = b.bossBlock
-        ? `${esc(boss.name)} is sitting on the deed. Knock ${pronoun(boss.name)} out first.`
-        : `${esc(boss.name)} is on the farm. Bounty ${money(boss.bounty)}.`;
+        ? `${esc(t(boss.name))} ${pronoun(boss.name) === 'her' ? t('is sitting on the deed. Knock her out first.') : t('is sitting on the deed. Knock him out first.')}`
+        : `${esc(t(boss.name))} ${t('is on the farm. Bounty {amt}.', { amt: money(boss.bounty) })}`;
       bossRow = `<div class="n-boss${b.bossBlock ? ' hot' : ''}">${ICON.crown('#FFC23D', 18)}<span class="nb-t">${txt}</span><span class="nb-bar"><i style="width: ${(f * 100).toFixed(1)}%"></i></span></div>`;
     } else if (boss && boss.down) {
-      bossRow = `<div class="n-boss done">${ICON.crown('#FFC23D', 18)}<span class="nb-t">${esc(boss.name)} is out cold.</span></div>`;
+      bossRow = `<div class="n-boss done">${ICON.crown('#FFC23D', 18)}<span class="nb-t">${esc(t(boss.name))} ${t('is out cold.')}</span></div>`;
     }
     // bills are paid on the evening they are due
-    const payLabel = b.bossBlock && st.cash >= b.amt ? 'Boss first' : b.tonight ? `Pay ${money(b.amt)}` : `Pay on day ${b.dueDay}`;
+    const payLabel = b.bossBlock && st.cash >= b.amt ? t('Boss first') : b.tonight ? t('Pay {amt}', { amt: money(b.amt) }) : t('Pay on day {day}', { day: b.dueDay });
     return `<div class="notice${bossRow ? ' has-boss' : ''}">
-        <div class="n-head">GRUMBLE &amp; SONS SAVINGS &amp; LOAN</div>
-        <div class="n-sub">Notice ${b.index + 1} of ${b.count}</div>
-        <div class="n-name">${esc(b.name)}</div>
-        <p class="n-note">${esc(b.note)}</p>
+        <div class="n-head">${t('GRUMBLE &amp; SONS SAVINGS &amp; LOAN')}</div>
+        <div class="n-sub">${t('Notice {n} of {m}', { n: b.index + 1, m: b.count })}</div>
+        <div class="n-name">${esc(t(b.name))}</div>
+        <p class="n-note">${esc(t(b.note))}</p>
         <div class="n-amt">${money(b.amt)}</div>
         <div class="n-due${b.tonight ? ' hot' : ''}">${due}</div>
         <div class="n-meter${st.cash >= b.amt ? ' full' : ''}"><i style="width: ${(pct * 100).toFixed(1)}%"></i></div>
-        <div class="n-have">You have ${money(st.cash)} · ${Math.round(pct * 100)}%</div>
+        
         ${bossRow}
         <div class="n-actions"><button type="button" class="st-btn btn-pay${b.canPay ? ' gold' : ''}" data-act="pay" ${b.canPay ? '' : 'disabled'}>${payLabel}</button>${offers}</div>
       </div>`;
@@ -1591,37 +1602,37 @@ export class GameApp {
     const T = this.g.tools;
     const cash = this.wallet();
     const sel = toolDef(this.toolSel);
-    const list = TOOLS.map(t => {
-      const owned = T.owned.includes(t.id), lock = toolLock(this.g, t.id);
-      const status = T.equipped === t.id ? 'In hand' : owned ? 'Owned' : lock.open ? money(t.price) : 'Locked';
-      const cls = `tool-row${this.toolSel === t.id ? ' sel' : ''}${owned ? ' owned' : lock.open ? ' sale' : ' locked'}`;
-      return `<button type="button" class="${cls}" data-act="tool" data-arg="${t.id}">${TOOL_ICON[t.id](32)}<span class="tr-txt"><b>${esc(t.name)}</b><span>${status}</span></span></button>`;
+    const list = TOOLS.map(tl => {
+      const owned = T.owned.includes(tl.id), lock = toolLock(this.g, tl.id);
+      const status = T.equipped === tl.id ? t('In hand') : owned ? t('Owned') : lock.open ? money(tl.price) : t('Locked');
+      const cls = `tool-row${this.toolSel === tl.id ? ' sel' : ''}${owned ? ' owned' : lock.open ? ' sale' : ' locked'}`;
+      return `<button type="button" class="${cls}" data-act="tool" data-arg="${tl.id}">${TOOL_ICON[tl.id](32)}<span class="tr-txt"><b>${esc(t(tl.name))}</b><span>${status}</span></span></button>`;
     }).join('');
     const owned = T.owned.includes(sel.id), lock = toolLock(this.g, sel.id);
     let head: string;
-    if (T.equipped === sel.id) head = `<span class="pill-dark pill-sm">In your hands</span>`;
-    else if (owned) head = `<button type="button" class="st-btn gold btn-sm" data-act="equip" data-arg="${sel.id}">Use this</button>`;
+    if (T.equipped === sel.id) head = `<span class="pill-dark pill-sm">${t('In your hands')}</span>`;
+    else if (owned) head = `<button type="button" class="st-btn gold btn-sm" data-act="equip" data-arg="${sel.id}">${t('Use this')}</button>`;
     else if (lock.open) {
       const can = cash >= sel.price;
-      head = `<button type="button" class="st-btn btn-sm${can ? ' gold' : ' off'}" data-act="buy-tool" data-arg="${sel.id}" ${can ? '' : 'disabled'}>Buy ${money(sel.price)}</button>`;
+      head = `<button type="button" class="st-btn btn-sm${can ? ' gold' : ' off'}" data-act="buy-tool" data-arg="${sel.id}" ${can ? '' : 'disabled'}>${t('Buy {amt}', { amt: money(sel.price) })}</button>`;
     } else head = `<span class="lock-chip">${ICON.lock('#5A3E2B', 12)}${esc(lock.reason)}</span>`;
     const mods = sel.mods
       .map(m => {
         const l = modLevel(T, sel.id, m.id), cost = modCost(sel.id, m.id, l);
         const pips = Array.from({ length: m.max }, (_, i) => `<i class="${i < l ? 'on' : ''}"></i>`).join('');
         let btn: string;
-        if (cost == null) btn = `<button type="button" class="st-btn btn-mod off" disabled>Max</button>`;
+        if (cost == null) btn = `<button type="button" class="st-btn btn-mod off" disabled>${t('Max')}</button>`;
         else if (!owned) btn = `<button type="button" class="st-btn btn-mod off" disabled>${money(cost)}</button>`;
         else {
           const can = cash >= cost;
           btn = `<button type="button" class="st-btn btn-mod${can ? ' gold' : ' off'}" data-act="buy-mod" data-arg="${sel.id}.${m.id}" ${can ? '' : 'disabled'}>${money(cost)}</button>`;
         }
-        return `<div class="mod-row"><span class="mod-txt"><b>${esc(m.name)}</b><span>${esc(m.line)}</span></span><span class="pips">${pips}</span>${btn}</div>`;
+        return `<div class="mod-row"><span class="mod-txt"><b>${esc(t(m.name))}</b><span>${esc(t(m.line))}</span></span><span class="pips">${pips}</span>${btn}</div>`;
       })
       .join('');
     return `<div class="tools-tab"><div class="tool-list">${list}</div><div class="tool-detail">
-        <div class="td-head">${TOOL_ICON[sel.id](30)}<span class="td-name">${esc(sel.name)}</span>${head}</div>
-        <p class="td-blurb">${esc(sel.blurb)}</p><p class="td-stats">${esc(toolSummary(toolStats(T, sel.id)).join(' · '))}</p>
+        <div class="td-head">${TOOL_ICON[sel.id](30)}<span class="td-name">${esc(t(sel.name))}</span>${head}</div>
+        <p class="td-blurb">${esc(t(sel.blurb))}</p><p class="td-stats">${esc(toolSummary(toolStats(T, sel.id)).join(' · '))}</p>
         <div class="mod-list">${mods}</div></div></div>`;
   }
 
@@ -1646,19 +1657,19 @@ export class GameApp {
       const dur = upgradeDuration(u.id, l);
       const building = job && job.id === u.id;
       let btn: string;
-      if (cost == null) btn = `<button type="button" class="st-btn btn-buy off" disabled>Maxed</button>`;
-      else if (building) btn = `<button type="button" class="st-btn btn-buy off" disabled>Building…</button>`;
+      if (cost == null) btn = `<button type="button" class="st-btn btn-buy off" disabled>${t('Maxed')}</button>`;
+      else if (building) btn = `<button type="button" class="st-btn btn-buy off" disabled>${t('Building…')}</button>`;
       else {
         const blocked = (dur > 0 && !!job) || cash < cost;
         btn = `<button type="button" class="st-btn btn-buy${blocked ? ' off' : ' gold'}" data-act="buy" data-arg="${u.id}" ${blocked ? 'disabled' : ''}>${money(cost)}${dur ? `<small>${ICON.clock(11)}${formatDuration(dur)}</small>` : ''}</button>`;
       }
-      const eff = cost != null ? `${esc(u.value(l))} → <b>${esc(u.value(l + 1))}</b> ${esc(u.unit)}` : `<b>${esc(u.value(l))}</b> ${esc(u.unit)}`;
-      return `<div class="up-card"><div class="up-name">${esc(u.name)}</div>
-        <div class="up-eff"><span class="up-lv" aria-label="Level ${l}">Lv ${l}</span> ${eff}</div>${btn}</div>`;
+      const eff = cost != null ? `${esc(u.value(l))} → <b>${esc(u.value(l + 1))}</b> ${esc(t(u.unit))}` : `<b>${esc(u.value(l))}</b> ${esc(t(u.unit))}`;
+      return `<div class="up-card"><div class="up-name">${esc(t(u.name))}</div>
+        <div class="up-eff"><span class="up-lv" aria-label="${t('Level {n}', { n: l })}">${t('Lv {n}', { n: l })}</span> ${eff}</div>${btn}</div>`;
     }).join('');
     const run = this.g.run;
     const capped = run && run.mark > 0
-      ? `<p class="up-cap">${ICON.coin(16)}<span>This farm has paid you ${money(run.mark)} already. Its cash buys upgrades once you hold more than that; your savings always can.</span></p>`
+      ? `<p class="up-cap">${ICON.coin(16)}<span>${t('This farm has paid you {amt} already. Its cash buys upgrades once you hold more than that; your savings always can.', { amt: money(run.mark) })}</span></p>`
       : '';
     return `${capped}<div class="up-grid">${cards}${this.jobCellHtml()}</div>`;
   }
@@ -1666,23 +1677,23 @@ export class GameApp {
   /** The eighth cell of the workshop grid: the upgrade being built, or how building works. */
   private jobCellHtml(): string {
     const job = this.g.workshop.job;
-    if (!job) return `<div class="up-card job-cell idle">${ICON.clock(18)}<p>Every fifth level is a bigger job: it takes a while, one job at a time.</p></div>`;
+    if (!job) return `<div class="up-card job-cell idle">${ICON.clock(18)}<p>${t('Every fifth level is a bigger job: it takes a while, one job at a time.')}</p></div>`;
     const def = UPGRADES.find(u => u.id === job.id)!;
     const left = job.endsAt - Date.now();
     const pct = clamp(1 - left / Math.max(1, job.endsAt - job.startedAt), 0, 1);
-    const ad = canOffer(this.g, 'finish') ? `<button type="button" class="ad-chip sm" data-act="ad-finish">${ICON.play()}<span>Finish now</span></button>` : '';
-    return `<div class="up-card job-cell" id="dbdJob"><div class="up-name">${esc(def.name)} ${job.level}</div>
+    const ad = canOffer(this.g, 'finish') ? `<button type="button" class="ad-chip sm" data-act="ad-finish">${ICON.play()}<span>${t('Finish now')}</span></button>` : '';
+    return `<div class="up-card job-cell" id="dbdJob"><div class="up-name">${esc(t(def.name))} ${job.level}</div>
       <span class="jb-track"><i style="width: ${(pct * 100).toFixed(1)}%"></i></span><span class="jb-left">${ICON.clock(11)} ${formatDuration(left)}</span>${ad}</div>`;
   }
 
   private perksList(ids: string[]): string {
-    if (!ids.length) return `<p class="fh-empty">Pay a bill to pick your first perk for this farm.</p>`;
+    if (!ids.length) return `<p class="fh-empty">${t('Pay a bill to pick your first perk for this farm.')}</p>`;
     const counts: Record<string, number> = {};
     for (const id of ids) counts[id] = (counts[id] || 0) + 1;
     return `<div class="perk-list">${Object.entries(counts)
       .map(([id, n]) => {
         const p = engine().perkInfo(id);
-        return p ? `<div class="perk-row"><b>${esc(p.name)}${n > 1 ? ` ×${n}` : ''}</b><span>${esc(deviceText(p.line))}</span></div>` : '';
+        return p ? `<div class="perk-row"><b>${esc(t(p.name))}${n > 1 ? ` ×${n}` : ''}</b><span>${esc(t(deviceText(p.line)))}</span></div>` : '';
       })
       .join('')}</div>`;
   }
@@ -1692,7 +1703,7 @@ export class GameApp {
     const st = e.state();
     const plan = this.g.run ? planFor(this.g.run.cityId) : null;
     const now = plan && plan.stages.filter(x => x.stage <= st.billsPaid).map(x => spriteImg(x.type, 22, cropName(x.type))).join('');
-    const field = now ? `<p class="bl-field">On the field now: ${now}<span>Each bill paid brings a new crop.</span></p>` : '';
+    const field = now ? `<p class="bl-field">${t('On the field now:')} ${now}<span>${t('Each bill paid brings a new crop.')}</span></p>` : '';
     // bills keep their schedule: each is due its own number of days after the one before it
     let due = st.due;
     return `${field}<div class="bill-list">${e
@@ -1701,9 +1712,9 @@ export class GameApp {
         if (i > st.bill) due += b.days;
         const status = i < st.billsPaid ? 'paid' : i === st.bill ? 'now' : 'later';
         const next = plan && plan.stages[i + 1];
-        const crop = next ? `<span class="b-crop" title="Then: ${esc(cropName(next.type))}">${spriteImg(next.type, 24, cropName(next.type))}</span>` : `<span class="b-crop"></span>`;
-        return `<div class="bill-row ${status}"><span class="b-no">${i + 1}</span><span class="b-name">${esc(b.name)}</span><span class="b-amt">${money(b.amt)}</span><span class="b-st">${
-          status === 'paid' ? 'Paid ✓' : `Due day ${i === st.bill ? st.due : due}`
+        const crop = next ? `<span class="b-crop" title="${t('Then: {crop}', { crop: esc(cropName(next.type)) })}">${spriteImg(next.type, 24, cropName(next.type))}</span>` : `<span class="b-crop"></span>`;
+        return `<div class="bill-row ${status}"><span class="b-no">${i + 1}</span><span class="b-name">${esc(t(b.name))}</span><span class="b-amt">${money(b.amt)}</span><span class="b-st">${
+          status === 'paid' ? t('Paid ✓') : t('Due day {day}', { day: i === st.bill ? st.due : due })
         }</span>${crop}</div>`;
       })
       .join('')}</div>`;
@@ -1726,34 +1737,34 @@ export class GameApp {
     const dots = ' ' + new Array(Math.max(2, 31 - b.name.length - amtTxt.length)).join('.') + ' ';
     const cashNow = e.state().cash;
     const stamp = b.bossBlock && cashNow >= b.amt
-      ? `<span class="stamp bad">BOSS FIRST</span>`
+      ? `<span class="stamp bad">${t('BOSS FIRST')}</span>`
       : b.covered
-        ? `<span class="stamp ok">COVERED</span>`
-        : `<span class="stamp bad">SHORT ${money(b.amt - cashNow)}</span>`;
+        ? `<span class="stamp ok">${t('COVERED')}</span>`
+        : `<span class="stamp bad">${t('SHORT {amt}', { amt: money(b.amt - cashNow) })}</span>`;
     const boss = e.state().boss;
     let bossLine = '';
-    if (d.today.boss && boss) bossLine = `<div class="sd-boss win">${ICON.crown('#FFC23D', 18)}<span>${esc(boss.name)} knocked out! Bounty +${money(d.today.boss)}</span></div>`;
+    if (d.today.boss && boss) bossLine = `<div class="sd-boss win">${ICON.crown('#FFC23D', 18)}<span>${t('{boss} knocked out! Bounty +{amt}', { boss: esc(t(boss.name)), amt: money(d.today.boss) })}</span></div>`;
     else if (boss && !boss.down)
-      bossLine = `<div class="sd-boss">${ICON.crown('#FFC23D', 18)}<span>${esc(boss.name)}: ${Math.max(1, Math.round((boss.hp / Math.max(1, boss.max)) * 100))}% left</span><span class="nb-bar"><i style="width: ${(clamp(boss.hp / Math.max(1, boss.max), 0, 1) * 100).toFixed(1)}%"></i></span></div>`;
-    const dueLine = b.tonight ? 'Due tonight.' : `Due in ${b.left} ${b.left === 1 ? 'day' : 'days'}.`;
+      bossLine = `<div class="sd-boss">${ICON.crown('#FFC23D', 18)}<span>${t('{boss}: {n}% left', { boss: esc(t(boss.name)), n: Math.max(1, Math.round((boss.hp / Math.max(1, boss.max)) * 100)) })}</span><span class="nb-bar"><i style="width: ${(clamp(boss.hp / Math.max(1, boss.max), 0, 1) * 100).toFixed(1)}%"></i></span></div>`;
+    const dueLine = b.tonight ? t('Due tonight.') : tn(b.left, 'Due in {n} day.', 'Due in {n} days.');
     const crownLine = d.crownToday
-      ? `👑 New city crown! You beat ${esc(ct.rival)}.`
+      ? `👑 ${t('New city crown! You beat {rival}.', { rival: esc(ct.rival) })}`
       : p.crown
-        ? `👑 ${esc(ct.short)} is yours. Best day ${money(p.bestDay)}.`
-        : `City record: ${money(p.bestDay)} of ${money(plan.record)}`;
+        ? `👑 ${t('{farm} is yours. Best day {amt}.', { farm: esc(ct.short), amt: money(p.bestDay) })}`
+        : t('City record: {have} of {rec}', { have: money(p.bestDay), rec: money(plan.record) });
     const dbl = !d.doubled && earned > 0 && canOffer(this.g, 'double')
-      ? `<button type="button" class="st-btn blue btn-md flex1 ad-btn" data-act="ad-double">${ICON.play()}<span>Double it: +${money(earned)}</span></button>`
+      ? `<button type="button" class="st-btn blue btn-md flex1 ad-btn" data-act="ad-double">${ICON.play()}<span>${t('Double it: +{amt}', { amt: money(earned) })}</span></button>`
       : '';
     return `<div class="grp mc" style="width: 430px; height: 350px"><div class="st-chip sundown-card">
-      <div class="sd-head"><h2>Sundown!</h2><span class="eyebrow">${esc(ct.short.toUpperCase())} · DAY ${d.day}</span></div>
-      <div class="stat3"><div class="statbox"><div class="k">CROPS CUT</div><div class="v">${d.today.count}</div></div>
-        <div class="statbox"><div class="k">BEST CHAIN</div><div class="v">×${d.today.best}</div></div>
-        <div class="statbox"><div class="k">EARNED</div><div class="v money">${money(earned)}${d.doubled ? '<small> ×2</small>' : ''}</div></div></div>
-      <div class="sd-notice"><div>GRUMBLE &amp; SONS · NOTICE ${b.index + 1} OF ${b.count}</div><div>${esc(b.name)}${dots}${amtTxt}</div><div class="sd-due">${dueLine}</div>${stamp}</div>
+      <div class="sd-head"><h2>${t('Sundown!')}</h2><span class="eyebrow">${esc(ct.short.toUpperCase())} · ${t('DAY {day}', { day: d.day })}</span></div>
+      <div class="stat3"><div class="statbox"><div class="k">${t('CROPS CUT')}</div><div class="v">${d.today.count}</div></div>
+        <div class="statbox"><div class="k">${t('BEST CHAIN')}</div><div class="v">×${d.today.best}</div></div>
+        <div class="statbox"><div class="k">${t('EARNED')}</div><div class="v money">${money(earned)}${d.doubled ? '<small> ×2</small>' : ''}</div></div></div>
+      <div class="sd-notice"><div>${t('GRUMBLE &amp; SONS · NOTICE {n} OF {m}', { n: b.index + 1, m: b.count })}</div><div>${esc(t(b.name))}${dots}${amtTxt}</div><div class="sd-due">${dueLine}</div>${stamp}</div>
       <div class="sd-rec"><div class="sd-rec-row"><span>${crownLine}</span><span>${Math.min(100, pct)}%</span></div>
         <div class="meter"><i style="width: ${Math.min(100, pct)}%"></i></div></div>
       ${bossLine}
-      <div class="sd-actions">${dbl}<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">Farmhouse${ICON.next()}</button></div>
+      <div class="sd-actions">${dbl}<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button></div>
     </div></div>`;
   }
 
@@ -1773,38 +1784,42 @@ export class GameApp {
       const keptPct = Math.min(100, (kept / Math.max(1, top)) * 100);
       const goalPct = Math.min(100, (plan.spare / Math.max(1, top)) * 100);
       const starRow = [
-        `<div class="star-row ok" style="animation-delay: .25s">${ICON.star(true, 26)}<span>Paid off the farm</span></div>`,
+        `<div class="star-row ok" style="animation-delay: .25s">${ICON.star(true, 26)}<span>${t('Paid off the farm')}</span></div>`,
         `<div class="star-row spare-row${r.spare ? ' ok' : ''}" style="animation-delay: .5s">${ICON.star(r.spare, 26)}<span class="sp-pig">${ICON.piggy(24)}</span>
-          <span class="sp-bar" aria-label="Kept ${money(kept)} after the deed; the goal is ${money(plan.spare)}"><i style="--w: ${keptPct.toFixed(1)}%"></i><b style="left: ${goalPct.toFixed(1)}%"></b></span>
+          <span class="sp-bar" aria-label="${t('Kept {amt} after the deed; the goal is {goal}', { amt: money(kept), goal: money(plan.spare) })}"><i style="--w: ${keptPct.toFixed(1)}%"></i><b style="left: ${goalPct.toFixed(1)}%"></b></span>
           <span class="sp-amt">${money(kept)}<small> / ${money(plan.spare)}</small></span></div>`,
-        `<div class="star-row rival-row${r.crown ? ' ok' : ''}" style="animation-delay: .75s">${ICON.star(r.crown, 26)}<span class="rv-face${r.crown ? ' down' : ''}">${rivalFace(ct.rival, 30)}</span><span>Beat ${esc(ct.rival)}</span></div>`,
+        `<div class="star-row rival-row${r.crown ? ' ok' : ''}" style="animation-delay: .75s">${ICON.star(r.crown, 26)}<span class="rv-face${r.crown ? ' down' : ''}">${rivalFace(ct.rival, 30)}</span><span>${t('Beat {rival}', { rival: esc(ct.rival) })}</span></div>`,
       ].join('');
       const gains =
-        (r.ribbons ? `<button type="button" class="dia dia-btn" data-act="barn" aria-label="Spend ribbons in the Bling Barn">${ribbonIcon(18)} +${r.ribbons}</button>` : '') +
-        (r.diamonds ? `<button type="button" class="dia dia-btn" data-act="skills" aria-label="Spend it on the skill map">${ICON.diamond(16)} +${r.diamonds}</button>` : '');
+        (r.ribbons ? `<button type="button" class="dia dia-btn" data-act="barn" aria-label="${t('Spend ribbons in the Bling Barn')}">${ribbonIcon(18)} +${r.ribbons}</button>` : '') +
+        (r.diamonds ? `<button type="button" class="dia dia-btn" data-act="skills" aria-label="${t('Spend it on the skill map')}">${ICON.diamond(16)} +${r.diamonds}</button>` : '');
       return `<div class="grp mc" style="width: 470px; height: 350px"><div class="st-chip result-card">
-        <div class="letter-head"><span class="eyebrow">GRUMBLE &amp; SONS SAVINGS &amp; LOAN</span><span class="stamp ok big">PAID IN FULL</span></div>
-        <h2 class="r-title">The ${esc(ct.short)} farm is yours.</h2>
-        <p class="r-text">Dear former customer, enclosed is the deed. We are, frankly, upset.</p>
+        <div class="letter-head"><span class="eyebrow">${t('GRUMBLE &amp; SONS SAVINGS &amp; LOAN')}</span><span class="stamp ok big">${t('PAID IN FULL')}</span></div>
+        <h2 class="r-title">${t('The {farm} farm is yours.', { farm: esc(ct.short) })}</h2>
+        <p class="r-text">${t('Dear former customer, enclosed is the deed. We are, frankly, upset.')}</p>
         <div class="star-rows">${starRow}</div>${plan.bossFight ? this.clearedLine(ct.country) : ''}
-        <div class="r-rewards"><span>${r.days} days · ${money(r.earned)} earned · ${
-          r.mark > 0 ? (r.banked > 0 ? `+${money(r.banked)} above your best` : `nothing above your best of ${money(r.mark)}`) : `+${money(r.banked)} saved`
+        <div class="r-rewards"><span>${tn(r.days, '{n} day', '{n} days')} · ${t('{amt} earned', { amt: money(r.earned) })} · ${
+          r.mark > 0
+            ? r.banked > 0
+              ? t('+{amt} above your best', { amt: money(r.banked) })
+              : t('nothing above your best of {amt}', { amt: money(r.mark) })
+            : t('+{amt} saved', { amt: money(r.banked) })
         }</span><span class="r-gains">${gains}</span></div>
-        <div class="r-actions"><button type="button" class="st-btn blue btn-md flex1" data-act="map" data-arg="${r.cityId}">Map</button>
-          ${nextOpen ? `<button type="button" class="st-btn gold btn-md flex1" data-act="next-city">Next farm${ICON.next()}</button>` : ''}</div>
+        <div class="r-actions"><button type="button" class="st-btn blue btn-md flex1" data-act="map" data-arg="${r.cityId}">${t('Map')}</button>
+          ${nextOpen ? `<button type="button" class="st-btn gold btn-md flex1" data-act="next-city">${t('Next farm')}${ICON.next()}</button>` : ''}</div>
       </div></div>`;
     }
     return `<div class="grp mc" style="width: 450px; height: 330px"><div class="st-chip result-card lost">
-      <div class="letter-head"><span class="eyebrow">GRUMBLE &amp; SONS SAVINGS &amp; LOAN</span><span class="stamp bad big">FORECLOSED</span></div>
-      <h2 class="r-title">The bank took the farm.</h2>
+      <div class="letter-head"><span class="eyebrow">${t('GRUMBLE &amp; SONS SAVINGS &amp; LOAN')}</span><span class="stamp bad big">${t('FORECLOSED')}</span></div>
+      <h2 class="r-title">${t('The bank took the farm.')}</h2>
       <p class="r-text">${
         r.bossKept && plan.bossFight
-          ? `Dear farmer, ${esc(plan.bossFight.name)} was still sitting on the deed at sunset. The farm, the tractor and the goat now belong to us. The goat is already a problem.`
-          : `Dear farmer, regarding your ${esc((r.bill || 'bill').toLowerCase())}: you were ${money(r.short || 0)} short. The farm, the tractor and the goat now belong to us. The goat is already a problem.`
+          ? t('Dear farmer, {boss} was still sitting on the deed at sunset. The farm, the tractor and the goat now belong to us. The goat is already a problem.', { boss: esc(t(plan.bossFight.name)) })
+          : t('Dear farmer, regarding your {bill}: you were {amt} short. The farm, the tractor and the goat now belong to us. The goat is already a problem.', { bill: esc(t(r.bill || 'bill').toLowerCase()), amt: money(r.short || 0) })
       }</p>
-      <p class="r-text">You keep your upgrades, your tools and your ${money(r.wallet)} of savings.</p>
-      <div class="r-actions"><button type="button" class="st-btn blue btn-md flex1" data-act="map" data-arg="${r.cityId}">Map</button>
-        <button type="button" class="st-btn gold btn-md flex1" data-act="retry" data-arg="${r.cityId}">Try again</button></div>
+      <p class="r-text">${t('You keep your upgrades, your tools and your {amt} of savings.', { amt: money(r.wallet) })}</p>
+      <div class="r-actions"><button type="button" class="st-btn blue btn-md flex1" data-act="map" data-arg="${r.cityId}">${t('Map')}</button>
+        <button type="button" class="st-btn gold btn-md flex1" data-act="retry" data-arg="${r.cityId}">${t('Try again')}</button></div>
     </div></div>`;
   }
 
@@ -1836,12 +1851,12 @@ export class GameApp {
     const cards = c.perks.map((p, i) => perkCard(p, i, deviceText(p.line), touchy)).join('');
     const up =
       !c.upgraded && c.tier < 4 && canOffer(this.g, 'chest')
-        ? `<button type="button" class="st-btn blue btn-md ad-btn chest-up" data-act="ad-chest">${ICON.play()}<span>Upgrade</span>${CHEST_UP_ICON}</button>`
+        ? `<button type="button" class="st-btn blue btn-md ad-btn chest-up" data-act="ad-chest">${ICON.play()}<span>${t('Upgrade')}</span>${CHEST_UP_ICON}</button>`
         : '';
-    const sub = two ? `<p class="chest-sub picks">${picks > 1 ? 'Pick 2' : 'Pick 1 more'}</p>` : '';
+    const sub = two ? `<p class="chest-sub picks">${picks > 1 ? t('Pick 2') : t('Pick 1 more')}</p>` : '';
     this.openModal('perks', `<div class="chest-box ch-t${c.tier}${two ? ' two' : ''}${two && picks < 2 ? ' one-left open' : ''}">
-        <div class="chest-head"><span class="eyebrow">BILL ${st.billsPaid} OF ${st.billCount} PAID</span><h2 class="m-title">${esc(chestName(c.tier))}!</h2>${sub}</div>
-        <button type="button" class="chest-btn" data-act="chest-open" aria-label="Open the chest"><span class="ch-stage">${chestBurst(c.tier)}${chestSvg(c.tier)}</span><span class="chest-tap">Tap to open</span></button>
+        <div class="chest-head"><span class="eyebrow">${t('BILL {n} OF {m} PAID', { n: st.billsPaid, m: st.billCount })}</span><h2 class="m-title">${esc(t(chestName(c.tier) + '!'))}</h2>${sub}</div>
+        <button type="button" class="chest-btn" data-act="chest-open" aria-label="${t('Open the chest')}"><span class="ch-stage">${chestBurst(c.tier)}${chestSvg(c.tier)}</span><span class="chest-tap">${t('Tap to open')}</span></button>
         ${up}
         <div class="chest-cards perk-grid">${cards}</div>
         ${this.newCropLine()}
@@ -1853,7 +1868,7 @@ export class GameApp {
       const box = () => this.modal.querySelector<HTMLElement>('.chest-box');
       void this.coach.point(
         () => this.modal.querySelector('.chest-btn'),
-        'Tap',
+        t('Tap'),
         () => this.modal.hidden || !!box()?.classList.contains('open'),
         20000,
       );
@@ -1919,7 +1934,38 @@ export class GameApp {
     const pay = stage.val * (cur.vm || 1);
     const hp = stage.hp * plan.hp * (1 + plan.hpDay * Math.max(0, st.day - 1));
     const cuts = Math.max(1, Math.ceil(hp / Math.max(0.01, cur.dmg || 1) - 1e-6));
-    return newCropHtml(stage.type, cropName(stage.type), pay, cuts, money);
+    return newCropHtml(stage.type, t(cropName(stage.type)), pay, cuts, money);
+  }
+
+  /** Words that live in index.html (the pause card). */
+  private localizeStatic(): void {
+    const set = (sel: string, txt: string) => {
+      const el = document.querySelector(sel);
+      if (el) el.textContent = t(txt);
+    };
+    set('#pauseTitle', 'A little breather.');
+    set('#pauseOverlay .pause-card p', 'Your crops can wait. The daylight is paused until you return.');
+    set('#btnResume', 'Back to the field');
+  }
+
+  /** The language list: each language in its own name. */
+  private openLanguages(): void {
+    const rows = LANGS.map(
+      l => `<button type="button" class="st-btn lang-row${l.id === lang() ? ' gold' : ''}" data-act="lang" data-arg="${l.id}" aria-pressed="${l.id === lang()}" lang="${l.id}">${esc(l.name)}</button>`,
+    ).join('');
+    this.openModal('languages', `<h2 class="m-title">${GLOBE} ${t('Language')}</h2><div class="lang-list">${rows}</div>
+      <div class="m-row"><button type="button" class="st-btn" data-act="settings">${t('Back')}</button><button type="button" class="st-btn gold" data-act="close">${t('Done')}</button></div>`, 360);
+  }
+
+  private chooseLang(id: string): void {
+    if (!isLang(id)) return;
+    this.g.settings.lang = id;
+    setLang(id as Lang);
+    this.localizeStatic();
+    this.saveNow();
+    // everything on screen is drawn again in the new language
+    if (this.scr !== 'farm') this.render(this.scr);
+    this.openLanguages();
   }
 
   private openSettings(): void {
@@ -1933,16 +1979,18 @@ export class GameApp {
     const row = (act: string, label: string, onv: boolean) =>
       `<button type="button" class="toggle-row" data-act="${act}" aria-pressed="${onv}"><span class="tg${onv ? ' on' : ''}"><i></i></span>${label}</button>`;
     const ft = trackById(this.music.picked('field')), mt = trackById(this.music.picked('menu'));
-    this.openModal('settings', `<h2 class="m-title">Settings</h2>
-      ${row('music', 'Music', s.music)}
-      <button type="button" class="music-row" data-act="music-picker"><span class="mr-k">Tracks</span><span class="mr-v">Field: <b>${esc(ft ? ft.title : '')}</b> · Menus: <b>${esc(mt ? mt.title : '')}</b></span>${ICON.next()}</button>
-      <p class="m-text mus-status">Music now: <b>${esc(this.music.status())}</b></p>
-      ${row('sound', 'Sound effects', sound)}${row('haptics', 'Vibration', s.haptics)}
-      <div class="m-links"><a id="linkPrivacyPolicy" href="https://khoreh.com/due-by-dusk/privacy.html">Privacy policy</a>
-        <button type="button" class="linkish" id="btnPrivacyChoices" hidden>Privacy choices</button>
-        <button type="button" class="linkish" data-act="credits">Credits</button>
-        <button type="button" class="linkish" data-act="reset">Start over</button></div>
-      <button type="button" class="st-btn gold btn-md" data-act="close">Done</button>`);
+    const cur = LANGS.find(l => l.id === lang()) || LANGS[0];
+    this.openModal('settings', `<h2 class="m-title">${t('Settings')}</h2>
+      <button type="button" class="music-row" data-act="languages"><span class="mr-k">${GLOBE} ${t('Language')}</span><span class="mr-v"><b>${esc(cur.name)}</b></span>${ICON.next()}</button>
+      ${row('music', t('Music'), s.music)}
+      <button type="button" class="music-row" data-act="music-picker"><span class="mr-k">${t('Tracks')}</span><span class="mr-v">${t('Field:')} <b>${esc(ft ? ft.title : '')}</b> ${t('· Menus:')} <b>${esc(mt ? mt.title : '')}</b></span>${ICON.next()}</button>
+      <p class="m-text mus-status">${t('Music now:')} <b>${esc(t(this.music.status()))}</b></p>
+      ${row('sound', t('Sound effects'), sound)}${row('haptics', t('Vibration'), s.haptics)}
+      <div class="m-links"><a id="linkPrivacyPolicy" href="https://khoreh.com/due-by-dusk/privacy.html">${t('Privacy policy')}</a>
+        <button type="button" class="linkish" id="btnPrivacyChoices" hidden>${t('Privacy choices')}</button>
+        <button type="button" class="linkish" data-act="credits">${t('Credits')}</button>
+        <button type="button" class="linkish" data-act="reset">${t('Start over')}</button></div>
+      <button type="button" class="st-btn gold btn-md" data-act="close">${t('Done')}</button>`);
     window.dispatchEvent(new Event('dbd:privacy-links'));
   }
 
@@ -1950,14 +1998,14 @@ export class GameApp {
     const i = COUNTRIES.findIndex(c => c.code === code);
     const next = COUNTRIES[i + 1];
     const c = countryOf(code);
-    if (!next) return `<p class="r-boss">${ICON.crown('#FFC23D', 18)}<span>${esc(c.name)} is cleared. That was the last boss. The bank is speechless.</span></p>`;
+    if (!next) return `<p class="r-boss">${ICON.crown('#FFC23D', 18)}<span>${t('{country} is cleared. That was the last boss. The bank is speechless.', { country: esc(t(c.name)) })}</span></p>`;
     const lock = countryLock(this.g, next.code);
     const tail = lock.open
-      ? `${esc(next.name)} is open.`
-      : `Earn ${starGate(code) - countryStars(this.g, code)} more ★ in ${esc(c.name)} to open ${esc(next.name)}.`;
-    const tool = TOOLS.find(t => t.after === code);
-    const sale = tool && !this.g.tools.owned.includes(tool.id) ? ` The ${esc(tool.name.toLowerCase())} is now for sale in the farmhouse.` : '';
-    return `<p class="r-boss">${ICON.crown('#FFC23D', 18)}<span>${esc(c.name)}'s boss is out cold. ${tail}${sale}</span></p>`;
+      ? t('{country} is open.', { country: esc(t(next.name)) })
+      : t('Earn {n} more ★ in {country} to open {next}.', { n: starGate(code) - countryStars(this.g, code), country: esc(t(c.name)), next: esc(t(next.name)) });
+    const tool = TOOLS.find(tl => tl.after === code);
+    const sale = tool && !this.g.tools.owned.includes(tool.id) ? ` ${t('The {tool} is now for sale in the farmhouse.', { tool: esc(t(tool.name).toLowerCase()) })}` : '';
+    return `<p class="r-boss">${ICON.crown('#FFC23D', 18)}<span>${t("{country}'s boss is out cold.", { country: esc(t(c.name)) })} ${tail}${sale}</span></p>`;
   }
 
   private pickTrack(m: Mood, id: string): void {
@@ -1972,17 +2020,17 @@ export class GameApp {
   /** Settings → Tracks: play any track, and choose one for the field and one for the menus. */
   private openMusicPicker(): void {
     const playing = this.music.previewing();
-    const rows = TRACKS.map(t => {
-      const f = this.music.picked('field') === t.id, m = this.music.picked('menu') === t.id, p = playing === t.id;
+    const rows = TRACKS.map(tk => {
+      const f = this.music.picked('field') === tk.id, m = this.music.picked('menu') === tk.id, p = playing === tk.id;
       return `<div class="track-row${p ? ' playing' : ''}">
-        <button type="button" class="tr-play" data-act="track-play" data-arg="${t.id}" aria-label="${p ? 'Stop' : 'Play'} ${esc(t.title)}">${p ? ICON.pause() : ICON.play()}</button>
-        <span class="tr-info"><b>${esc(t.title)}</b><span>${esc(t.feel)}</span></span>
-        <button type="button" class="tr-slot${f ? ' on' : ''}" data-act="track-field" data-arg="${t.id}" aria-pressed="${f}">Field</button>
-        <button type="button" class="tr-slot${m ? ' on' : ''}" data-act="track-menu" data-arg="${t.id}" aria-pressed="${m}">Menus</button></div>`;
+        <button type="button" class="tr-play" data-act="track-play" data-arg="${tk.id}" aria-label="${p ? t('Stop') : t('Play')} ${esc(tk.title)}">${p ? ICON.pause() : ICON.play()}</button>
+        <span class="tr-info"><b>${esc(tk.title)}</b><span>${esc(t(tk.feel))}</span></span>
+        <button type="button" class="tr-slot${f ? ' on' : ''}" data-act="track-field" data-arg="${tk.id}" aria-pressed="${f}">${t('Field')}</button>
+        <button type="button" class="tr-slot${m ? ' on' : ''}" data-act="track-menu" data-arg="${tk.id}" aria-pressed="${m}">${t('Menus')}</button></div>`;
     }).join('');
-    const settingsOff = this.g.settings.music ? '' : `<p class="m-text">Music is switched off in Settings; turn it on to hear your picks while you play.</p>`;
-    this.openModal('tracks', `<h2 class="m-title">Music</h2>${settingsOff}<div class="track-list">${rows}</div>
-      <div class="m-row"><button type="button" class="st-btn" data-act="settings">Back</button><button type="button" class="st-btn gold" data-act="close">Done</button></div>`, 470);
+    const settingsOff = this.g.settings.music ? '' : `<p class="m-text">${t('Music is switched off in Settings; turn it on to hear your picks while you play.')}</p>`;
+    this.openModal('tracks', `<h2 class="m-title">${t('Music')}</h2>${settingsOff}<div class="track-list">${rows}</div>
+      <div class="m-row"><button type="button" class="st-btn" data-act="settings">${t('Back')}</button><button type="button" class="st-btn gold" data-act="close">${t('Done')}</button></div>`, 470);
   }
 
   private openCredits(): void {
@@ -1990,19 +2038,19 @@ export class GameApp {
       t => `<div class="credit-row"><span>“${esc(t.title)}” by ${esc(t.by)}.
         <a href="${LICENCE_URL[t.licence]}" target="_blank" rel="noopener">${esc(t.licence)}</a>${t.changes ? ` · ${esc(t.changes)}` : ''}</span></div>`,
     ).join('');
-    this.openModal('credits', `<h2 class="m-title">Credits</h2><span class="eyebrow">MUSIC</span>${rows}
-      <p class="m-text">Fonts: Lilita One, Nunito, Courier Prime, Figtree and Big Shoulders Stencil, under the SIL Open Font License.</p>
-      <div class="m-row"><button type="button" class="st-btn" data-act="settings">Back</button><button type="button" class="st-btn gold" data-act="close">Done</button></div>`, 420);
+    this.openModal('credits', `<h2 class="m-title">${t('Credits')}</h2><span class="eyebrow">${t('MUSIC')}</span>${rows}
+      <p class="m-text">${t('Fonts: Lilita One, Nunito, Courier Prime, Figtree and Big Shoulders Stencil, under the SIL Open Font License.')}</p>
+      <div class="m-row"><button type="button" class="st-btn" data-act="settings">${t('Back')}</button><button type="button" class="st-btn gold" data-act="close">${t('Done')}</button></div>`, 420);
   }
 
   private openCrowns(): void {
     const rows = COUNTRIES.map(c => {
       const n = c.cities.filter(x => cityProgress(this.g, x.id).crown).length;
-      return `<div class="crown-row"><span>${esc(c.name)}</span><span>${ICON.crown(n ? '#FFC23D' : '#E4DACA', 18)} ${n}/${c.cities.length}</span></div>`;
+      return `<div class="crown-row"><span>${esc(t(c.name))}</span><span>${ICON.crown(n ? '#FFC23D' : '#E4DACA', 18)} ${n}/${c.cities.length}</span></div>`;
     }).join('');
-    this.openModal('crowns', `<h2 class="m-title">${ICON.crown('#FFC23D', 24)} City crowns</h2>
-      <p class="m-text">Beat a city's best day to take its crown from the rival who holds it. ${totalStars(this.g)} ★ so far.</p>
-      <div class="crown-grid">${rows}</div><button type="button" class="st-btn gold btn-md" data-act="close">Done</button>`, 400);
+    this.openModal('crowns', `<h2 class="m-title">${ICON.crown('#FFC23D', 24)} ${t('City crowns')}</h2>
+      <p class="m-text">${t("Beat a city's best day to take its crown from the rival who holds it. {n} ★ so far.", { n: totalStars(this.g) })}</p>
+      <div class="crown-grid">${rows}</div><button type="button" class="st-btn gold btn-md" data-act="close">${t('Done')}</button>`, 400);
   }
 
   private openWorkshopModal(): void {
@@ -2012,13 +2060,13 @@ export class GameApp {
 
   private renderWorkshopModal(): void {
     const card = this.modal.querySelector('.modal-card');
-    if (card) card.innerHTML = `<h2 class="m-title">Workshop</h2>${this.workshopGrid()}<button type="button" class="st-btn gold btn-md" data-act="close">Done</button>`;
+    if (card) card.innerHTML = `<h2 class="m-title">${t('Workshop')}</h2>${this.workshopGrid()}<button type="button" class="st-btn gold btn-md" data-act="close">${t('Done')}</button>`;
   }
 
   private confirmReset(): void {
-    this.openModal('confirm', `<h2 class="m-title">Start over?</h2>
-      <p class="m-text">This wipes every farm, star, crown and upgrade on this device. It can't be undone.</p>
-      <div class="m-row"><button type="button" class="st-btn" data-act="close">Keep my game</button><button type="button" class="st-btn red" data-act="reset-yes">Start over</button></div>`);
+    this.openModal('confirm', `<h2 class="m-title">${t('Start over?')}</h2>
+      <p class="m-text">${t("This wipes every farm, star, crown and upgrade on this device. It can't be undone.")}</p>
+      <div class="m-row"><button type="button" class="st-btn" data-act="close">${t('Keep my game')}</button><button type="button" class="st-btn red" data-act="reset-yes">${t('Start over')}</button></div>`);
   }
 
   private resetGame(): void {

@@ -6,6 +6,7 @@
 // the whole map takes daily gold medals too, and the big early boosts arrive near the end of Canada rather
 // than after the fourth farm.
 
+import { t } from '../i18n/i18n';
 import { ROUTE, isBossCity } from './world';
 import { cityProgress, type GameSave } from './progress';
 
@@ -92,7 +93,7 @@ export function canLearn(g: GameSave, id: string): LearnCheck {
   if (!d) return { ok: false, reason: '' };
   if (g.skills.includes(id)) return { ok: false, reason: 'Learned' };
   if (!reqsMet(g, d)) return { ok: false, reason: d.reqMode === 'any' ? 'Learn one of the skills next to it first' : 'Learn the skill before it first' };
-  if (diamondsLeft(g) < d.cost) return { ok: false, reason: `Needs ${d.cost} ◆. Win farms, or take gold on the daily farm.` };
+  if (diamondsLeft(g) < d.cost) return { ok: false, reason: t('Needs {n} ◆. Win farms, or take gold on the daily farm.', { n: d.cost }) };
   return { ok: true, reason: '' };
 }
 

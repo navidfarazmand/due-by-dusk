@@ -3,6 +3,7 @@
 // upgrade it once, up to diamond: four gold perks, pick two (Navid, 30 Oct). Tap it: the lid flies open, coins
 // spill out and the perk cards rise from it. The cards are buttons the player picks from.
 
+import { t } from '../i18n/i18n';
 import { esc } from './dom';
 import { spriteImg } from './art';
 import type { PerkInfo } from './engine';
@@ -21,6 +22,7 @@ const TIERS: Record<number, { body: string; dark: string; band: string; trim: st
 export const CHEST_UP_ICON = `<svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true"><path d="M9 2 L16 10 H11.5 V18 H6.5 V10 H2 Z" fill="#FFC23D" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/></svg>`;
 
 export function chestName(tier: number): string {
+  // the shell translates it (with its '!')
   return (TIERS[tier] || TIERS[1]).name;
 }
 
@@ -100,15 +102,15 @@ const TWO_FINGERS = `<svg class="pk-gest" width="34" height="22" viewBox="0 0 34
 /** One perk card (a button the player picks). Perks that change a gesture show it. */
 export function perkCard(p: PerkInfo, i: number, line: string, touch = false): string {
   const gesture = p.id === 'cleaver' ? TWO_FINGERS : '';
-  const text = p.id === 'cleaver' && touch ? 'Charge Cleave (hold a 2nd finger) charges 50% faster and hits wider.' : line;
+  const text = p.id === 'cleaver' && touch ? t('Charge Cleave (hold a 2nd finger) charges 50% faster and hits wider.') : t(line);
   return `<button type="button" class="perk-card pk-t${p.tier}" data-act="perk" data-arg="${esc(p.id)}" style="--i: ${i}">
-    <span class="pk-top"><span class="pk-ic">${perkIcon(p.icon)}</span>${gesture}<span class="pk-tier">${TIER_LABEL[p.tier] || ''}</span></span>
-    <b>${esc(p.name)}</b><span class="pk-line">${esc(text)}</span></button>`;
+    <span class="pk-top"><span class="pk-ic">${perkIcon(p.icon)}</span>${gesture}<span class="pk-tier">${t(TIER_LABEL[p.tier] || '')}</span></span>
+    <b>${esc(t(p.name))}</b><span class="pk-line">${esc(text)}</span></button>`;
 }
 
 /** The crop that joins the field after this bill: sprite, name, what it pays and how many cuts it takes. */
 export function newCropHtml(type: string, name: string, pay: number, cuts: number, money: (v: number) => string): string {
-  const cutTxt = cuts <= 1 ? 'one cut' : `about ${cuts} cuts`;
+  const cutTxt = cuts <= 1 ? t('one cut') : t('about {n} cuts', { n: cuts });
   return `<div class="chest-new"><span class="cn-spr">${spriteImg(type, 34, name)}</span>
-    <span class="cn-txt"><b>New on the field: ${esc(name)}</b><span>${money(pay)} each · ${cutTxt}</span></span></div>`;
+    <span class="cn-txt"><b>${t('New on the field: {crop}', { crop: esc(name) })}</b><span>${t('{amt} each', { amt: money(pay) })} · ${cutTxt}</span></span></div>`;
 }

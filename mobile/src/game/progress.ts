@@ -1,6 +1,7 @@
 // Progress across the whole game: which farms are won, stars, crowns, the workshop and ad counters.
 // The farm being played (day, bills, cash in hand) lives in the engine's own save; this one is the game's.
 
+import { isLang, t } from '../i18n/i18n';
 import { COUNTRIES, ROUTE, type CountryCode, countryOf, cityById } from './world';
 import { MAX_LEVEL, emptyLevels, oldWorkshopRefund, type WorkshopState } from './workshop';
 import { newTools, parseTools, toolDef, type ToolId, type ToolsState } from './tools';
@@ -59,6 +60,8 @@ export interface Settings {
   /** Track ids for the field and for the menus (see shell/music.ts). */
   fieldTrack: string;
   menuTrack: string;
+  /** The player's language (v0.11); unset means the device's language when it is one of ours. */
+  lang?: string;
 }
 
 /** Economy version. 10: v0.10's longer farms and small-step workshop (older workshop levels are refunded). */
@@ -223,6 +226,7 @@ export function parseGame(raw: string | null): GameSave {
       fieldTrack: str(o.settings.fieldTrack, g.settings.fieldTrack),
       menuTrack: str(o.settings.menuTrack, g.settings.menuTrack),
     };
+    if (isLang(o.settings.lang)) g.settings.lang = o.settings.lang;
   }
   if (o.seen && typeof o.seen === 'object') for (const k of Object.keys(o.seen)) g.seen[k] = !!o.seen[k];
   if (o.totals && typeof o.totals === 'object') {
@@ -295,7 +299,7 @@ export function countryLock(g: GameSave, code: CountryCode): CountryLock {
   const need = starGate(prev.code), have = countryStars(g, prev.code);
   const bossWon = cityProgress(g, boss.id).won;
   if (bossWon && have >= need) return { open: true, reason: '', needStars: need, haveStars: have };
-  const reason = !bossWon ? `Win ${boss.short} in ${prev.name}` : `${need - have} more ★ in ${prev.name}`;
+  const reason = !bossWon ? t('Win {farm} in {country}', { farm: boss.short, country: t(prev.name) }) : t('{n} more ★ in {country}', { n: need - have, country: t(prev.name) });
   return { open: false, reason, needStars: need, haveStars: have };
 }
 
@@ -313,7 +317,7 @@ export function cityLock(g: GameSave, cityId: string): CityLock {
   const i = list.findIndex(x => x.id === cityId);
   if (i <= 0) return { open: true, reason: '' };
   const prev = list[i - 1];
-  return cityProgress(g, prev.id).won ? { open: true, reason: '' } : { open: false, reason: `Win ${prev.short} to open` };
+  return cityProgress(g, prev.id).won ? { open: true, reason: '' } : { open: false, reason: t('Win {farm} to open', { farm: prev.short }) };
 }
 
 /** True once the boss farm (the last city) of a country has been won. */
@@ -332,7 +336,7 @@ export function toolLock(g: GameSave, id: ToolId): ToolLock {
   const def = toolDef(id);
   if (!def.after || bossBeaten(g, def.after)) return { open: true, reason: '' };
   const c = countryOf(def.after);
-  return { open: false, reason: `Beat ${c.name}'s boss` };
+  return { open: false, reason: t("Beat {country}'s boss", { country: t(c.name) }) };
 }
 
 /** The farm the player should look at next: the current run, else the first open city not yet won. */

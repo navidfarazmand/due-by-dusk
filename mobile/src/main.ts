@@ -6,8 +6,15 @@ import '@fontsource/big-shoulders-stencil/latin-800.css';
 import '@fontsource/lilita-one/latin-400.css';
 import '@fontsource/nunito/latin-800.css';
 import '@fontsource/nunito/latin-900.css';
+// French, Spanish, Portuguese and German (v0.11): the few letters outside Latin-1 (œ, ẞ) load only when used
+import '@fontsource/lilita-one/latin-ext-400.css';
+import '@fontsource/nunito/latin-ext-800.css';
+import '@fontsource/nunito/latin-ext-900.css';
+import '@fontsource/courier-prime/latin-ext-400.css';
+import '@fontsource/courier-prime/latin-ext-700.css';
 import './engine/gemini.css';
 import './shell/ui.css';
+import { t } from './i18n/i18n';
 import './shell/shell.css';
 import { bootstrapPreferences, persistPreference } from './platform/nativeStorage';
 import { initializeMobilePlatform, setHapticsEnabled } from './platform/mobile';
@@ -81,6 +88,6 @@ start().catch(error => {
   const message = document.createElement('p');
   message.setAttribute('role', 'alert');
   message.style.cssText = 'position:fixed;inset:20%;z-index:500;padding:24px;background:#fff3cd;color:#402b0a';
-  message.textContent = 'The farm could not start. Please reopen the game. Your saved progress has not been reset.';
+  message.textContent = t('The farm could not start. Please reopen the game. Your saved progress has not been reset.');
   document.body.append(message);
 });

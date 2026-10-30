@@ -599,3 +599,10 @@
   .sp-bar i { animation: spFill 1s cubic-bezier(.3, .7, .4, 1) .7s both; }
   @keyframes spFill { from { width: 0; } }
 }
+
+/* languages (v0.11) */
+.lang-btn { width: auto; min-width: 44px; padding: 0 9px 0 7px; gap: 4px; font: 400 16px var(--ui-display); }
+.lang-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 2px 0 10px; }
+.lang-row { height: 44px; font-size: 20px; }
+.lang-row:first-child { grid-column: 1 / -1; }
+.music-row .mr-k svg { vertical-align: -5px; }
