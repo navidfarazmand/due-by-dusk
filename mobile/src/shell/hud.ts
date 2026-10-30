@@ -12,7 +12,7 @@ const SHORT: Record<string, string> = {
   'Toque for the scarecrow': 'Toque', 'Hockey rink permit': 'Rink permit', 'BBQ smoker repair': 'Smoker',
   'Corn maze licence': 'Corn maze', 'Football pitch rental': 'Pitch', 'Samba school dues': 'Samba dues',
   'Château roof tiles': 'Roof tiles', 'Bullet train freight': 'Train freight', 'Kite festival fee': 'Kite fee',
-  'Dragon boat paint': 'Boat paint', 'Souk stall rent': 'Stall rent', 'Wine cellar lock': 'Cellar lock',
+  'Dragon boat paint': 'Boat paint', 'Souk stall rent': 'Stall rent', 'Root cellar lock': 'Cellar lock',
 };
 export const touchy = (() => {
   try {

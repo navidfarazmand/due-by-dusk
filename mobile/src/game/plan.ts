@@ -181,7 +181,7 @@ const LOCAL_BILLS: Record<CountryCode, Array<[string, string]>> = {
     ['Bakery tab', 'Two baguettes a day adds up. Three on Sundays.'],
     ['Lavender still', 'The perfume is free. The still is not.'],
     ['Château roof tiles', 'The marquis next door complains about the view.'],
-    ['Wine cellar lock', 'The artichoke knight lost the key. Again.'],
+    ['Root cellar lock', 'The artichoke knight lost the key. Again.'],
   ],
   CN: [
     ['Terrace repair', 'The steps washed out. All nine hundred of them.'],

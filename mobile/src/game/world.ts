@@ -96,7 +96,7 @@ export const COUNTRIES: CountryDef[] = [
         short: "Kelowna",
         province: "British Columbia · 49.9°N, 119.5°W",
         country: 'CA',
-        rival: "Vintner Alistair",
+        rival: "Orchardist Alistair",
         subTheme: "mountain",
         crops: ["saskaberry","fiddlehead","pei_russet","carrot","radish","berry","onion","pumpkin"],
         desc: "Sun-drenched lake terraces nestled between pine-clad Interior mountains—renowned for Mountie Saskaberries and orchard produce.",

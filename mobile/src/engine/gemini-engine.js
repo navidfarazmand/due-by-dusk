@@ -1022,7 +1022,7 @@ export function startGeminiEngine() {
             x: 175,
             y: 378,
             mul: 1.55,
-            rival: 'Vintner Alistair',
+            rival: 'Orchardist Alistair',
             record: 520,
             buff: '+8% critical harvest chance on all farms',
             desc: 'Sun-drenched lake terraces nestled between pine-clad Interior mountains—renowned for Mountie Saskaberries and orchard produce.',
