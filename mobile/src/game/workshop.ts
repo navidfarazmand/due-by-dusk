@@ -1,9 +1,29 @@
-// The workshop: permanent upgrades bought with the same wallet that pays the bank.
-// Levels feed the engine's stats (planStats): damage ×1.2 per Blade level, +6% reach, +5% swing speed,
-// +1 s of daylight, +1 crop on the field, +10% crop prices, +2% crit chance.
-// Small upgrades are instant; bigger ones take time (an optional ad finishes one right away).
+// The workshop: permanent upgrades. Each level is a small step (Navid, 29 Oct: "make the upgrades much less
+// effective each round"): +4% damage a Blade level, +2% reach, +2% swing speed, +0.5 s of daylight, half a crop
+// more on the field, +3% crop prices, +0.8% crit chance. Each level costs about a sixth more than the last, so
+// the first levels come quickly and later ones take saving up (and a player far ahead can't run away). Every fifth level of an upgrade is a bigger job that takes a while to build (an optional ad finishes it).
 
 export type UpgradeId = 'scythe' | 'swing' | 'hands' | 'days' | 'soil' | 'market' | 'clover';
+
+/** What one level of each upgrade does. The engine reads these (window.__DBD_SHED_FX) in its stats. */
+export const SHED_FX = {
+  /** Damage × this per Blade level. */
+  dmg: 1.04,
+  /** Reach + this per Handle level. */
+  reach: 0.02,
+  /** Swing speed + this per Hands level. */
+  speed: 0.02,
+  /** Seconds of daylight per Days level. */
+  day: 0.5,
+  /** Crops on the field per Soil level, and how much faster they sprout. */
+  crops: 0.5,
+  spawn: 0.04,
+  /** Crop prices + this per Market level. */
+  price: 0.03,
+  /** Crit chance and golden-corn chance per Clover level. */
+  crit: 0.008,
+  gold: 0.0008,
+} as const;
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -13,41 +33,32 @@ export interface UpgradeDef {
   max: number;
   base: number;
   growth: number;
-  /** Levels below this are instant. */
-  freeUpTo: number;
+  /** The upgrade's number at a level ("×1.22"), and what it is ("damage"). */
+  value: (level: number) => string;
+  unit: string;
+  /** Both together, e.g. "×1.22 damage". */
   effect: (level: number) => string;
 }
 
-export const UPGRADES: UpgradeDef[] = [
-  {
-    id: 'scythe', name: 'Sharper blade', line: '+20% damage', max: 40, base: 60, growth: 1.4, freeUpTo: 2,
-    effect: l => `×${Math.pow(1.2, l).toFixed(l < 12 ? 2 : 0)} damage`,
-  },
-  {
-    id: 'swing', name: 'Longer handle', line: '+6% reach', max: 15, base: 90, growth: 1.5, freeUpTo: 1,
-    effect: l => `${Math.round(100 + 6 * l)}% reach`,
-  },
-  {
-    id: 'hands', name: 'Quicker hands', line: '+5% swing speed', max: 15, base: 100, growth: 1.5, freeUpTo: 1,
-    effect: l => `${(3.2 * (1 + 0.05 * l)).toFixed(1)} swings a second`,
-  },
-  {
-    id: 'days', name: 'Longer days', line: '+1 s of daylight', max: 10, base: 150, growth: 1.6, freeUpTo: 1,
-    effect: l => `+${l} s of daylight`,
-  },
-  {
-    id: 'soil', name: 'Richer soil', line: '+1 crop on the field', max: 15, base: 110, growth: 1.5, freeUpTo: 1,
-    effect: l => `${7 + l} crops at once`,
-  },
-  {
-    id: 'market', name: 'Market stall', line: '+10% crop prices', max: 20, base: 130, growth: 1.45, freeUpTo: 1,
-    effect: l => `prices ×${(1 + 0.1 * l).toFixed(1)}`,
-  },
-  {
-    id: 'clover', name: 'Lucky clover', line: '+2% crit chance', max: 10, base: 160, growth: 1.6, freeUpTo: 1,
-    effect: l => `${4 + 2 * l}% crit chance`,
-  },
+const trim = (v: number) => v.toFixed(1).replace(/\.0$/, '');
+
+const DEFS: Array<Omit<UpgradeDef, 'effect'>> = [
+  { id: 'scythe', name: 'Sharper blade', line: '+4% damage', max: 100, base: 70, growth: 1.17, unit: 'damage', value: l => `×${Math.pow(SHED_FX.dmg, l).toFixed(2)}` },
+  { id: 'swing', name: 'Longer handle', line: '+2% reach', max: 30, base: 60, growth: 1.17, unit: 'reach', value: l => `${Math.round(100 + 100 * SHED_FX.reach * l)}%` },
+  { id: 'hands', name: 'Quicker hands', line: '+2% swing speed', max: 30, base: 60, growth: 1.17, unit: 'swings/s', value: l => (3.2 * (1 + SHED_FX.speed * l)).toFixed(2) },
+  { id: 'days', name: 'Longer days', line: '+0.5 s of daylight', max: 20, base: 75, growth: 1.18, unit: 'daylight', value: l => `+${trim(SHED_FX.day * l)} s` },
+  { id: 'soil', name: 'Richer soil', line: '+½ crop on the field', max: 24, base: 75, growth: 1.18, unit: 'crops', value: l => `+${trim(SHED_FX.crops * l)}` },
+  { id: 'market', name: 'Market stall', line: '+3% crop prices', max: 60, base: 80, growth: 1.17, unit: 'prices', value: l => `×${(1 + SHED_FX.price * l).toFixed(2)}` },
+  { id: 'clover', name: 'Lucky clover', line: '+0.8% crit chance', max: 30, base: 60, growth: 1.17, unit: 'crit', value: l => `${trim(4 + 100 * SHED_FX.crit * l)}%` },
 ];
+
+export const UPGRADES: UpgradeDef[] = DEFS.map(d => ({ ...d, effect: (l: number) => `${d.value(l)} ${d.unit}` }));
+
+/** Highest level any upgrade can reach (saves are clamped to this). */
+export const MAX_LEVEL = Math.max(...UPGRADES.map(u => u.max));
+
+/** Every this-many levels, the next level is a timed job. */
+export const TIMED_EVERY = 5;
 
 export type Levels = Record<UpgradeId, number>;
 
@@ -84,11 +95,13 @@ export function upgradeCost(id: UpgradeId, level: number): number | null {
   return Math.round(raw / 100) * 100;
 }
 
-/** How long the next level takes to build, in ms (0 = instant). Capped at an hour. */
+/** How long the next level takes to build, in ms (0 = instant). Levels 5, 10, 15… take 2 minutes, then a
+ * quarter longer each time, up to half an hour. */
 export function upgradeDuration(id: UpgradeId, level: number): number {
-  const d = upgradeDef(id);
-  if (level < d.freeUpTo) return 0;
-  const minutes = Math.min(60, 2 * Math.pow(1.45, level - d.freeUpTo));
+  upgradeDef(id);
+  const next = level + 1;
+  if (next % TIMED_EVERY !== 0) return 0;
+  const minutes = Math.min(30, 2 * Math.pow(1.25, next / TIMED_EVERY - 1));
   return Math.round(minutes * 60) * 1000;
 }
 
@@ -96,14 +109,14 @@ export type BuyResult = { ok: true; instant: boolean } | { ok: false; reason: 'm
 
 /**
  * Start (or finish instantly) the next level of an upgrade. Spends `pay(cost)` first; returns what happened.
- * Only one timed job runs at a time.
+ * Only one timed job runs at a time, and an upgrade can't take another level while its own job runs.
  */
 export function startUpgrade(ws: WorkshopState, id: UpgradeId, now: number, pay: (cost: number) => boolean): BuyResult {
   const level = ws.levels[id];
   const cost = upgradeCost(id, level);
   if (cost == null) return { ok: false, reason: 'maxed' };
   const dur = upgradeDuration(id, level);
-  if (dur > 0 && ws.job) return { ok: false, reason: 'busy' };
+  if (ws.job && (dur > 0 || ws.job.id === id)) return { ok: false, reason: 'busy' };
   if (!pay(cost)) return { ok: false, reason: 'cash' };
   if (dur === 0) {
     ws.levels[id] = level + 1;
@@ -121,6 +134,25 @@ export function settleJob(ws: WorkshopState, now: number, force = false): Worksh
   ws.levels[job.id] = Math.max(ws.levels[job.id], job.level);
   ws.job = null;
   return job;
+}
+
+/** What the v0.9 workshop charged (its levels are refunded when an older save loads; see progress.ts). */
+const OLD_PRICES: Record<UpgradeId, [number, number]> = {
+  scythe: [60, 1.4], swing: [90, 1.5], hands: [100, 1.5], days: [150, 1.6], soil: [110, 1.5], market: [130, 1.45], clover: [160, 1.6],
+};
+export function oldWorkshopRefund(levels: Partial<Record<UpgradeId, number>>, job?: { id: UpgradeId; level: number } | null): number {
+  let sum = 0;
+  const price = (id: UpgradeId, l: number) => {
+    const [b, g] = OLD_PRICES[id];
+    const raw = b * Math.pow(g, l);
+    return raw < 100 ? Math.round(raw) : raw < 10000 ? Math.round(raw / 10) * 10 : Math.round(raw / 100) * 100;
+  };
+  for (const id of Object.keys(OLD_PRICES) as UpgradeId[]) {
+    const n = Math.max(0, Math.min(60, Math.floor(levels[id] || 0)));
+    for (let l = 0; l < n; l++) sum += price(id, l);
+  }
+  if (job && job.id in OLD_PRICES && job.level > 0) sum += price(job.id, job.level - 1);
+  return sum;
 }
 
 export function formatDuration(ms: number): string {

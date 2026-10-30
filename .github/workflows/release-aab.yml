@@ -1,8 +1,9 @@
 name: Play release bundle
 
 # Builds a signed Android App Bundle (.aab) for Google Play (app ID com.khoreh.duebydusk).
-# Run it from GitHub: Actions > Play release bundle > Run workflow. Download the bundle from the run's
-# artifacts and upload it in Play Console (Testing > Closed testing > Create new release).
+# Run it from GitHub: Actions > Play release bundle > Run workflow, or push a tag: play-v0.10.0 builds with Google's
+# demo ads (closed testing), play-prod-v0.10.0 with real ads (production, once the listing is live and linked in
+# AdMob). Download the bundle from the run's artifacts and upload it in Play Console.
 #
 # Needs four repository secrets (Settings > Secrets and variables > Actions), made from your private upload key:
 #   DBD_UPLOAD_KEYSTORE_BASE64  the upload keystore file, base64-encoded
@@ -18,6 +19,8 @@ on:
         description: 'Request real AdMob ads. Leave off for closed testing (shows Google demo ads).'
         type: boolean
         default: false
+  push:
+    tags: ['play-v*', 'play-prod-v*']
 
 permissions:
   contents: read
@@ -67,7 +70,7 @@ jobs:
         run: npm test
       - name: Build production assets
         env:
-          VITE_ADMOB_PRODUCTION: ${{ inputs.production_ads && 'true' || 'false' }}
+          VITE_ADMOB_PRODUCTION: ${{ (inputs.production_ads || startsWith(github.ref_name, 'play-prod-v')) && 'true' || 'false' }}
         run: npm run build
       - name: Sync native Android plugins and assets
         run: npx cap sync android
@@ -97,7 +100,7 @@ jobs:
         run: |
           # Play needs a higher versionCode on every upload; run numbers only go up.
           export DBD_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
-          echo "versionCode $DBD_VERSION_CODE, production ads: ${{ inputs.production_ads }}"
+          echo "versionCode $DBD_VERSION_CODE, production ads: ${{ inputs.production_ads || startsWith(github.ref_name, 'play-prod-v') }}"
           bash android/gradlew -p android --no-daemon bundleRelease
       - name: Check the bundle is signed
         run: |

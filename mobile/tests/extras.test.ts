@@ -138,16 +138,24 @@ describe('Bling Barn', () => {
 describe('savings', () => {
   it('keeps savings out of a running farm, and moves old saves over without counting them twice', () => {
     expect(newGame().splitWallet).toBe(true);
-    // v0.8: a running farm's cash already held the savings it started with
+    // v0.8: a running farm's cash already held the savings it started with; v0.10 closes that farm and the app moves
+    // its cash (start money included) to savings once, so nothing counts twice
     const old = parseGame(JSON.stringify({ v: 3, wallet: 500, run: { cityId: 'ca_toronto', startCash: 500, startedAt: 1, bestDay: 0 } }));
     expect(old.wallet).toBe(0);
-    expect(old.run!.startCash).toBe(500);
+    expect(old.run).toBeNull();
+    expect(old.migratedFarm).toBe(true);
     expect(old.splitWallet).toBe(true);
     // v0.8 between farms: the wallet was the savings
     expect(parseGame(JSON.stringify({ v: 3, wallet: 500 })).wallet).toBe(500);
-    // v0.9 with a farm running: savings stay as saved
+    // v0.9 with a farm running: savings stay as saved, the farm is closed for v0.10's longer farms
     const now = parseGame(JSON.stringify({ v: 3, wallet: 500, splitWallet: true, run: { cityId: 'ca_toronto', startCash: 0, startedAt: 1, bestDay: 0 } }));
     expect(now.wallet).toBe(500);
+    expect(now.run).toBeNull();
+    // v0.10 with a farm running: kept
+    const cur = parseGame(JSON.stringify({ v: 3, econ: 10, wallet: 70, splitWallet: true, run: { cityId: 'ca_toronto', startCash: 0, startedAt: 1, bestDay: 0, mark: 30, spent: 5 } }));
+    expect(cur.run!.mark).toBe(30);
+    expect(cur.run!.spent).toBe(5);
+    expect(cur.migratedFarm).toBeUndefined();
   });
 });
 

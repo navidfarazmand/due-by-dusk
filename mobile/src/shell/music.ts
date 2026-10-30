@@ -79,6 +79,10 @@ export class Music {
   private raf = 0;
   private last = 0;
   private rooster: HTMLAudioElement;
+  /** Elements this class paused on purpose (any other pause is the system's, and gets retried). */
+  private ourPause = new WeakSet<HTMLAudioElement>();
+  private lastError = '';
+  private retries = 0;
 
   constructor(
     private enabled: boolean,
@@ -100,21 +104,50 @@ export class Music {
       this.adOn = false;
       this.setHidden(document.hidden);
     });
+    // Every kind of tap counts: some phones only allow sound after the finger lifts (touchend, click), not on
+    // pointerdown. Navid's phone stayed silent until he toggled the sound button.
+    const gesture = () => this.unlock();
+    for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'])
+      document.addEventListener(ev, gesture, { capture: true, passive: true });
+    // A watchdog: if the track that should be playing is paused, stalled or broken, start it again.
+    setInterval(() => this.watch(), 1500);
   }
 
-  /** Call from a user gesture: browsers only allow audio after one. */
+  /** Call from a user gesture: browsers only allow audio after one. Starts the wanted track right here, inside
+   * the gesture, then the fade loop takes over. */
   unlock(): void {
-    if (!this.unlocked) {
-      this.unlocked = true;
-      this.apply();
-      return;
+    const first = !this.unlocked;
+    this.unlocked = true;
+    const w = this.wanted();
+    if (w) {
+      const a = this.el(w.id);
+      if (a.paused) {
+        if ((this.vol.get(w.id) || 0) <= 0) {
+          this.vol.set(w.id, 0.01);
+          a.volume = 0.01;
+        }
+        this.tryPlay(a);
+      }
     }
-    // a later touch retries anything the browser refused to start
-    for (const [id, a] of this.els) if ((this.vol.get(id) || 0) > 0 && a.paused) void a.play().catch(() => {});
+    if (first || w) this.apply();
   }
 
   isUnlocked(): boolean {
     return this.unlocked;
+  }
+
+  /** For the settings screen: what the music is doing right now. */
+  status(): string {
+    if (!this.enabled && !this.preview) return 'off';
+    if (!this.unlocked) return 'waiting for a tap';
+    if (this.hidden || this.adOn) return 'paused';
+    const w = this.wanted();
+    if (!w) return 'off';
+    const a = this.els.get(w.id);
+    if (!a) return 'starting';
+    if (a.error) return `can't play (error ${a.error.code})`;
+    if (!a.paused && a.currentTime > 0) return 'playing';
+    return this.lastError ? `starting (${this.lastError})` : 'starting';
   }
 
   setEnabled(on: boolean): void {
@@ -159,7 +192,7 @@ export class Music {
       for (const [id, a] of this.els) {
         this.vol.set(id, 0);
         a.volume = 0;
-        a.pause();
+        this.pause(a);
       }
     }
     this.apply();
@@ -177,6 +210,27 @@ export class Music {
     }
   }
 
+  private tryPlay(a: HTMLAudioElement): void {
+    this.ourPause.delete(a);
+    try {
+      const p = a.play();
+      if (p && typeof p.catch === 'function')
+        p.then(() => {
+          this.lastError = '';
+        }).catch((e: unknown) => {
+          this.lastError = e instanceof Error ? e.name : 'blocked';
+        });
+    } catch (e) {
+      this.lastError = e instanceof Error ? e.name : 'blocked';
+    }
+  }
+
+  private pause(a: HTMLAudioElement): void {
+    if (a.paused) return;
+    this.ourPause.add(a);
+    a.pause();
+  }
+
   private el(id: string): HTMLAudioElement {
     let a = this.els.get(id);
     if (a) return a;
@@ -185,10 +239,37 @@ export class Music {
     a.loop = true;
     a.preload = 'auto';
     a.volume = 0;
-    playableSrc(t.url, u => (a!.src = u));
+    const el = a;
+    // the system can pause a track (audio focus, a call): when that happens and it should still play, retry
+    el.addEventListener('pause', () => {
+      if (this.ourPause.has(el)) return;
+      setTimeout(() => this.watch(), 400);
+    });
+    playableSrc(t.url, u => (el.src = u));
     this.els.set(id, a);
     this.vol.set(id, 0);
     return a;
+  }
+
+  /** The watchdog: whatever should be playing, is. A broken element is replaced. */
+  private watch(): void {
+    const w = this.wanted();
+    if (!w) return;
+    let a = this.els.get(w.id);
+    if (a && a.error) {
+      // replace a track that failed to load
+      this.els.delete(w.id);
+      this.vol.delete(w.id);
+      a = undefined;
+      this.retries++;
+    }
+    if (!a) a = this.el(w.id);
+    if (a.paused) {
+      if ((this.vol.get(w.id) || 0) <= 0) this.vol.set(w.id, 0.01);
+      a.volume = Math.max(0.01, Math.min(1, this.vol.get(w.id) || 0.01));
+      this.tryPlay(a);
+      this.apply();
+    }
   }
 
   /** Which track should be heard now, and how loud. */
@@ -216,8 +297,8 @@ export class Music {
         const nv = v < goal ? Math.min(goal, v + stepV) : Math.max(goal, v - stepV);
         this.vol.set(id, nv);
         a.volume = Math.max(0, Math.min(1, nv));
-        if (nv > 0 && a.paused) void a.play().catch(() => {});
-        if (nv <= 0 && !a.paused) a.pause();
+        if (nv > 0 && a.paused) this.tryPlay(a);
+        if (nv <= 0 && !a.paused) this.pause(a);
         if (nv !== goal) busy = true;
       }
       this.raf = busy ? requestAnimationFrame(step) : 0;

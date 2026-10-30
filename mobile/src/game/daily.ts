@@ -3,9 +3,10 @@
 // phone playing the same seeded day in turn.
 
 import { ROUTE, cityById, routeIndex } from './world';
-import { planFor, type CityPlan } from './plan';
+import { dayRef, expectedPower, planFor, type CityPlan, type CropWeight } from './plan';
 import type { Levels } from './workshop';
-import type { ToolId } from './tools';
+import { newTools, toolStats, type ToolId } from './tools';
+import { fieldPower } from './power';
 
 export interface SideDef {
   seed: number;
@@ -37,24 +38,25 @@ export function hash32(text: string): number {
 export function sideLoadout(k: number): Levels {
   const r = (a: number, b: number, max: number) => Math.min(max, Math.round(a + b * k));
   return {
-    scythe: r(3, 0.38, 40),
-    swing: r(1, 0.32, 15),
-    hands: r(1, 0.32, 15),
-    days: r(0.5, 0.26, 10),
-    soil: r(1, 0.32, 15),
-    market: r(1, 0.32, 20),
-    clover: r(0.3, 0.26, 10),
+    scythe: r(2, 2.2, 100),
+    swing: r(1, 1.6, 30),
+    hands: r(1, 1.6, 30),
+    days: r(0.5, 1.2, 20),
+    soil: r(0.5, 1.2, 24),
+    market: r(1, 1.9, 60),
+    clover: r(1, 1.6, 30),
   };
 }
 
-/** A good player's score on a side farm with the set loadout: a × g^k per tool, fitted from bot runs at
- * Navid's finger speed (29 Oct). Market days pay about a quarter more. */
-const SIDE_FIT: Record<ToolId, [number, number]> = { sickle: [207, 1.1376], scythe: [241, 1.1364], flame: [330, 1.1306], blaster: [279, 1.1204] };
+/** A good player's score on a side farm with the set loadout, as a share of the city's day reference, per tool:
+ * from bot runs at Navid's finger speed (29 Oct, night; ten cities along the route, within about a quarter).
+ * Side-farm crops are as tough for the loadout as the route's are for an on-track build, so the share holds
+ * from Charlottetown to Japan. Market days pay about a quarter more. */
+const SIDE_FIT: Record<ToolId, number> = { sickle: 0.59, scythe: 0.39, flame: 0.43, blaster: 0.32 };
 
 /** Bronze, silver and gold: half a good run, most of one, and a little better than one. */
 export function sideTargets(k: number, tool: ToolId, event = ''): [number, number, number] {
-  const [a, g] = SIDE_FIT[tool];
-  const base = a * Math.pow(g, k) * (event === 'market' ? 1.22 : 0.95);
+  const base = SIDE_FIT[tool] * dayRef(Math.max(0, k)) * (event === 'market' ? 1.22 : 0.95);
   const r = (v: number) => (v < 1000 ? Math.round(v / 10) * 10 : Math.round(v / 50) * 50);
   return [r(base * 0.5), r(base * 0.85), r(base * 1.1)];
 }
@@ -72,17 +74,30 @@ export function duelFor(cityId: string, tool: ToolId, seed: number): SideDef {
   return { seed: seed >>> 0 || 1, cityId, tool, levels: sideLoadout(k), targets: sideTargets(k, tool, planFor(cityId).signatureEvent) };
 }
 
-/** A one-day farm: the city's crops and difficulty with no bills and no boss. */
-export function sidePlan(cityId: string): CityPlan {
-  const p = planFor(cityId);
+/** A one-day farm: the city's crops and difficulty with no bills and no boss. With the day's tool and upgrades, the
+ * crops are as tough for that loadout as they are for an on-track player on the real route, so any tool on any
+ * farm cuts about as many times. */
+export function sidePlan(cityId: string, tool?: ToolId, levels?: Levels): CityPlan {
+  const base = planFor(cityId);
+  let p = base;
+  if (tool && levels) {
+    const st = toolStats({ ...newTools(), owned: [tool], equipped: tool }, tool);
+    const r = fieldPower(levels, st, []) / expectedPower(base.index);
+    if (r > 0 && Number.isFinite(r)) p = { ...base, hp: base.hp * Math.min(10, Math.max(0.1, r)) };
+  }
   const name = cityById(cityId)?.short || 'the farm';
+  // a one-day farm has the first five crops of its ladder out from the start
+  const crops: CropWeight[] = p.crops.slice(0, 5).map(([t, w]) => [t, w, 0]);
   return {
     ...p,
     boss: false,
     bossFight: undefined,
     bills: [{ name: 'Best day', amt: 999_999_999, days: 99, note: `One day on the ${name} farm.` }],
     totalDays: 1,
-    par: 1,
+    spare: 0,
+    crops,
+    stages: p.stages.slice(0, 5),
+    goldAt: 0,
   };
 }
 

@@ -14,7 +14,7 @@ const SHORT: Record<string, string> = {
   'Château roof tiles': 'Roof tiles', 'Bullet train freight': 'Train freight', 'Kite festival fee': 'Kite fee',
   'Dragon boat paint': 'Boat paint', 'Souk stall rent': 'Stall rent', 'Wine cellar lock': 'Cellar lock',
 };
-const touchy = (() => {
+export const touchy = (() => {
   try {
     return window.matchMedia('(pointer: coarse)').matches;
   } catch {
@@ -26,9 +26,18 @@ export function eventIcon(id: string): string {
   return EVENT_ICON[id] || '📰';
 }
 
-/** Phone players never see keyboard or mouse instructions. */
+/** Phone players never see keyboard or mouse instructions: on a phone a second finger charges the cleave. */
 export function deviceText(t: string): string {
-  return touchy ? String(t).replace(/Hold click\/Space:?/gi, 'Hold still:').replace(/click\/Space/gi, 'hold still') : t;
+  return touchy
+    ? String(t).replace(/Hold click\/Space:?/gi, 'Second finger:').replace(/\(hold click\/Space\)/gi, '(hold a second finger)').replace(/click\/Space/gi, 'a second finger')
+    : t;
+}
+
+/** How to charge the Charge Cleave on this device. */
+export function cleaveTip(): string {
+  return touchy
+    ? 'Tip: hold a second finger anywhere on the field to charge a Cleave, then lift it to strike.'
+    : 'Tip: hold the mouse button (or Space) to charge a Cleave, then let go to strike.';
 }
 
 export const HUD_HTML = `<div id="dbdHud" hidden>

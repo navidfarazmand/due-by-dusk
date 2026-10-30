@@ -6,9 +6,9 @@ const CA = ['ca_charlottetown', 'ca_gatineau', 'ca_toronto', 'ca_leamington', 'c
 
 function seeded(won: string[], wallet: number, extra: Save = {}): Save {
   const cities: Record<string, unknown> = {};
-  for (const id of won) cities[id] = { won: true, stars: 2, bestDay: 200, crown: false, bestDays: 3, plays: 1 };
+  for (const id of won) cities[id] = { won: true, stars: 2, bestDay: 200, crown: false, bestDays: 3, plays: 1, paid: 0 };
   return {
-    v: 3, createdAt: 1, cities, run: null, wallet,
+    v: 3, econ: 10, createdAt: 1, cities, run: null, wallet,
     workshop: { levels: { scythe: 6, swing: 2, hands: 2, days: 2, soil: 2, market: 2, clover: 1 }, job: null },
     tools: { owned: ['sickle'], equipped: 'sickle', mods: {} },
     ads: { date: '', coins: 0, doubles: 0, finishes: 0, lastCoinsAt: 0 },
@@ -48,7 +48,9 @@ test('menu to the first farm and through one day', async ({ page }) => {
   await act(page, 'enter', 'CA');
   await expect(page.locator('.scr-country .city-card')).toContainText('Charlottetown');
   await act(page, 'farm', 'ca_charlottetown');
-  await expect(page.locator('.scr-farmhouse .notice')).toContainText('Notice 1 of 2');
+  await expect(page.locator('.scr-farmhouse .notice')).toContainText('Notice 1 of 5');
+  // the first bill is paid on the evening it is due, not before
+  await expect(page.locator('.scr-farmhouse .btn-pay')).toHaveText('Pay on day 2');
   await fast(page);
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
@@ -87,7 +89,7 @@ test('the farmhouse fits the screen on every tab', async ({ page }) => {
 });
 
 test('tools: buy the scythe, put it in hand and add an attachment', async ({ page }) => {
-  await boot(page, seeded(CA, 8000));
+  await boot(page, seeded(CA, 15000));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('us_austin'));
   await act(page, 'tab', 'tools');
   await act(page, 'tool', 'scythe');
@@ -105,11 +107,17 @@ test('boss farm: the deed waits until the boss is knocked out', async ({ page })
   const errors = await boot(page, seeded(CA.slice(0, 5), 0));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_kelowna'));
   await expect(page.locator('.scr-farmhouse .notice')).toContainText('King Russet');
-  // pay the first two bills with test money so the deed is the current bill
-  for (let i = 0; i < 2; i++) {
-    await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(5000));
-    await page.evaluate(() => (window as any).__DBD_APP.payBill());
+  // pay the first five bills with test money (each on its due evening) so the deed is the current bill
+  for (let i = 0; i < 5; i++) {
+    await page.evaluate(() => {
+      const e = (window as any).__DBD_ENGINE;
+      e.addCash(50_000);
+      e.devDue();
+      (window as any).__DBD_APP.payBill();
+    });
+    await page.locator('.scr-modal [data-act="chest-open"]').click();
     await page.locator('.scr-modal [data-act="perk"]').first().click();
+    await expect(page.locator('.scr-modal')).toBeHidden();
   }
   const bill = await page.evaluate(() => (window as any).__DBD_ENGINE.bill());
   expect(bill.name).toBe('The deed');
@@ -137,6 +145,8 @@ test('boss farm: the deed waits until the boss is knocked out', async ({ page })
   await act(page, 'ad-double');
   await expect(page.locator('.scr-sundown [data-act="ad-double"]')).toHaveCount(0, { timeout: 5000 });
   await act(page, 'farmhouse');
+  await page.evaluate(() => (window as any).__DBD_ENGINE.devDue());
+  await page.evaluate(() => (window as any).__DBD_APP.refresh());
   await act(page, 'pay');
   await expect(page.locator('.scr-won .result-card')).toContainText('Kelowna');
   await expect(page.locator('.scr-won .r-boss')).toContainText("Canada's boss is out cold");
@@ -220,7 +230,7 @@ test('Bling Barn: buy a bird with ribbons and the field uses its colours', async
 
 test('daily farm: one try on a seeded field, then the real farm is back as it was', async ({ page }) => {
   test.setTimeout(120_000);
-  const errors = await boot(page, seeded(CA.slice(0, 2), 150, { run: { cityId: 'ca_toronto', startCash: 150, startedAt: 1, bestDay: 0 } }));
+  const errors = await boot(page, seeded(CA.slice(0, 2), 150, { run: { cityId: 'ca_toronto', startCash: 0, startedAt: 1, bestDay: 0, mark: 0, spent: 0 } }));
   const before = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
   expect(before.cityId).toBe('ca_toronto');
   await act(page, 'daily');
@@ -282,5 +292,155 @@ test('music: pick a field track and a menu track in Settings', async ({ page }) 
   expect(s.menuTrack).toBe('fireflies');
   const L = await boxes(page, ['.scr-modal .modal-card']);
   expect(inside(L.b['.scr-modal .modal-card'][0], L.vw, L.vh)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('the first farm: carrots only, a bill paid on its evening opens a chest, and the radish joins the field', async ({ page }) => {
+  const errors = await boot(page);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await expect(page.locator('.scr-farmhouse')).toBeVisible();
+  // the field holds carrots only before the first bill
+  const types0 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().crops.map((c: any) => c.type));
+  expect(new Set(types0)).toEqual(new Set(['carrot']));
+  await page.evaluate(() => {
+    const e = (window as any).__DBD_ENGINE;
+    e.addCash(400);
+    e.devDue();
+    (window as any).__DBD_APP.payBill();
+  });
+  await expect(page.locator('.scr-modal .chest-box')).toBeVisible();
+  await expect(page.locator('.scr-modal .chest-box')).toContainText('A wooden chest');
+  await expect(page.locator('.scr-modal .chest-new')).toContainText('Runaway Radish');
+  await expect(page.locator('.scr-modal [data-act="perk"]').first()).toBeHidden();
+  await act(page, 'chest-open');
+  await expect(page.locator('.scr-modal [data-act="perk"]')).toHaveCount(3);
+  await expect(page.locator('.scr-modal .perk-card.pk-t1').first()).toBeVisible();
+  const L = await boxes(page, ['.scr-modal .modal-card', '.scr-modal .perk-card']);
+  for (const c of [...L.b['.scr-modal .modal-card'], ...L.b['.scr-modal .perk-card']]) expect(inside(c, L.vw, L.vh)).toBe(true);
+  await page.locator('.scr-modal [data-act="perk"]').first().click();
+  await expect(page.locator('.scr-modal')).toBeHidden();
+  const st = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
+  expect(st.billsPaid).toBe(1);
+  expect(st.perks).toHaveLength(1);
+  // a fresh field after paying shows the radish among the carrots
+  const seen = new Set<string>();
+  for (let i = 0; i < 6 && !seen.has('radish'); i++) {
+    const t = await page.evaluate(() => {
+      (window as any).__DBD_ENGINE.refreshStats();
+      return (window as any).__DBD_ENGINE.peek().crops.map((c: any) => c.type);
+    });
+    t.forEach((x: string) => seen.add(x));
+  }
+  expect([...seen].every(x => x === 'carrot' || x === 'radish')).toBe(true);
+  expect(seen.has('radish')).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('a farm pays out once: a replay keeps its cash for the bills and banks only what beats the best', async ({ page }) => {
+  const save = seeded([], 0);
+  (save.cities as any).ca_charlottetown = { won: true, stars: 1, bestDay: 200, crown: false, bestDays: 10, plays: 1, paid: 500 };
+  const errors = await boot(page, save);
+  await act(page, 'play');
+  await act(page, 'enter', 'CA');
+  await act(page, 'city', 'ca_charlottetown');
+  await expect(page.locator('.scr-country .city-card')).toContainText('Paid you so far: $500');
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(300));
+  await page.evaluate(() => (window as any).__DBD_APP.refresh());
+  await expect(page.locator('.scr-farmhouse .up-cap')).toContainText('$500');
+  // $300 on the farm is below the $500 mark: no upgrade can be bought with it
+  await expect(page.locator('.scr-farmhouse .btn-buy.gold')).toHaveCount(0);
+  await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(300));
+  await page.evaluate(() => (window as any).__DBD_APP.refresh());
+  // $600 on the farm: $100 above the mark buys the cheapest upgrades
+  await expect(page.locator('.scr-farmhouse .btn-buy.gold').first()).toBeVisible();
+  const cost = await page.evaluate(() => (window as any).__DBD_WORKSHOP.upgradeCost('hands', 2));
+  await act(page, 'buy', 'hands');
+  const g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g.workshop.levels.hands).toBe(3);
+  expect(cost).toBeLessThanOrEqual(100);
+  expect(g.run.spent).toBe(cost);
+  expect(errors).toEqual([]);
+});
+
+test('touch: the sickle sits under the finger, and a second finger charges the cleave', async ({ page }) => {
+  const errors = await boot(page);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  const box = (await page.locator('#field').boundingBox())!;
+  const fire = (type: string, id: number, x: number, y: number) =>
+    page.evaluate(([type, id, x, y]) => {
+      const cv = document.getElementById('field')!;
+      cv.dispatchEvent(new PointerEvent(type as string, { pointerId: id as number, pointerType: 'touch', isPrimary: id === 1, clientX: x as number, clientY: y as number, bubbles: true }));
+    }, [type, id, x, y]);
+  const x = box.x + box.width * 0.5, y = box.y + box.height * 0.92;
+  await fire('pointerdown', 1, x, y);
+  await fire('pointermove', 1, x + 4, y);
+  const p1 = await page.evaluate(() => { const e = (window as any).__DBD_ENGINE.peek(); return { ...e.pointer, scale: e.scale }; });
+  // no lift above the finger, even at the bottom of the screen
+  expect(Math.abs(p1.y * p1.scale - (y - box.y))).toBeLessThan(2);
+  expect(Math.abs(p1.x * p1.scale - (x + 4 - box.x))).toBeLessThan(2);
+  // one finger held still does not charge
+  await page.waitForTimeout(700);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.peek().chargeT)).toBeLessThan(0.05);
+  // a second finger anywhere charges; lifting it lets the cleave go
+  await fire('pointerdown', 2, box.x + box.width * 0.2, box.y + box.height * 0.5);
+  await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().chargeT >= 0.9, null, { timeout: 4000 });
+  // moving the second finger does not move the sickle
+  await fire('pointermove', 2, box.x + 20, box.y + 20);
+  const p2 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().pointer);
+  expect(Math.abs(p2.x - p1.x)).toBeLessThan(1);
+  await fire('pointerup', 2, box.x + 20, box.y + 20);
+  await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().chargeT === 0, null, { timeout: 2000 });
+  await fire('pointerup', 1, x + 4, y);
+  expect(errors).toEqual([]);
+});
+
+test('the field keeps crops away from the screen edges', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await fast(page, 6);
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  for (let i = 0; i < 8; i++) {
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => {
+      const p = (window as any).__DBD_ENGINE.peek();
+      return { pad: p.pad, w: p.worldW, xs: p.crops.filter((c: any) => !c.boss).map((c: any) => c.x) };
+    });
+    expect(r.pad).toBeGreaterThan(30 + r.w * 0.03);
+    for (const cx of r.xs) {
+      expect(cx).toBeGreaterThanOrEqual(r.pad - 0.5);
+      expect(cx).toBeLessThanOrEqual(r.w - r.pad + 0.5);
+    }
+  }
+});
+
+test('cards keep their text inside on a short phone screen', async ({ page }) => {
+  await page.setViewportSize({ width: 740, height: 340 });
+  const errors = await boot(page, seeded(CA.slice(0, 1), 0));
+  await act(page, 'play');
+  await act(page, 'enter', 'CA');
+  const spills = () =>
+    page.evaluate(() => {
+      const out: string[] = [];
+      for (const el of document.querySelectorAll('#dbdScreens .statbox, #dbdScreens .up-card, #dbdScreens .notice, #dbdScreens .card-foot, #dbdScreens .city-card')) {
+        const h = el as HTMLElement;
+        if (!h.offsetParent) continue;
+        const r = h.getBoundingClientRect();
+        if (r.right > innerWidth + 1 || r.bottom > innerHeight + 1) out.push('off screen: ' + h.className);
+        for (const k of h.querySelectorAll('*')) {
+          const c = (k as HTMLElement).getBoundingClientRect();
+          if (!c.width || getComputedStyle(k).display === 'none') continue;
+          if (c.right > r.right + 1.5 || c.bottom > r.bottom + 1.5) out.push(`${h.className} > ${(k as HTMLElement).className || k.tagName}`);
+        }
+      }
+      return out;
+    });
+  expect(await spills()).toEqual([]);
+  await act(page, 'farm', 'ca_gatineau');
+  await expect(page.locator('.scr-farmhouse')).toBeVisible();
+  expect(await spills()).toEqual([]);
   expect(errors).toEqual([]);
 });

@@ -1,4 +1,4 @@
-# Due by Dusk mobile architecture (v0.9)
+# Due by Dusk mobile architecture (v0.10)
 
 Landscape farm game: Gemini's v0.6.05 farm engine runs the harvest days; Claude's game shell runs everything around them. TypeScript + Vite + Capacitor 8. Android and iOS hold local web assets; no server is needed to play.
 
@@ -7,10 +7,11 @@ Landscape farm game: Gemini's v0.6.05 farm engine runs the harvest days; Claude'
 - `src/engine/gemini-engine.js`: Gemini's v0.6.05 bundle (Phaser shim, crops, characters, sounds, effects), formatted and patched. It draws the field on `#field`, keeps its own farm save (`dbd-farm-v3`) and exposes `window.__DBD_ENGINE` (state, bills, start day, pay, perks, tools, boss info). The shell talks to it only through that API and the `window.__dbdEvent` events (`dayStart`, `dayEnd`, `idle`, `billPaid`, `perks`, `cityWon`, `foreclosed`, `bossAppear`, `bossStomp`, `bossDown`). Gemini's developer studios and Arthur are removed. Its old `__DBD_TEST` hook exists only in dev and e2e builds.
 - `src/game/`: pure game rules, no DOM, unit-tested.
   - `world.ts`: 7 countries, 30 cities in route order, trios, rivals. The last city of each country is its boss farm.
-  - `plan.ts`: what each farm asks (`planFor`): bills and their schedule, crop health and value, field density, content unlocks, crops, the city record, par days, the boss.
+  - `plan.ts`: what each farm asks (`planFor`): five to eight bills, two days apart; the crop ladder (carrots first, one new crop per bill paid, each with its own value and toughness via `cropVal` and `cropHp`); crop health and value per city, field density, content unlocks, the city record, the spare-cash goal for the second star, the boss.
   - `progress.ts`: the game save (`dbd-game-v3`): wins, stars, crowns, wallet, workshop, tools, skills, ribbons, looks, today's daily farm, ad counters, settings; country and city locks; stars. Older saves get ribbons for the stars, crowns and bosses they already have.
-  - `workshop.ts`: permanent upgrades; small ones are instant, bigger ones take time (one at a time).
+  - `workshop.ts`: permanent upgrades in small steps (`SHED_FX`, read by the engine as `window.__DBD_SHED_FX`); prices rise about 11% a level; every fifth level is a timed job (one at a time). `oldWorkshopRefund` refunds v0.9 levels when an older save loads.
   - `tools.ts`: sickle, scythe, flame weeder, seed blaster and their attachments; `toolStats` becomes `window.__DBD_TOOL` for the engine.
+  - `power.ts`: `fieldPower`, a build's strength when a farm starts (damage per second on one crop, crits averaged in, times the swing's area or the seeds per shot). `toughnessFor` in `plan.ts` turns it into the run's `tough`: crops are tougher by the square root of the build's lead over `expectedPower(k)` (softer for a build behind it). The shell gives the engine `farmPlan(run)`, the city plan with `hp × tough`; side farms keep the plain plan.
   - `skills.ts`: the skill map. 19 of the engine's own skills (`hasSkill`) in four branches, bought with diamonds (one per farm won, two per boss farm, one per daily gold medal). Nodes stay in the clouds until a neighbour is learned; reset is free. The whole route earns exactly what every skill costs.
   - `flair.ts`: the Bling Barn, looks only (tool finish, swing trail, bird, coins), bought with ribbons. `lookFor` becomes `window.__DBD_LOOK`, which the engine reads when it draws.
   - `daily.ts`: the daily farm and duels. One-day side farms on a seeded field with a set loadout, medal targets, and the day's tries.
@@ -19,17 +20,21 @@ Landscape farm game: Gemini's v0.6.05 farm engine runs the harvest days; Claude'
 
 ## Rules worth keeping
 
-- One wallet. While a farm runs, the engine's cash is the wallet; between farms it lives in the game save. A foreclosure leaves the player with at most the money they came with; workshop levels and tools are kept.
-- Bills keep their schedule: each bill is due its own number of days after the previous due date, so paying early never pulls the next bill closer.
+- Two pots. The farm's cash (in the engine) pays its bills; savings (`g.wallet`, what is left after a deed and free-coin ads) buy upgrades and tools, and so does farm cash above the farm's mark. A foreclosure keeps savings, workshop levels and tools.
+- A farm pays out once (`paid` per city, `mark` and `spent` per run): during a run only farm cash above the farm's `paid` buys upgrades, and only cash above it after the deed is banked. Quitting or losing still adds what the farm's cash bought. So replays, retries and quitting early can't mine a farm twice (Navid, 29 Oct).
+- A bill is paid on the evening it is due, never earlier, so every farm runs its full length and each crop stage lasts two days.
+- Perks come in a chest after every bill but the deed: wooden (+5%), silver (+10% and one-per-farm tricks), gold before the deed (+15%, Heavy swing, Storm, Cleaver). They last for that farm.
+- Touch: the sickle cuts exactly under the finger; a second finger held anywhere charges the Charge Cleave and lifting it strikes. Mouse: hold the button; keyboard: Space. The field keeps crops at least 3.5% of its width (or the camera cutout) away from each side.
 - A boss farm's deed cannot be paid until its boss is knocked out. Boss health is set when the farm starts, from the player's strongest owned tool (`focusSec` seconds of steady hitting), and it carries over between days.
 - Ads are never forced. Every reward (double a day, free coins, finish an upgrade, one more day) is a button the player can ignore, shown only while an ad is loaded, and granted only when AdMob reports the reward.
 - A day is a transaction: an interrupted day replays from dawn (the engine saves its pre-day checkpoint).
 - Side farms never touch the real farm. The daily farm and each duel turn take an engine `snapshot()`, switch saving off, seed the field (`setFieldSeed`: every crop, prop, crow and goat comes from its own seeded stream), drop skills and use the set loadout; at sunset the shell records the score and `restore()`s the snapshot, plan, tool, skills and sound. A daily try is counted when it starts, so quitting mid-day uses it up.
-- The economy is tuned with a bot (`sim` scripts outside the repo): a bot playing at about Navid's speed clears the first farms without ads, needs replays from the fourth farm on without ads, and goes through first try with an ad after most days. Prices sit in `workshop.ts` and `tools.ts`, bill pressure in `plan.ts` (`CANADA_MUL`, `BILL_MUL`).
+- The economy is tuned with a bot (`sim` scripts outside the repo) that plays at about Navid's finger speed and spends every spare dollar. Bills follow what its field pays at each stage (`dayRef`, `STAGE_PAY`, `billPressure`, `billMul` in `plan.ts`); crop toughness (`hpMul`) follows the expected build and crop value (`valMul`) keeps an on-track day in step with the bills; prices sit in `workshop.ts` and `tools.ts`. Fixed toughness curves were fragile (a strong build one-shot every crop and outran the bills, a weak one hit a wall), hence the square-root toughness.
+- Android: the WebView keeps a text zoom of 100% (`MainActivity.lockTextSize`), because the phone's font-size setting otherwise enlarges every px font and pushes text out of the fixed cards.
 
 ## Verification and delivery
 
-Run `npm ci`, `npm test`, `npm run build` and `npm run test:e2e` (five landscape sizes: the day loop, farmhouse layout on every tab, tools, the boss farm with a test ad, settings, the skill map, the Bling Barn, a daily farm that must leave the real farm untouched, and a two-player duel). `npm run build:pc` plus `node scripts/inline-html.mjs dist-pc Due-by-Dusk.html` makes one self-contained HTML for playing on a computer (with labelled test ads).
+Run `npm ci`, `npm test`, `npm run build` and `npm run test:e2e` (five landscape sizes: the day loop, farmhouse layout on every tab, tools, the boss farm with a test ad, settings, the skill map, the Bling Barn, a daily farm that must leave the real farm untouched, a two-player duel, the first farm's carrots and chest, the payout mark on a replay, touch position and the second-finger charge, crops away from the edges, and text staying inside its cards on a short screen). `npm run build:pc` plus `node scripts/inline-html.mjs dist-pc Due-by-Dusk.html` makes one self-contained HTML for playing on a computer (with labelled test ads).
 
 Keep generated builds, dependencies, local SDK paths, signing material and test output out of Git.
 

@@ -2,20 +2,22 @@
 // won and lost screens, the workshop, settings. Gemini's engine runs the days; this file runs the game.
 
 import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from '../game/world';
-import { planFor, type CityPlan } from '../game/plan';
+import { cropName, planFor, toughnessFor, type CityPlan } from '../game/plan';
+import { bestPower } from '../game/power';
 import {
-  GAME_SAVE_KEY, cityLock, cityProgress, countryLock, countryStars, crownCount, newGame, nextCity, parseGame,
-  starGate, starsFor, todayKey, toolLock, totalStars, type GameSave,
+  GAME_SAVE_KEY, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, crownCount, newGame, nextCity, paidAfterRun,
+  parseGame, spendableFarmCash, starGate, starsFor, todayKey, toolLock, totalStars, type GameSave, type RunInfo,
 } from '../game/progress';
 import { diamondsLeft, learn, resetSkills, skillDef } from '../game/skills';
 import { FLAIR, buyFlair, equipFlair, flairById, lookFor, ribbonsForWin, type FlairKind } from '../game/flair';
 import { DAILY_AD_TRIES, MEDAL_NAME, MEDAL_RIBBONS, dailyFor, duelFor, medalOf, newDaily, sidePlan, triesLeft, type SideDef } from '../game/daily';
-import { UPGRADES, formatDuration, settleJob, startUpgrade, upgradeCost, upgradeDuration, type UpgradeId } from '../game/workshop';
+import { SHED_FX, UPGRADES, formatDuration, settleJob, startUpgrade, upgradeCost, upgradeDuration, type UpgradeId } from '../game/workshop';
 import { TOOLS, isToolId, modCost, modLevel, toolDef, toolStats, toolSummary, type ToolId } from '../game/tools';
 import { ART, BAND, MAP, NODES, PREVIEW, SPRITE, bandFor, spriteImg } from './art';
 import { $, ICON, TOOL_ICON, cap, clamp, esc, money, stars } from './dom';
-import { engine, on, type BillInfo, type DayEvent, type EngineState, type PerkInfo, type Today } from './engine';
-import { FarmHud, deviceText, eventIcon } from './hud';
+import { engine, on, type BillInfo, type ChestInfo, type DayEvent, type EngineState, type Today } from './engine';
+import { chestBurst, chestName, chestSvg, newCropHtml, perkCard, perkIcon } from './chest';
+import { FarmHud, cleaveTip, deviceText, eventIcon } from './hud';
 import { watchLayout, layout } from './layout';
 import { adsAvailable, canOffer, coinsWait, onAdsChanged, watch } from './offers';
 import { PINS } from './pins';
@@ -63,7 +65,7 @@ interface CityResult {
   kind: 'won' | 'lost';
   cityId: string;
   stars: number;
-  par: boolean;
+  spare: boolean;
   crown: boolean;
   firstWin: boolean;
   diamonds: number;
@@ -72,6 +74,9 @@ interface CityResult {
   earned: number;
   harvested: number;
   wallet: number;
+  /** Savings banked from this run, and what the farm had paid before it (0 on a first win). */
+  banked: number;
+  mark: number;
   short?: number;
   bill?: string;
   bossKept?: boolean;
@@ -121,6 +126,8 @@ export class GameApp {
       /* private mode */
     }
     this.g = parseGame(raw);
+    // the workshop's step sizes, read by the engine's stats
+    (window as any).__DBD_SHED_FX = SHED_FX;
     this.music = new Music(this.g.settings.music, { field: this.g.settings.fieldTrack, menu: this.g.settings.menuTrack });
     (window as any).__dbdRooster = () => {
       try {
@@ -146,8 +153,6 @@ export class GameApp {
     this.root.append(this.modal);
     this.hud = new FarmHud($('stage'), () => this.toggleSound());
     this.root.addEventListener('click', e => this.click(e));
-    // browsers allow sound after the first touch anywhere, not only on a button
-    document.addEventListener('pointerdown', () => this.music.unlock(), { capture: true });
     watchLayout(this.root);
     onAdsChanged(() => this.refresh());
     const c = cityById(nextCity(this.g));
@@ -164,10 +169,25 @@ export class GameApp {
   start(): void {
     const e = engine();
     this.wireEngine();
+    // v0.10 rebuilt the workshop and the farms: old upgrades were refunded, and an old farm's cash is saved too
+    if (this.g.migratedRefund != null) {
+      let farmCash = 0;
+      if (this.g.migratedFarm) {
+        const st = e.state();
+        if (!st.won && !st.lost) farmCash = Math.max(0, Math.round(st.cash));
+      }
+      this.g.wallet += farmCash;
+      const back = this.g.migratedRefund + farmCash;
+      delete this.g.migratedRefund;
+      delete this.g.migratedFarm;
+      e.setShed(this.g.workshop.levels);
+      this.saveNow();
+      if (back > 0) setTimeout(() => this.toast(`New workshop and longer farms: ${money(back)} back in your savings.`), 900);
+    }
     const run = this.g.run;
     if (run) {
       const st = e.state();
-      const plan = planFor(run.cityId);
+      const plan = this.farmPlan(run);
       if (st.cityId === run.cityId && !st.won && !st.lost) {
         e.setPlan(plan);
         e.setShed(this.g.workshop.levels);
@@ -179,7 +199,7 @@ export class GameApp {
         const tools = this.g.tools.owned.map(id => toolStats(this.g.tools, id));
         e.beginCity({ cityId: run.cityId, country: plan.country, cash: 0, shed: this.g.workshop.levels, plan, tools });
       }
-    }
+    } else e.setShed(this.g.workshop.levels);
     this.settleWorkshop();
     this.applyTool();
     this.applySkills();
@@ -219,9 +239,9 @@ export class GameApp {
     return this.g.run ? engine().state().cash : 0;
   }
 
-  /** Everything upgrades can be bought with: savings plus the farm's cash. */
+  /** Everything upgrades can be bought with: savings plus the farm's cash above its mark (see progress.ts). */
   private wallet(): number {
-    return this.g.wallet + this.farmCash();
+    return this.g.wallet + spendableFarmCash(this.g.run, this.farmCash());
   }
 
   private tick(): void {
@@ -247,6 +267,12 @@ export class GameApp {
       this.pendingEvent = d.event;
       this.day = null;
       this.hud.dayStarted(d.event);
+      // once, from the second bill on: how to charge a cleave on this device
+      if (!this.side && !this.g.seen.cleaveTip && this.g.run && engine().state().billsPaid >= 1) {
+        this.g.seen.cleaveTip = true;
+        this.save();
+        setTimeout(() => this.toast(cleaveTip(), 6000), 2600);
+      }
     });
     on('dayEnd', d => {
       this.hud.dayEnded();
@@ -279,7 +305,7 @@ export class GameApp {
       }
       if (this.scr === 'farm' && this.day) this.show('sundown');
     });
-    on('perks', d => this.showPerks(d.perks));
+    on('perks', d => this.showChest({ tier: d.tier, perks: d.perks }));
     on('cityWon', d => this.cityWon(d));
     on('foreclosed', d => this.foreclosed(d));
   }
@@ -290,7 +316,7 @@ export class GameApp {
     const plan = planFor(run.cityId);
     const p = (this.g.cities[run.cityId] ||= { ...cityProgress(this.g, run.cityId) });
     const firstWin = !p.won;
-    const res = starsFor({ won: true, days: d.days, par: plan.par, crown: p.crown, selfFunded: d.earned >= d.paidTotal * 0.9 });
+    const res = starsFor({ won: true, cashLeft: d.cash, spare: plan.spare, crown: p.crown });
     const ribbons = ribbonsForWin(p.stars, res.stars, false, firstWin && plan.boss);
     this.g.ribbons += ribbons;
     p.won = true;
@@ -299,12 +325,14 @@ export class GameApp {
     let diamonds = 0;
     if (firstWin) diamonds = plan.boss ? 2 : 1;
     if (diamonds) engine().addDiamonds(diamonds);
-    // what is left on the farm after the deed goes into savings
-    this.g.wallet += Math.max(0, Math.round(d.cash));
+    // what is left on the farm after the deed goes into savings, but only above what this farm had already paid you
+    const banked = bankAfterWin(run, d.cash);
+    this.g.wallet += banked;
+    p.paid = paidAfterRun(run, banked);
     this.g.run = null;
     this.result = {
-      kind: 'won', cityId: run.cityId, stars: res.stars, par: res.par, crown: p.crown, firstWin, diamonds, ribbons,
-      days: d.days, earned: d.earned, harvested: d.harvested, wallet: this.g.wallet,
+      kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.spare, crown: p.crown, firstWin, diamonds, ribbons,
+      days: d.days, earned: d.earned, harvested: d.harvested, wallet: this.g.wallet, banked, mark: run.mark,
     };
     this.saveNow();
     this.show('won');
@@ -313,12 +341,14 @@ export class GameApp {
   private foreclosed(d: { bill: string; short: number; days: number; cash: number; bossKept?: boolean }): void {
     const run = this.g.run;
     if (!run) return;
-    // the bank keeps the farm and its cash; savings are untouched
+    // the bank keeps the farm and its cash; savings are untouched. Upgrades bought with its cash count as paid out
     const left = this.g.wallet;
+    const p = (this.g.cities[run.cityId] ||= { ...cityProgress(this.g, run.cityId) });
+    p.paid = paidAfterRun(run, 0);
     this.g.run = null;
     this.result = {
-      kind: 'lost', cityId: run.cityId, stars: 0, par: false, crown: false, firstWin: false, diamonds: 0,
-      days: d.days, earned: 0, harvested: 0, wallet: left, short: d.short, bill: d.bill, bossKept: !!d.bossKept,
+      kind: 'lost', cityId: run.cityId, stars: 0, spare: false, crown: false, firstWin: false, diamonds: 0,
+      days: d.days, earned: 0, harvested: 0, wallet: left, banked: 0, mark: run.mark, short: d.short, bill: d.bill, bossKept: !!d.bossKept,
     };
     this.saveNow();
     this.show('lost');
@@ -336,6 +366,14 @@ export class GameApp {
     this.music.setMood(s === 'farm' ? 'field' : 'menu');
     if (s !== 'farm') this.render(s);
     layout(this.root);
+    if (s === 'farmhouse' && this.g.run) {
+      try {
+        const c = engine().pendingChest();
+        if (c) this.showChest(c);
+      } catch {
+        /* engine not ready */
+      }
+    }
   }
 
   private refresh(): void {
@@ -398,7 +436,8 @@ export class GameApp {
       case 'track-play': this.music.setPreview(this.music.previewing() === arg ? null : arg); this.openMusicPicker(); break;
       case 'track-field': this.pickTrack('field', arg); break;
       case 'track-menu': this.pickTrack('menu', arg); break;
-      case 'perk': this.pickPerk(arg); break;
+      case 'perk': this.pickPerk(arg, t); break;
+      case 'chest-open': this.openChest(); break;
       case 'ad-double': void this.adDouble(); break;
       case 'ad-coins': void this.adCoins(); break;
       case 'ad-finish': void this.adFinish(); break;
@@ -485,19 +524,34 @@ export class GameApp {
   }
 
   private leaveRunAndStart(cityId: string): void {
-    if (this.g.run) this.g.run = null; // the farm's cash stays with the bank; savings are untouched
+    const old = this.g.run;
+    if (old) {
+      // the farm's cash stays with the bank; savings are untouched; upgrades bought with its cash count as paid out
+      const p = (this.g.cities[old.cityId] ||= { ...cityProgress(this.g, old.cityId) });
+      p.paid = paidAfterRun(old, 0);
+      this.g.run = null;
+    }
     this.closeModal();
     this.beginRun(cityId);
   }
 
+  /** The plan the engine plays: the city's plan with crops as tough as this run's build calls for. */
+  private farmPlan(run: RunInfo): CityPlan {
+    const plan = planFor(run.cityId);
+    return run.tough && run.tough !== 1 ? { ...plan, hp: plan.hp * run.tough } : plan;
+  }
+
   private beginRun(cityId: string): void {
-    const plan = planFor(cityId);
     const tools = this.g.tools.owned.map(id => toolStats(this.g.tools, id));
+    // crops are tougher for a build ahead of the route and softer for one behind it (set once, when the farm starts)
+    const tough = toughnessFor(routeIndex(cityId), bestPower(this.g.workshop.levels, tools, this.g.skills));
+    const p = (this.g.cities[cityId] ||= { ...cityProgress(this.g, cityId) });
+    const run: RunInfo = { cityId, startCash: 0, startedAt: Date.now(), bestDay: 0, mark: p.paid || 0, spent: 0, tough };
+    const plan = this.farmPlan(run);
     // every farm starts with an empty cash box: its bills are paid from its own harvest
     const ok = engine().beginCity({ cityId, country: plan.country, cash: 0, shed: this.g.workshop.levels, plan, tools });
     if (!ok) return;
-    this.g.run = { cityId, startCash: 0, startedAt: Date.now(), bestDay: 0 };
-    const p = (this.g.cities[cityId] ||= { ...cityProgress(this.g, cityId) });
+    this.g.run = run;
     p.plays++;
     this.citySel = cityId;
     this.fhTab = 'workshop';
@@ -524,18 +578,36 @@ export class GameApp {
     engine().foreclose();
   }
 
-  private pickPerk(id: string): void {
-    engine().choosePerk(id);
-    this.closeModal();
-    this.render('farmhouse');
+  private picking = false;
+  private pickPerk(id: string, btn?: HTMLElement): void {
+    if (this.picking) return;
+    const box = this.modal.querySelector<HTMLElement>('.chest-box');
+    const done = () => {
+      this.picking = false;
+      const info = engine().perkInfo(id);
+      if (!engine().choosePerk(id)) return;
+      this.closeModal();
+      this.render('farmhouse');
+      if (info) this.toast(`${info.name}: ${deviceText(info.line)}`);
+    };
+    if (box && btn && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      this.picking = true;
+      box.classList.add('open', 'picked');
+      btn.classList.add('chosen');
+      setTimeout(done, 420);
+    } else done();
   }
 
-  /** Pays for upgrades and tools: savings first, then the farm's cash. */
+  /** Pays for upgrades and tools: savings first, then the farm's cash above its mark. */
   private spend(cost: number): boolean {
     if (this.wallet() < cost) return false;
     const fromSavings = Math.min(this.g.wallet, cost);
     const rest = cost - fromSavings;
-    if (rest > 0 && !engine().spendCash(rest)) return false;
+    if (rest > 0) {
+      const run = this.g.run;
+      if (!run || rest > spendableFarmCash(run, this.farmCash()) || !engine().spendCash(rest)) return false;
+      run.spent += rest;
+    }
     this.g.wallet -= fromSavings;
     return true;
   }
@@ -631,10 +703,10 @@ export class GameApp {
     const ok = await watch(this.g, 'coins');
     this.busy = false;
     if (ok) {
+      // free coins always go to savings (for upgrades and tools), whatever farm you are on
       const amt = this.coinsReward();
-      if (this.g.run) engine().addCash(amt);
-      else this.g.wallet += amt;
-      this.toast(`+${money(amt)} in the bank.`);
+      this.g.wallet += amt;
+      this.toast(`+${money(amt)} in your savings.`);
       this.saveNow();
     }
     this.refresh();
@@ -815,7 +887,7 @@ export class GameApp {
     e.setSkills([]);
     const tool = toolStats({ owned: [def.tool], equipped: def.tool, mods: {} }, def.tool);
     e.setTool(tool);
-    const plan = sidePlan(def.cityId);
+    const plan = sidePlan(def.cityId, def.tool, def.levels);
     if (!e.beginCity({ cityId: def.cityId, country: plan.country, cash: 0, shed: def.levels, plan, tools: [tool] })) {
       this.restoreFarm(snap, sound);
       return false;
@@ -844,7 +916,7 @@ export class GameApp {
     const e = engine();
     e.setFieldSeed(0);
     e.restore(snap);
-    if (this.g.run) e.setPlan(planFor(this.g.run.cityId));
+    if (this.g.run) e.setPlan(this.farmPlan(this.g.run));
     e.setSaving(true);
     e.setSound(sound);
     this.hud.syncSound(sound);
@@ -933,13 +1005,13 @@ export class GameApp {
 
   // ------------------------------------------------------------------ small pieces
 
-  private toast(msg: string): void {
+  private toast(msg: string, ms = 2200): void {
     const t = document.createElement('div');
     t.className = 'shell-toast';
     t.textContent = msg;
     document.body.append(t);
-    setTimeout(() => t.classList.add('out'), 2200);
-    setTimeout(() => t.remove(), 2700);
+    setTimeout(() => t.classList.add('out'), ms);
+    setTimeout(() => t.remove(), ms + 500);
   }
 
   private trio(code: CountryCode, h: number): string {
@@ -1137,9 +1209,10 @@ export class GameApp {
       h += `<div class="locked-box tall">${ICON.lock()}<span>${esc(lock.reason)}</span></div>`;
       h += `<p class="cc-desc">${esc(ct.desc)}</p>`;
     }
-    h += `<div class="stat2"><div class="statbox"><div class="k">THE FARM</div><div class="v">${plan.bills.length} bills · ${plan.totalDays} days</div></div>
+    h += `<div class="stat2"><div class="statbox"><div class="k">${plan.bills.length} BILLS</div><div class="v">${plan.totalDays} days</div></div>
       <div class="statbox"><div class="k">CITY CROWN</div><div class="v">${p.crown ? 'Yours!' : money(plan.record)}</div></div></div>`;
-    if (p.bestDay > 0) h += `<p class="cc-best">Your best day here: <b>${money(p.bestDay)}</b></p>`;
+    if (p.won) h += `<p class="cc-best">Paid you so far: <b>${money(p.paid || 0)}</b>. Farming it again pays only what beats that.</p>`;
+    else if (p.bestDay > 0) h += `<p class="cc-best">Your best day here: <b>${money(p.bestDay)}</b></p>`;
     h += `<div class="cc-rival"><div class="trio">${this.trio(ct.country, 30)}</div><span>Rival<br><b>${esc(ct.rival)}</b></span></div>`;
     if (!lock.open) h += `<button type="button" disabled class="st-btn btn-lg off">Locked</button>`;
     else if (this.g.run && this.g.run.cityId === cityId) h += `<button type="button" class="st-btn gold btn-lg" data-act="farm" data-arg="${cityId}">Continue · Day ${engine().state().day}</button>`;
@@ -1198,7 +1271,8 @@ export class GameApp {
     } else if (boss && boss.down) {
       bossRow = `<div class="n-boss done">${ICON.crown('#FFC23D', 18)}<span class="nb-t">${esc(boss.name)} is out cold.</span></div>`;
     }
-    const payLabel = b.bossBlock && st.cash >= b.amt ? 'Boss first' : `Pay ${money(b.amt)}`;
+    // bills are paid on the evening they are due
+    const payLabel = b.bossBlock && st.cash >= b.amt ? 'Boss first' : b.tonight ? `Pay ${money(b.amt)}` : `Pay on day ${b.dueDay}`;
     return `<div class="notice${bossRow ? ' has-boss' : ''}">
         <div class="n-head">GRUMBLE &amp; SONS SAVINGS &amp; LOAN</div>
         <div class="n-sub">Notice ${b.index + 1} of ${b.count}</div>
@@ -1278,17 +1352,21 @@ export class GameApp {
         const blocked = (dur > 0 && !!job) || cash < cost;
         btn = `<button type="button" class="st-btn btn-buy${blocked ? ' off' : ' gold'}" data-act="buy" data-arg="${u.id}" ${blocked ? 'disabled' : ''}>${money(cost)}${dur ? `<small>${ICON.clock(11)}${formatDuration(dur)}</small>` : ''}</button>`;
       }
-      const eff = cost != null ? `${esc(u.effect(l))} → <b>${esc(u.effect(l + 1))}</b>` : `<b>${esc(u.effect(l))}</b>`;
-      return `<div class="up-card"><div class="up-name">${esc(u.name)}</div><span class="up-lv" aria-label="Level ${l}">${l}</span>
-        <div class="up-eff">${eff}</div>${btn}</div>`;
+      const eff = cost != null ? `${esc(u.value(l))} → <b>${esc(u.value(l + 1))}</b> ${esc(u.unit)}` : `<b>${esc(u.value(l))}</b> ${esc(u.unit)}`;
+      return `<div class="up-card"><div class="up-name">${esc(u.name)}</div>
+        <div class="up-eff"><span class="up-lv" aria-label="Level ${l}">Lv ${l}</span> ${eff}</div>${btn}</div>`;
     }).join('');
-    return `<div class="up-grid">${cards}${this.jobCellHtml()}</div>`;
+    const run = this.g.run;
+    const capped = run && run.mark > 0
+      ? `<p class="up-cap">${ICON.coin(16)}<span>This farm has paid you ${money(run.mark)} already. Its cash buys upgrades once you hold more than that; your savings always can.</span></p>`
+      : '';
+    return `${capped}<div class="up-grid">${cards}${this.jobCellHtml()}</div>`;
   }
 
   /** The eighth cell of the workshop grid: the upgrade being built, or how building works. */
   private jobCellHtml(): string {
     const job = this.g.workshop.job;
-    if (!job) return `<div class="up-card job-cell idle">${ICON.clock(18)}<p>Small upgrades are instant. Bigger ones take a while, one at a time.</p></div>`;
+    if (!job) return `<div class="up-card job-cell idle">${ICON.clock(18)}<p>Every fifth level is a bigger job: it takes a while, one job at a time.</p></div>`;
     const def = UPGRADES.find(u => u.id === job.id)!;
     const left = job.endsAt - Date.now();
     const pct = clamp(1 - left / Math.max(1, job.endsAt - job.startedAt), 0, 1);
@@ -1312,16 +1390,21 @@ export class GameApp {
   private billsList(): string {
     const e = engine();
     const st = e.state();
+    const plan = this.g.run ? planFor(this.g.run.cityId) : null;
+    const now = plan && plan.stages.filter(x => x.stage <= st.billsPaid).map(x => spriteImg(x.type, 22, cropName(x.type))).join('');
+    const field = now ? `<p class="bl-field">On the field now: ${now}<span>Each bill paid brings a new crop.</span></p>` : '';
     // bills keep their schedule: each is due its own number of days after the one before it
     let due = st.due;
-    return `<div class="bill-list">${e
+    return `${field}<div class="bill-list">${e
       .bills()
       .map((b, i) => {
         if (i > st.bill) due += b.days;
         const status = i < st.billsPaid ? 'paid' : i === st.bill ? 'now' : 'later';
+        const next = plan && plan.stages[i + 1];
+        const crop = next ? `<span class="b-crop" title="Then: ${esc(cropName(next.type))}">${spriteImg(next.type, 24, cropName(next.type))}</span>` : `<span class="b-crop"></span>`;
         return `<div class="bill-row ${status}"><span class="b-no">${i + 1}</span><span class="b-name">${esc(b.name)}</span><span class="b-amt">${money(b.amt)}</span><span class="b-st">${
           status === 'paid' ? 'Paid ✓' : `Due day ${i === st.bill ? st.due : due}`
-        }</span></div>`;
+        }</span>${crop}</div>`;
       })
       .join('')}</div>`;
   }
@@ -1344,7 +1427,7 @@ export class GameApp {
     const cashNow = e.state().cash;
     const stamp = b.bossBlock && cashNow >= b.amt
       ? `<span class="stamp bad">BOSS FIRST</span>`
-      : b.canPay
+      : b.covered
         ? `<span class="stamp ok">COVERED</span>`
         : `<span class="stamp bad">SHORT ${money(b.amt - cashNow)}</span>`;
     const boss = e.state().boss;
@@ -1386,7 +1469,7 @@ export class GameApp {
       const nextOpen = next && cityLock(this.g, next.id).open;
       const starRow = [
         ['Paid off the farm', true],
-        [`Within ${plan.par} days`, r.par],
+        [`Kept ${money(plan.spare)} after the deed`, r.spare],
         [`Beat ${ct.rival}`, r.crown],
       ]
         .map(([t, ok], i) => `<div class="star-row${ok ? ' ok' : ''}" style="animation-delay: ${0.25 + i * 0.25}s">${ICON.star(!!ok, 26)}<span>${esc(String(t))}</span></div>`)
@@ -1396,7 +1479,9 @@ export class GameApp {
         <h2 class="r-title">The ${esc(ct.short)} farm is yours.</h2>
         <p class="r-text">Dear former customer, enclosed is the deed. We are, frankly, upset.</p>
         <div class="star-rows">${starRow}</div>${plan.bossFight ? this.clearedLine(ct.country) : ''}
-        <div class="r-rewards"><span>${r.days} days · ${money(r.earned)} earned · savings ${money(r.wallet)}</span><span class="r-gains">${r.ribbons ? `<span class="dia">${ribbonIcon(18)} +${r.ribbons}</span>` : ''}${r.diamonds ? `<button type="button" class="dia dia-btn" data-act="skills" aria-label="Spend it on the skill map">${ICON.diamond(16)} +${r.diamonds}</button>` : ''}</span></div>
+        <div class="r-rewards"><span>${r.days} days · ${money(r.earned)} earned · ${
+          r.mark > 0 ? (r.banked > 0 ? `+${money(r.banked)} above your best` : `nothing above your best of ${money(r.mark)}`) : `+${money(r.banked)} saved`
+        }</span><span class="r-gains">${r.ribbons ? `<span class="dia">${ribbonIcon(18)} +${r.ribbons}</span>` : ''}${r.diamonds ? `<button type="button" class="dia dia-btn" data-act="skills" aria-label="Spend it on the skill map">${ICON.diamond(16)} +${r.diamonds}</button>` : ''}</span></div>
         <div class="r-actions"><button type="button" class="st-btn blue btn-md flex1" data-act="map" data-arg="${r.cityId}">Map</button>
           ${nextOpen ? `<button type="button" class="st-btn gold btn-md flex1" data-act="next-city">Next farm${ICON.next()}</button>` : ''}</div>
       </div></div>`;
@@ -1431,13 +1516,47 @@ export class GameApp {
     this.music.setPreview(null);
   }
 
-  private showPerks(perks: PerkInfo[]): void {
+  /** The chest after a bill: tap to open, then pick one of three perks for this farm. */
+  private showChest(c: ChestInfo): void {
+    if (!c || !c.perks || !c.perks.length) return;
     if (this.scr !== 'farmhouse') this.show('farmhouse');
-    const cards = perks
-      .map(p => `<button type="button" class="perk-card" data-act="perk" data-arg="${p.id}"><b>${esc(p.name)}</b><span>${esc(deviceText(p.line))}</span></button>`)
-      .join('');
-    this.openModal('perks', `<div class="m-top"><span class="eyebrow">BILL PAID</span><span class="stamp ok">PAID</span></div>
-      <h2 class="m-title">Pick a perk for this farm.</h2><div class="perk-grid">${cards}</div>`, 470);
+    if (this.modal.dataset.kind === 'perks' && !this.modal.hidden) return;
+    const st = engine().state();
+    const cards = c.perks.map((p, i) => perkCard(p, i, deviceText(p.line))).join('');
+    this.openModal('perks', `<div class="chest-box ch-t${c.tier}">
+        <div class="chest-head"><span class="eyebrow">BILL ${st.billsPaid} OF ${st.billCount} PAID</span><h2 class="m-title">${esc(chestName(c.tier))}!</h2>
+          <p class="chest-sub">Pick one perk for this farm.</p></div>
+        <button type="button" class="chest-btn" data-act="chest-open" aria-label="Open the chest"><span class="ch-stage">${chestBurst(c.tier)}${chestSvg(c.tier)}</span><span class="chest-tap">Tap to open</span></button>
+        <div class="chest-cards perk-grid">${cards}</div>
+        ${this.newCropLine()}
+      </div>`, 480);
+  }
+
+  private openChest(): void {
+    const box = this.modal.querySelector<HTMLElement>('.chest-box');
+    if (!box || box.classList.contains('open')) return;
+    box.classList.add('open');
+    try {
+      navigator.vibrate?.(18);
+    } catch {
+      /* no vibration */
+    }
+  }
+
+  /** The crop that joined the field with the bill just paid, if any. */
+  private newCropLine(): string {
+    const run = this.g.run;
+    if (!run) return '';
+    const plan = this.farmPlan(run);
+    const e = engine();
+    const st = e.state();
+    const stage = plan.stages[st.billsPaid];
+    if (!stage || st.billsPaid <= 0) return '';
+    const cur = e.stats() as unknown as { dmg: number; vm: number };
+    const pay = stage.val * (cur.vm || 1);
+    const hp = stage.hp * plan.hp * (1 + plan.hpDay * Math.max(0, st.day - 1));
+    const cuts = Math.max(1, Math.ceil(hp / Math.max(0.01, cur.dmg || 1) - 1e-6));
+    return newCropHtml(stage.type, cropName(stage.type), pay, cuts, money);
   }
 
   private openSettings(): void {
@@ -1454,6 +1573,7 @@ export class GameApp {
     this.openModal('settings', `<h2 class="m-title">Settings</h2>
       ${row('music', 'Music', s.music)}
       <button type="button" class="music-row" data-act="music-picker"><span class="mr-k">Tracks</span><span class="mr-v">Field: <b>${esc(ft ? ft.title : '')}</b> · Menus: <b>${esc(mt ? mt.title : '')}</b></span>${ICON.next()}</button>
+      <p class="m-text mus-status">Music now: <b>${esc(this.music.status())}</b></p>
       ${row('sound', 'Sound effects', sound)}${row('haptics', 'Vibration', s.haptics)}
       <div class="m-links"><a id="linkPrivacyPolicy" href="https://khoreh.com/due-by-dusk/privacy.html">Privacy policy</a>
         <button type="button" class="linkish" id="btnPrivacyChoices" hidden>Privacy choices</button>

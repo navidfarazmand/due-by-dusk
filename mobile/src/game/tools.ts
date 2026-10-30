@@ -63,43 +63,46 @@ export const TOOLS: ToolDef[] = [
     blurb: 'Quick swings around your finger. Good at everything, great at nothing.',
     base: { ...BASE },
     mods: [
-      { id: 'whetstone', name: 'Whetstone', line: '+12% damage', max: 3, base: 200, growth: 2.3, apply: (s, l) => { s.dmg *= 1 + 0.12 * l; } },
-      { id: 'grip', name: 'Long grip', line: '+7% reach', max: 3, base: 220, growth: 2.3, apply: (s, l) => { s.reach *= 1 + 0.07 * l; } },
-      { id: 'charm', name: 'Lucky charm', line: '+3% crit chance', max: 3, base: 260, growth: 2.3, apply: (s, l) => { s.crit += 0.03 * l; } },
+      { id: 'whetstone', name: 'Whetstone', line: '+12% damage', max: 3, base: 600, growth: 2.3, apply: (s, l) => { s.dmg *= 1 + 0.12 * l; } },
+      { id: 'grip', name: 'Long grip', line: '+7% reach', max: 3, base: 650, growth: 2.3, apply: (s, l) => { s.reach *= 1 + 0.07 * l; } },
+      { id: 'charm', name: 'Lucky charm', line: '+3% crit chance', max: 3, base: 750, growth: 2.3, apply: (s, l) => { s.crit += 0.03 * l; } },
     ],
   },
   {
-    id: 'scythe', name: 'Scythe', price: 3000, after: 'CA',
+    id: 'scythe', name: 'Scythe', price: 9000, after: 'CA',
     blurb: 'A wide, heavy sweep. Slower swings, but it cuts a whole patch at once.',
-    base: { ...BASE, dmg: 1.3, speed: 0.8, reach: 1.38 },
+    // a clear step up from a sickle with all its attachments (Gemini's 1.3 damage left it behind one)
+    base: { ...BASE, dmg: 1.8, speed: 0.8, reach: 1.38 },
     mods: [
-      { id: 'wide', name: 'Wide blade', line: '+8% reach', max: 3, base: 1000, growth: 2.3, apply: (s, l) => { s.reach *= 1 + 0.08 * l; } },
-      { id: 'weight', name: 'Counterweight', line: '+10% swing speed', max: 3, base: 1100, growth: 2.3, apply: (s, l) => { s.speed *= 1 + 0.1 * l; } },
+      { id: 'wide', name: 'Wide blade', line: '+8% reach', max: 3, base: 3000, growth: 2.3, apply: (s, l) => { s.reach *= 1 + 0.08 * l; } },
+      { id: 'weight', name: 'Counterweight', line: '+10% swing speed', max: 3, base: 3300, growth: 2.3, apply: (s, l) => { s.speed *= 1 + 0.1 * l; } },
       {
-        id: 'storm', name: 'Storm rod', line: 'Crits throw lightning, +3% crit', max: 3, base: 1300, growth: 2.3,
+        id: 'storm', name: 'Storm rod', line: 'Crits throw lightning, +3% crit', max: 3, base: 3900, growth: 2.3,
         apply: (s, l) => { if (l > 0) s.storm = true; s.crit += 0.03 * l; },
       },
     ],
   },
   {
-    id: 'flame', name: 'Flame weeder', price: 9000, after: 'US',
+    id: 'flame', name: 'Flame weeder', price: 30000, after: 'US',
     blurb: 'A fast, hot flame. Crops keep cooking for a moment after you move on.',
-    base: { ...BASE, dmg: 0.55, speed: 2.3, reach: 1.15, burn: 1.4 },
+    // a clear step up from a scythe with all its attachments (it was weaker than one until 29 Oct)
+    base: { ...BASE, dmg: 1.6, speed: 2.3, reach: 1.3, burn: 1.4 },
     mods: [
-      { id: 'tank', name: 'Bigger tank', line: '+0.5 s of burning', max: 3, base: 3000, growth: 2.3, apply: (s, l) => { s.burn += 0.5 * l; } },
-      { id: 'nozzle', name: 'Hot nozzle', line: '+12% damage', max: 3, base: 3300, growth: 2.3, apply: (s, l) => { s.dmg *= 1 + 0.12 * l; } },
-      { id: 'cone', name: 'Wide cone', line: '+8% reach', max: 3, base: 3700, growth: 2.3, apply: (s, l) => { s.reach *= 1 + 0.08 * l; } },
+      { id: 'tank', name: 'Bigger tank', line: '+0.5 s of burning', max: 3, base: 9000, growth: 2.3, apply: (s, l) => { s.burn += 0.5 * l; } },
+      { id: 'nozzle', name: 'Hot nozzle', line: '+12% damage', max: 3, base: 10000, growth: 2.3, apply: (s, l) => { s.dmg *= 1 + 0.12 * l; } },
+      { id: 'cone', name: 'Wide cone', line: '+8% reach', max: 3, base: 11000, growth: 2.3, apply: (s, l) => { s.reach *= 1 + 0.08 * l; } },
     ],
   },
   {
-    id: 'blaster', name: 'Seed blaster', price: 24000, after: 'BR',
+    id: 'blaster', name: 'Seed blaster', price: 90000, after: 'BR',
     blurb: 'Fires seeds at the nearest crops in range. Hit them from across the field.',
-    base: { ...BASE, dmg: 1.6, speed: 0.8, reach: 0.8, range: 150 },
+    // four seeds a shot: a step up from a flame weeder with all its attachments (with one seed it was far weaker)
+    base: { ...BASE, dmg: 5, speed: 0.8, reach: 0.8, range: 150, targets: 4 },
     mods: [
-      { id: 'scope', name: 'Scope', line: '+15% range', max: 3, base: 7000, growth: 2.3, apply: (s, l) => { s.range *= 1 + 0.15 * l; } },
-      { id: 'barrel', name: 'Extra barrel', line: '+1 seed per shot', max: 2, base: 8500, growth: 2.4, apply: (s, l) => { s.targets += l; } },
+      { id: 'scope', name: 'Scope', line: '+15% range', max: 3, base: 25000, growth: 2.3, apply: (s, l) => { s.range *= 1 + 0.15 * l; } },
+      { id: 'barrel', name: 'Extra barrel', line: '+1 seed per shot', max: 2, base: 30000, growth: 2.4, apply: (s, l) => { s.targets += l; } },
       {
-        id: 'golden', name: 'Golden seeds', line: '+8% crop prices', max: 3, base: 9500, growth: 2.3,
+        id: 'golden', name: 'Golden seeds', line: '+8% crop prices', max: 3, base: 33000, growth: 2.3,
         apply: (s, l) => { s.value *= 1 + 0.08 * l; s.gold += 0.004 * l; },
       },
     ],

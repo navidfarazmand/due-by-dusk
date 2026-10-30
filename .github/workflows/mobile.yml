@@ -2,6 +2,8 @@ name: Mobile game checks
 
 on:
   push:
+    # branches only: a play-v* tag builds the Play bundle instead (release-aab.yml)
+    branches: ['**']
     paths:
       - 'mobile/**'
       - '.github/workflows/mobile.yml'

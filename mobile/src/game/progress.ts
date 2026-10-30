@@ -2,7 +2,7 @@
 // The farm being played (day, bills, cash in hand) lives in the engine's own save; this one is the game's.
 
 import { COUNTRIES, ROUTE, type CountryCode, countryOf, cityById } from './world';
-import { emptyLevels, type WorkshopState } from './workshop';
+import { MAX_LEVEL, emptyLevels, oldWorkshopRefund, type WorkshopState } from './workshop';
 import { newTools, parseTools, toolDef, type ToolId, type ToolsState } from './tools';
 import { newFlair, parseFlair, type FlairState } from './flair';
 import { newDaily, type DailyState } from './daily';
@@ -20,6 +20,9 @@ export interface CityProgress {
   /** Fewest days to pay off the farm. */
   bestDays: number;
   plays: number;
+  /** Everything this farm has paid you so far: upgrades bought with its cash plus what you banked after the deed.
+   * A farm only pays more when a run beats this (Navid, 29 Oct: replays pay only what beats your best). */
+  paid: number;
 }
 
 export interface RunInfo {
@@ -28,6 +31,13 @@ export interface RunInfo {
   startCash: number;
   startedAt: number;
   bestDay: number;
+  /** The farm's `paid` when this run started: only farm cash above it buys upgrades, and only what is left above it
+   * after the deed goes to savings. */
+  mark: number;
+  /** Farm cash spent on upgrades and tools during this run. */
+  spent: number;
+  /** How much tougher this farm's crops are for the player's build when it started (plan.ts, toughnessFor). */
+  tough?: number;
 }
 
 export interface AdCounters {
@@ -49,8 +59,12 @@ export interface Settings {
   menuTrack: string;
 }
 
+/** Economy version. 10: v0.10's longer farms and small-step workshop (older workshop levels are refunded). */
+export const ECONOMY = 10;
+
 export interface GameSave {
   v: 3;
+  econ: number;
   createdAt: number;
   cities: Record<string, CityProgress>;
   run: RunInfo | null;
@@ -75,11 +89,15 @@ export interface GameSave {
   settings: Settings;
   seen: Record<string, boolean>;
   totals: { days: number; crops: number; earned: number };
+  /** Set by the v0.10 migration for one message; not saved again once shown. */
+  migratedRefund?: number;
+  migratedFarm?: boolean;
 }
 
 export function newGame(now = Date.now()): GameSave {
   return {
     v: 3,
+    econ: ECONOMY,
     createdAt: now,
     cities: {},
     run: null,
@@ -127,6 +145,7 @@ export function parseGame(raw: string | null): GameSave {
         crown: !!p.crown,
         bestDays: Math.max(0, Math.floor(num(p.bestDays))),
         plays: Math.max(0, Math.floor(num(p.plays))),
+        paid: Math.max(0, num(p.paid)),
       };
     }
   }
@@ -136,6 +155,9 @@ export function parseGame(raw: string | null): GameSave {
       startCash: Math.max(0, num(o.run.startCash)),
       startedAt: num(o.run.startedAt),
       bestDay: Math.max(0, num(o.run.bestDay)),
+      mark: Math.max(0, num(o.run.mark)),
+      spent: Math.max(0, num(o.run.spent)),
+      ...(num(o.run.tough) > 0 ? { tough: Math.min(4, Math.max(0.5, num(o.run.tough))) } : {}),
     };
   }
   g.wallet = Math.max(0, num(o.wallet));
@@ -145,13 +167,26 @@ export function parseGame(raw: string | null): GameSave {
   if (o.workshop && typeof o.workshop === 'object') {
     const lv = o.workshop.levels || {};
     for (const k of Object.keys(g.workshop.levels) as Array<keyof typeof g.workshop.levels>) {
-      g.workshop.levels[k] = Math.max(0, Math.min(60, Math.floor(num(lv[k]))));
+      g.workshop.levels[k] = Math.max(0, Math.min(MAX_LEVEL, Math.floor(num(lv[k]))));
     }
     const j = o.workshop.job;
     if (j && typeof j === 'object' && j.id in g.workshop.levels) {
       g.workshop.job = { id: j.id, level: Math.floor(num(j.level)), startedAt: num(j.startedAt), endsAt: num(j.endsAt) };
     }
   }
+  // v0.10 rebuilt the workshop (small steps, new prices) and the farms (longer, with a crop ladder): older
+  // upgrades are refunded into savings at what they cost, and a farm in progress is closed with its cash saved
+  if (num(o.econ) < ECONOMY) {
+    const refund = oldWorkshopRefund(o.workshop && o.workshop.levels ? o.workshop.levels : {}, o.workshop ? o.workshop.job : null);
+    g.workshop = { levels: emptyLevels(), job: null };
+    g.wallet += refund;
+    // the app adds the old farm's cash to savings once the engine is up (it lives in the engine's save, and before
+    // v0.9 it already held the savings the farm started with)
+    g.migratedFarm = !!g.run;
+    g.run = null;
+    g.migratedRefund = refund;
+  }
+  g.econ = ECONOMY;
   g.tools = parseTools(o.tools);
   if (Array.isArray(o.skills)) g.skills = o.skills.filter((s: unknown) => typeof s === 'string' && /^[a-z_]{3,30}$/.test(s as string)).slice(0, 40);
   g.bonusDiamonds = Math.max(0, Math.floor(num(o.bonusDiamonds)));
@@ -205,7 +240,23 @@ export function parseGame(raw: string | null): GameSave {
 }
 
 export function cityProgress(g: GameSave, cityId: string): CityProgress {
-  return g.cities[cityId] || { won: false, stars: 0, bestDay: 0, crown: false, bestDays: 0, plays: 0 };
+  return g.cities[cityId] || { won: false, stars: 0, bestDay: 0, crown: false, bestDays: 0, plays: 0, paid: 0 };
+}
+
+/** Farm cash that can buy upgrades and tools during a run: what is above the farm's mark. */
+export function spendableFarmCash(run: RunInfo | null, farmCash: number): number {
+  if (!run) return 0;
+  return Math.max(0, Math.floor(farmCash - run.mark));
+}
+
+/** What a won run banks into savings: the cash left after the deed, above the farm's mark. */
+export function bankAfterWin(run: RunInfo, cashLeft: number): number {
+  return Math.max(0, Math.round(cashLeft - run.mark));
+}
+
+/** The farm's new `paid` after a run ends (won: with what it banked). */
+export function paidAfterRun(run: RunInfo, banked: number): number {
+  return Math.round(run.mark + run.spent + Math.max(0, banked));
 }
 
 export function countryStars(g: GameSave, code: CountryCode): number {
@@ -292,18 +343,19 @@ export function nextCity(g: GameSave): string {
 export interface StarResult {
   stars: number;
   win: boolean;
-  par: boolean;
+  /** Kept the farm's spare-cash goal after paying the deed. */
+  spare: boolean;
   crown: boolean;
 }
 
 /**
- * Stars for a farm: one for winning, one for winning within par days, one for the crown.
- * The par star needs the bills to be earned on this farm (`selfFunded`), so savings can't buy it.
+ * Stars for a farm: one for winning, one for keeping money to spare after the deed (`spare` or more; bills are paid
+ * on their due day, so a farm always runs its full length), one for the crown.
  */
-export function starsFor(opts: { won: boolean; days: number; par: number; crown: boolean; selfFunded?: boolean }): StarResult {
-  if (!opts.won) return { stars: 0, win: false, par: false, crown: opts.crown };
-  const par = opts.days <= opts.par && opts.days >= 1 && opts.selfFunded !== false;
-  return { stars: 1 + (par ? 1 : 0) + (opts.crown ? 1 : 0), win: true, par, crown: opts.crown };
+export function starsFor(opts: { won: boolean; cashLeft: number; spare: number; crown: boolean }): StarResult {
+  if (!opts.won) return { stars: 0, win: false, spare: false, crown: opts.crown };
+  const spare = opts.cashLeft >= opts.spare;
+  return { stars: 1 + (spare ? 1 : 0) + (opts.crown ? 1 : 0), win: true, spare, crown: opts.crown };
 }
 
 /** After a foreclosure the bank keeps this farm's earnings: you leave with at most what you came with. */

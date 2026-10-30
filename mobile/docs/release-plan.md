@@ -46,6 +46,10 @@ Keep the key and its passwords private (for example in a password manager), outs
    ```
 3. In GitHub: repository **Settings > Secrets and variables > Actions > New repository secret**. Add `DBD_UPLOAD_KEYSTORE_BASE64` (paste), `DBD_UPLOAD_STORE_PASSWORD` (your password), `DBD_UPLOAD_KEY_ALIAS` (`upload`) and `DBD_UPLOAD_KEY_PASSWORD` (the same password; keytool uses one password for this key type).
 
+### The first bundle (v0.10.0, 29 Oct 2026)
+
+Built in a Claude session with a new upload key (Play needs one before the first upload): versionCode 1000, demo ads, for the closed test. The key, its password, the four secret values and the bundle went to Navid's computer (`play_store` next to the game files); nothing of the key is in this repository. CI bundles (1000 + run number) come after it.
+
 ### Building and uploading a Play bundle
 
 1. GitHub **Actions > Play release bundle > Run workflow** (leave *production ads* off for closed testing).

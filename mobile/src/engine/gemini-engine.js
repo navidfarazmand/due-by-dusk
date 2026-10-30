@@ -16310,8 +16310,9 @@ export function startGeminiEngine() {
   })();
   /* ================= data ================= */ const HW = 640,
     HORIZON = 114,
-    FIELD_TOP = 140,
-    PAD = 30; // True-to-life relative scale hierarchy: Radish (16) < Carrot (19) < Golden Corn (22) < Cabbage (28) < Couch Potato (36) < King Pumpkin (44)
+    FIELD_TOP = 140;
+  // side margin of the field (world units): set in resize() so no crop sits under a phone's camera cutout
+  let PAD = 30; // True-to-life relative scale hierarchy: Radish (16) < Carrot (19) < Golden Corn (22) < Cabbage (28) < Couch Potato (36) < King Pumpkin (44)
   const CROP = window.DBD_CROPS;
   const GEO = window.DBD_GEOGRAPHY;
   const SKILL_NODES = window.DBD_SKILL_TREE.nodes;
@@ -16420,49 +16421,91 @@ export function startGeminiEngine() {
       line: () => 'Shed prices 5% lower per level',
     },
   ];
+  // Perks come in chests after each bill but the deed (the shell draws the chest). Effects are small and last for
+  // this farm only (Navid, 29 Oct: "+20% damage ... crits from 2.8 to 4.5x" were far too strong).
   const FarmScene_PERKS = [
-    { id: 'spite', name: 'Spite-sharpened', line: '+20% damage on this farm.' },
-    { id: 'coffee', name: 'Second coffee', line: 'Swing 15% faster.' },
-    { id: 'elbow', name: 'Elbow room', line: 'Your swing is 20% wider.' },
-    { id: 'saving', name: 'Daylight saving', line: '+2 s of daylight.' },
-    { id: 'fever', name: 'Market fever', line: 'Crop prices +25% per stack.' },
-    { id: 'clover', name: 'Four-leaf clover', line: '+8% crit chance.' },
-    { id: 'hungry', name: 'Hungry soil', line: '4 more crops on the field.' },
+    // wooden chest
+    { id: 'spite', tier: 1, icon: 'blade', name: 'Sharp temper', line: '+5% damage on this farm.' },
+    { id: 'coffee', tier: 1, icon: 'speed', name: 'Second coffee', line: 'Swing 5% faster.' },
+    { id: 'elbow', tier: 1, icon: 'reach', name: 'Elbow room', line: 'Your swing reaches 6% wider.' },
+    { id: 'saving', tier: 1, icon: 'sun', name: 'Daylight saving', line: '+1 s of daylight.' },
+    { id: 'fever', tier: 1, icon: 'coin', name: 'Market fever', line: 'Crops sell for 6% more.' },
+    { id: 'clover', tier: 1, icon: 'clover', name: 'Four-leaf clover', line: '+2% crit chance.' },
+    { id: 'hungry', tier: 1, icon: 'sprout', name: 'Hungry soil', line: 'One more crop on the field.' },
+    // silver chest
+    { id: 'spite2', tier: 2, icon: 'blade', name: 'Spite-sharpened', line: '+10% damage on this farm.' },
+    { id: 'coffee2', tier: 2, icon: 'speed', name: 'Espresso', line: 'Swing 10% faster.' },
+    { id: 'elbow2', tier: 2, icon: 'reach', name: 'Long arms', line: 'Your swing reaches 12% wider.' },
+    { id: 'saving2', tier: 2, icon: 'sun', name: 'Long summer', line: '+2 s of daylight.' },
+    { id: 'fever2', tier: 2, icon: 'coin', name: 'Market boom', line: 'Crops sell for 12% more.' },
+    { id: 'clover2', tier: 2, icon: 'clover', name: 'Lucky streak', line: '+4% crit chance.' },
+    { id: 'hungry2', tier: 2, icon: 'sprout', name: 'Fertile ground', line: 'Two more crops on the field.' },
+    { id: 'gold', tier: 2, icon: 'corn', name: 'Gold fever', line: '+2% chance of golden corn.' },
     {
       id: 'combo',
+      tier: 2,
+      icon: 'chain',
       name: 'Combo farmer',
-      line: 'Your chain waits 1.5 s between cuts instead of 0.9 s. One per farm.',
+      line: 'Your chain waits 1.2 s between cuts instead of 0.9 s.',
       once: true,
     },
-    { id: 'heavy', name: 'Heavy swing', line: 'Crits hit 4.5× instead of 2.8×. One per farm.', once: true },
     {
       id: 'whisper',
+      tier: 2,
+      icon: 'radish',
       name: 'Radish whisperer',
-      line: 'Radishes run half as fast and sell for 50% more.',
+      line: 'Radishes run half as fast and sell for 30% more.',
       once: true,
-      req: (f) => f.billsPaid >= 3,
     },
     {
       id: 'treaty',
+      tier: 2,
+      icon: 'goat',
       name: 'Goat treaty',
       line: 'The goat stops headbutting you and tips you instead.',
       once: true,
-      req: (f) => f.billsPaid >= 2,
+      req: () => unlockLevel() >= 2 && !hasSkill('gold_treaty') && !hasSkill('gold_herd'),
     },
-    { id: 'gold', name: 'Gold fever', line: '+4% chance of golden corn.', req: (f) => f.billsPaid >= 4 },
+    // gold chest
+    { id: 'heavy', tier: 3, icon: 'star', name: 'Heavy swing', line: 'Crits hit 3.3× instead of 2.8×.', once: true },
     {
       id: 'storm',
+      tier: 3,
+      icon: 'bolt',
       name: 'Storm scythe',
-      line: 'Crits chain golden lightning to 2 nearby crops. One per farm.',
+      line: 'Crits throw lightning at 2 nearby crops.',
       once: true,
+      req: () => !hasSkill('reap_exec') && !(window.__DBD_TOOL && window.__DBD_TOOL.storm),
     },
     {
       id: 'cleaver',
+      tier: 3,
+      icon: 'cleave',
       name: 'Cleaver mastery',
       line: 'Charge Cleave charges 50% faster and hits wider.',
       once: true,
+      req: () => !hasSkill('reap_cleave'),
     },
+    { id: 'spite3', tier: 3, icon: 'blade', name: 'Grudge', line: '+15% damage on this farm.' },
+    { id: 'fever3', tier: 3, icon: 'coin', name: 'Fair day', line: 'Crops sell for 18% more.' },
+    { id: 'saving3', tier: 3, icon: 'sun', name: 'Midsummer', line: '+3 s of daylight.' },
   ];
+  /** The chest after `paid` bills of `n`: wooden for the first two, gold before the deed, silver between. */
+  function chestTier(paid, n) {
+    if (paid >= n - 1) return 3;
+    return paid <= 2 ? 1 : 2;
+  }
+  function perkChoices(tier) {
+    const ok = (p) => (!p.req || p.req(farm)) && (!p.once || !farm.perks.includes(p.id));
+    let pool = shuffle(FarmScene_PERKS.filter((p) => p.tier === tier && ok(p)).map((p) => p.id));
+    if (pool.length < 3)
+      pool = pool.concat(shuffle(FarmScene_PERKS.filter((p) => p.tier === tier - 1 && ok(p)).map((p) => p.id)));
+    return pool.slice(0, 3);
+  }
+  function perkPublic(id) {
+    const p = FarmScene_PERKS.find((x) => x.id === id);
+    return p ? { id: p.id, name: p.name, line: p.line, tier: p.tier || 1, icon: p.icon || 'star' } : null;
+  }
   /* ================= helpers ================= */ const $ = (s) => document.querySelector(s);
   const FarmScene_clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -16713,59 +16756,67 @@ export function startGeminiEngine() {
    */
   function planStats(shed, pl, P) {
     const T = window.__DBD_TOOL || {};
+    const FX = Object.assign(
+      { dmg: 1.04, reach: 0.02, speed: 0.02, day: 0.5, crops: 0.5, spawn: 0.04, price: 0.03, crit: 0.008, gold: 0.0008 },
+      window.__DBD_SHED_FX || {},
+    );
+    const n = (id) => count(P, id);
     const dmg =
-      Math.pow(1.2, shed.scythe) *
-      (1 + 0.2 * count(P, 'spite')) *
+      Math.pow(FX.dmg, shed.scythe) *
+      (1 + 0.05 * n('spite') + 0.1 * n('spite2') + 0.15 * n('spite3')) *
       (hasSkill('reap_root') ? 1.25 : 1) *
       (hasSkill('core_awakening') ? 1.1 : 1) *
       (T.dmg || 1);
     const tick =
       3.2 *
-      (1 + 0.05 * shed.hands) *
-      (1 + 0.15 * count(P, 'coffee')) *
+      (1 + FX.speed * shed.hands) *
+      (1 + 0.05 * n('coffee') + 0.1 * n('coffee2')) *
       (hasSkill('reap_swift') ? 1.18 : 1) *
       (T.speed || 1);
     const R =
       42 *
-      (1 + 0.06 * shed.swing) *
-      (1 + 0.18 * count(P, 'elbow')) *
+      (1 + FX.reach * shed.swing) *
+      (1 + 0.06 * n('elbow') + 0.12 * n('elbow2')) *
       (hasSkill('reap_dash') ? 1.12 : 1) *
       (T.reach || 1);
     const day =
-      14 +
-      shed.days +
-      2 * count(P, 'saving') +
+      (pl.dayBase || 14) +
+      FX.day * shed.days +
+      n('saving') +
+      2 * n('saving2') +
+      3 * n('saving3') +
       (hasSkill('core_awakening') ? 1 : 0) +
       (hasSkill('soil_sun') ? 2 : 0) +
       (pl.dayBonus || 0);
-    const maxCrops = 7 + shed.soil + 3 * count(P, 'hungry') + (hasSkill('soil_root') ? 2 : 0);
-    const spawnRate = 0.82 / (1 + 0.1 * shed.soil + 0.08 * count(P, 'hungry')) / (hasSkill('soil_root') ? 1.12 : 1);
+    const maxCrops = 7 + FX.crops * shed.soil + n('hungry') + 2 * n('hungry2') + (hasSkill('soil_root') ? 2 : 0);
+    const spawnRate =
+      0.82 / (1 + FX.spawn * shed.soil + 0.03 * n('hungry') + 0.06 * n('hungry2')) / (hasSkill('soil_root') ? 1.12 : 1);
     const vm =
-      (1 + 0.1 * shed.market) *
-      (1 + 0.22 * count(P, 'fever')) *
+      (1 + FX.price * shed.market) *
+      (1 + 0.06 * n('fever') + 0.12 * n('fever2') + 0.18 * n('fever3')) *
       (hasSkill('gold_root') ? 1.15 : 1) *
       (T.value || 1) *
       planVal();
     const dens =
       (worldW ? FarmScene_clamp(((worldW * (HW - FIELD_TOP)) / (900 * 412)) * 0.62, 0.8, 1.3) : 1) * (pl.density || 1);
     return {
-      dmg: dmg < 10 ? Math.round(dmg * 10) / 10 : Math.round(dmg),
+      dmg: dmg < 10 ? Math.round(dmg * 100) / 100 : Math.round(dmg * 10) / 10,
       tick,
       R,
       day,
       max: Math.round(maxCrops * dens),
       spawn: spawnRate / dens / (pl.spawn || 1),
       vm,
-      cc: Math.min(0.65, 0.04 + 0.02 * shed.clover + 0.07 * count(P, 'clover') + (T.crit || 0)),
-      cm: count(P, 'heavy') ? 4.5 : 2.8,
-      gold: 0.015 + 0.005 * shed.clover + 0.035 * count(P, 'gold') + (T.gold || 0),
+      cc: Math.min(0.65, 0.04 + FX.crit * shed.clover + 0.02 * n('clover') + 0.04 * n('clover2') + (T.crit || 0)),
+      cm: n('heavy') ? 3.3 : 2.8,
+      gold: 0.015 + FX.gold * shed.clover + 0.02 * n('gold') + (T.gold || 0),
       comboCap: 2,
-      chainGrace: count(P, 'combo') ? 1.45 : 0.9,
-      radishSlow: count(P, 'whisper') || T.frost ? 0.5 : 1,
-      radishBonus: count(P, 'whisper') ? 1.5 : 1,
-      treaty: count(P, 'treaty') > 0 || hasSkill('gold_treaty') || hasSkill('gold_herd'),
-      storm: count(P, 'storm') > 0 || hasSkill('reap_exec') || !!T.storm,
-      cleaver: count(P, 'cleaver') > 0 || hasSkill('reap_cleave'),
+      chainGrace: n('combo') ? 1.2 : 0.9,
+      radishSlow: n('whisper') || T.frost ? 0.5 : 1,
+      radishBonus: n('whisper') ? 1.3 : 1,
+      treaty: n('treaty') > 0 || hasSkill('gold_treaty') || hasSkill('gold_herd'),
+      storm: n('storm') > 0 || hasSkill('reap_exec') || !!T.storm,
+      cleaver: n('cleaver') > 0 || hasSkill('reap_cleave'),
       style: T.style || 'sickle',
       burn: T.burn || 0,
       targets: Math.max(1, Math.floor(T.targets || 1)),
@@ -16802,6 +16853,15 @@ export function startGeminiEngine() {
   function planVal() {
     const p = plan();
     return p ? p.val || 1 : 1;
+  }
+  /** A crop's base value and toughness on this farm: the ladder's numbers when the plan has them. */
+  function cropBaseVal(type) {
+    const p = plan();
+    return p && p.cropVal && p.cropVal[type] != null ? p.cropVal[type] : CROP[type].val;
+  }
+  function cropBaseHp(type) {
+    const p = plan();
+    return p && p.cropHp && p.cropHp[type] != null ? p.cropHp[type] : CROP[type].hp;
   }
   /** The shell hears about everything that matters to the game around the field. */
   function dbdEvent(type, detail) {
@@ -17503,6 +17563,33 @@ export function startGeminiEngine() {
     g.fillRect(0, top, worldW, h);
     fieldLayer = c;
   }
+  /** The widest side inset (CSS px): Capacitor's --safe-area-inset-* variables, or env() where supported. */
+  let safeProbe = null;
+  function sideInset() {
+    let v = 0;
+    try {
+      const cs = getComputedStyle(document.documentElement);
+      v = Math.max(
+        parseFloat(cs.getPropertyValue('--safe-area-inset-left')) || 0,
+        parseFloat(cs.getPropertyValue('--safe-area-inset-right')) || 0,
+      );
+      if (!safeProbe) {
+        safeProbe = document.createElement('div');
+        safeProbe.style.cssText =
+          'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)';
+        document.body.appendChild(safeProbe);
+      }
+      const ps = getComputedStyle(safeProbe);
+      v = Math.max(v, parseFloat(ps.paddingLeft) || 0, parseFloat(ps.paddingRight) || 0);
+    } catch (e) {}
+    return v;
+  }
+  /** Both sides get the same margin (the phone may be turned either way): 3.5% of the field plus 30 units,
+   * or the cutout plus a crop's width, whichever is more. */
+  function updatePad() {
+    if (!scale || !worldW) return;
+    PAD = Math.round(Math.max(30 + worldW * 0.035, (sideInset() + 10) / scale + 26));
+  }
   function resize() {
     const rect = stage.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -17514,6 +17601,7 @@ export function startGeminiEngine() {
     canvas.height = Math.round(cssH * dpr);
     scale = cssH / HW;
     worldW = cssW / scale;
+    updatePad();
     if (oldW && Math.abs(oldW - worldW) > 0.5) {
       const f = worldW / oldW;
       crops.forEach((c) => (c.x *= f));
@@ -17690,7 +17778,7 @@ export function startGeminiEngine() {
       });
     }
     if (!ok) return false;
-    const hp = def.hp * hpMul();
+    const hp = cropBaseHp(type) * hpMul();
     const ds = depth(y);
     crops.push({
       type,
@@ -17731,7 +17819,8 @@ export function startGeminiEngine() {
   function fillIdle() {
     crops = [];
     for (let i = 0; i < cur.max; i++) spawnCrop(0);
-    const sig = (curCity().crops || []).slice(0, 5);
+    // Gemini's idle field showed the city's signature crops; a farm with a ladder shows only what has unlocked
+    const sig = plan() && plan().stages ? [] : (curCity().crops || []).slice(0, 5);
     crops.forEach((c, idx) => {
       if (sig.length && idx < sig.length && CROP[sig[idx]]) {
         c.type = sig[idx];
@@ -17751,6 +17840,7 @@ export function startGeminiEngine() {
     if (mode !== 'idle' || farm.pendingPerks || !el.modal.hidden || billStatus().tonight) return;
     dayCheckpoint = JSON.parse(JSON.stringify(farm));
     Sound.init();
+    updatePad();
     cur = stats();
     dayLen = cur.day;
     time = dayLen;
@@ -19096,7 +19186,7 @@ export function startGeminiEngine() {
       (dailyEvent && dailyEvent.pumpkinBonus && (c.type === 'pumpkin' || c.type === 'onion')
         ? dailyEvent.pumpkinBonus
         : 1);
-    const baseValue = def.val * cur.vm * gazetteMul * (c.type === 'radish' ? cur.radishBonus : 1);
+    const baseValue = cropBaseVal(c.type) * cur.vm * gazetteMul * (c.type === 'radish' ? cur.radishBonus : 1);
     const v = baseValue * multiplier * lucky;
     farm.cash += v;
     farm.earned += v;
@@ -19521,11 +19611,7 @@ export function startGeminiEngine() {
       }
       toolUpdate(dt);
       spawnAcc += dt; // Charge Cleave charging while holding pointer or Spacebar
-      if (
-        (pointer.down || keys.has(' ')) &&
-        pointer.active &&
-        (pointer.kind === 'mouse' || keys.has(' ') || performance.now() - (pointer.mt || 0) > 150)
-      ) {
+      if (((pointer.down && pointer.kind === 'mouse') || keys.has(' ') || pointer.charge2) && pointer.active) {
         const cRate = (cur.cleaver ? 1.5 : 1.0) * (dailyEvent && dailyEvent.chargeFast ? dailyEvent.chargeFast : 1.0);
         chargeT = Math.min(1, chargeT + dt * 1.9 * cRate);
         if (chargeT >= 1 && !chargeReady) {
@@ -22275,6 +22361,8 @@ export function startGeminiEngine() {
     if (mode !== 'idle' || farm.pendingPerks || !el.modal.hidden) return;
     const b = billObj(farm.bill);
     if (farm.cash < b.amt || bossBlocked()) return;
+    // bills are paid on the evening they are due, not before
+    if (plan() && !billStatus().tonight) return;
     Sound.init();
     Sound.stamp();
     farm.cash -= b.amt;
@@ -22294,12 +22382,9 @@ export function startGeminiEngine() {
     }
     farm.bill += 1;
     farm.due = Math.max(farm.due, farm.day - 1) + billList()[farm.bill].days;
-    const pool = shuffle(
-      FarmScene_PERKS.filter((p) => (!p.req || p.req(farm)) && (!p.once || !farm.perks.includes(p.id))).map(
-        (p) => p.id,
-      ),
-    );
-    farm.pendingPerks = pool.slice(0, 3);
+    const tier = chestTier(farm.billsPaid, billCount());
+    farm.pendingTier = tier;
+    farm.pendingPerks = perkChoices(tier);
     cur = stats();
     fillIdle();
     save();
@@ -22307,10 +22392,8 @@ export function startGeminiEngine() {
     if (window.__dbdEvent)
       dbdEvent('perks', {
         ids: farm.pendingPerks.slice(),
-        perks: farm.pendingPerks.map((id) => {
-          const p = FarmScene_PERKS.find((x) => x.id === id);
-          return { id, name: p.name, line: p.line };
-        }),
+        tier,
+        perks: farm.pendingPerks.map((id) => perkPublic(id)),
       });
     else openPerkModal();
   }
@@ -22335,6 +22418,7 @@ export function startGeminiEngine() {
     if (!farm.pendingPerks || !farm.pendingPerks.includes(id)) return;
     farm.perks.push(id);
     farm.pendingPerks = null;
+    farm.pendingTier = 0;
     closeModal();
     cur = stats();
     Sound.click();
@@ -22985,13 +23069,18 @@ export function startGeminiEngine() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && mode === 'day') setPaused(true);
   });
+  /** Field position under the pointer: the sickle cuts exactly where the finger is (Navid, 29 Oct). */
   function toWorld(e) {
     const r = canvas.getBoundingClientRect();
-    const y0 = (e.clientY - r.top) / scale;
-    const k = e.pointerType === 'touch' ? Math.max(0, Math.min(1, (HW - 20 - y0) / 90)) : 0;
-    return [(e.clientX - r.left) / scale, y0 - (k * 40) / scale];
+    return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale];
   }
+  // Touch: the first finger moves the sickle; a second finger held anywhere charges the Charge Cleave and lifting
+  // it strikes at the sickle. Mouse: hold the button. Keyboard: hold Space.
+  const touchDown = new Set();
+  let primaryTouch = null,
+    chargeTouch = null;
   canvas.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse' && primaryTouch !== null && e.pointerId !== primaryTouch) return;
     const [x, y] = toWorld(e);
     if (pointer.ax === undefined || Math.hypot(x - pointer.ax, y - pointer.ay) > 9) {
       pointer.ax = x;
@@ -23009,6 +23098,20 @@ export function startGeminiEngine() {
     } else if (pointer.down) pointer.active = true;
   });
   canvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse') {
+      touchDown.add(e.pointerId);
+      if (primaryTouch !== null && primaryTouch !== e.pointerId && touchDown.has(primaryTouch)) {
+        chargeTouch = e.pointerId;
+        pointer.charge2 = true;
+        if (mode === 'day') {
+          try {
+            canvas.setPointerCapture(e.pointerId);
+          } catch (err) {}
+        }
+        return;
+      }
+      primaryTouch = e.pointerId;
+    }
     const [x, y] = toWorld(e);
     pointer.x = x;
     pointer.y = y;
@@ -23026,9 +23129,18 @@ export function startGeminiEngine() {
     }
   });
   const pUp = (e) => {
-    if (e.pointerType !== 'mouse' && mode === 'day' && chargeT >= 0.72) {
-      pointer.active = true;
-      unleashChargeCleave();
+    if (e.pointerType !== 'mouse') {
+      touchDown.delete(e.pointerId);
+      if (e.pointerId === chargeTouch) {
+        // the update loop lets the cleave go once the second finger is off
+        chargeTouch = null;
+        pointer.charge2 = false;
+        return;
+      }
+      if (primaryTouch !== null && e.pointerId !== primaryTouch) return;
+      primaryTouch = null;
+      chargeTouch = null;
+      pointer.charge2 = false;
     }
     pointer.down = false;
     if (e.pointerType !== 'mouse') pointer.active = false;
@@ -23064,6 +23176,10 @@ export function startGeminiEngine() {
     keys.clear();
     pointer.active = false;
     pointer.down = false;
+    pointer.charge2 = false;
+    touchDown.clear();
+    primaryTouch = null;
+    chargeTouch = null;
   });
   /* loop */ let last = 0;
   function FarmScene_frame(now) {
@@ -23185,15 +23301,18 @@ export function startGeminiEngine() {
             left: st.left,
             tonight: st.tonight,
             dueDay: farm.due,
-            canPay: farm.cash >= st.b.amt && !bossBlocked(),
+            canPay: farm.cash >= st.b.amt && !bossBlocked() && (st.tonight || !plan()),
+            covered: farm.cash >= st.b.amt && !bossBlocked(),
             bossBlock: bossBlocked(),
           };
         },
         bills: () => billList().map((b, i) => Object.assign({ index: i }, billObj(i))),
-        perkInfo: (id) => {
-          const p = FarmScene_PERKS.find((x) => x.id === id);
-          return p ? { id: p.id, name: p.name, line: p.line } : null;
-        },
+        perkInfo: (id) => perkPublic(id),
+        /** The chest waiting to be opened (after a reload too). */
+        pendingChest: () =>
+          farm.pendingPerks
+            ? { tier: farm.pendingTier || chestTier(farm.billsPaid, billCount()), perks: farm.pendingPerks.map((id) => perkPublic(id)) }
+            : null,
         stats: () => Object.assign({}, cur),
         hud: () => {
           const b = billObj(farm.bill);
@@ -23398,8 +23517,18 @@ export function startGeminiEngine() {
           boss: !!c.boss,
         })),
         chargeT,
+        pointer: { x: pointer.x, y: pointer.y, active: pointer.active, charge2: !!pointer.charge2 },
+        pad: PAD,
         today: Object.assign({}, today),
       });
+      /** Tests only: the current bill is due tonight (as if its days had been played). */
+      engineApi.devDue = () => {
+        if (!window.__DBD_DEV_HOOKS || mode !== 'idle' || !farm) return false;
+        farm.day = Math.max(farm.day, farm.due + 1);
+        save();
+        renderAll();
+        return true;
+      };
       window.__DBD_ENGINE = engineApi;
       const dbdTestApi = {
         getScene: () => this,

@@ -59,7 +59,10 @@ export interface BillInfo {
   left: number;
   tonight: boolean;
   dueDay: number;
+  /** Paying is allowed: enough cash and the bill is due tonight. */
   canPay: boolean;
+  /** Enough cash for it (it may not be due yet). */
+  covered: boolean;
   /** The deed is waiting for the boss to be knocked out. */
   bossBlock: boolean;
 }
@@ -93,6 +96,14 @@ export interface PerkInfo {
   id: string;
   name: string;
   line: string;
+  /** 1 wooden, 2 silver, 3 gold chest. */
+  tier: number;
+  icon: string;
+}
+
+export interface ChestInfo {
+  tier: number;
+  perks: PerkInfo[];
 }
 
 export interface DayEvent {
@@ -117,7 +128,11 @@ export interface EngineApi {
   bill(): BillInfo;
   bills(): Array<BillInfo & { days: number }>;
   perkInfo(id: string): PerkInfo | null;
+  /** The chest waiting after a bill (null when none). */
+  pendingChest(): ChestInfo | null;
   hud(): HudState;
+  /** The current day's stats (damage, reach, prices…). */
+  stats(): Record<string, number | string | boolean>;
   beginCity(o: { cityId: string; country: string; cash: number; shed: Levels; plan: CityPlan; tools?: unknown[] }): boolean;
   setPlan(p: CityPlan): void;
   startDay(): boolean;
@@ -153,7 +168,7 @@ export interface EngineEvents {
   dayEnd: { today: Today; day: number; cash: number };
   idle: { day: number };
   billPaid: { index: number; name: string; amt: number; day: number; last: boolean };
-  perks: { ids: string[]; perks: PerkInfo[] };
+  perks: { ids: string[]; tier: number; perks: PerkInfo[] };
   cityWon: { days: number; harvested: number; earned: number; paidTotal: number; cash: number; grit: number; bestChain: number };
   foreclosed: { bill: string; amt: number; short: number; grit: number; days: number; billsPaid: number; billTotal: number; paidTotal: number; cash: number; bossKept?: boolean };
   bossAppear: { name: string; hp: number; max: number };
