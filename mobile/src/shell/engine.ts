@@ -102,8 +102,13 @@ export interface PerkInfo {
 }
 
 export interface ChestInfo {
+  /** 1 wooden, 2 silver, 3 gold, 4 diamond (an ad upgrade: four gold perks, pick two). */
   tier: number;
   perks: PerkInfo[];
+  /** Perks still to pick from this chest (2 for a diamond chest). */
+  picks?: number;
+  /** Already upgraded with an ad (once per chest). */
+  upgraded?: boolean;
 }
 
 export interface DayEvent {
@@ -130,6 +135,12 @@ export interface EngineApi {
   perkInfo(id: string): PerkInfo | null;
   /** The chest waiting after a bill (null when none). */
   pendingChest(): ChestInfo | null;
+  /** After a rewarded ad: the waiting chest becomes a better one (null if it can't). */
+  upgradeChest(): ChestInfo | null;
+  /** The intro (side farm only): the boss falls after about `sec` seconds of hitting; `left` seconds of light. */
+  introFinale(sec: number, left: number): boolean;
+  /** Ends a side farm's day now. */
+  endDayNow(): boolean;
   hud(): HudState;
   /** The current day's stats (damage, reach, prices…). */
   stats(): Record<string, number | string | boolean>;
@@ -168,12 +179,13 @@ export interface EngineEvents {
   dayEnd: { today: Today; day: number; cash: number };
   idle: { day: number };
   billPaid: { index: number; name: string; amt: number; day: number; last: boolean };
-  perks: { ids: string[]; tier: number; perks: PerkInfo[] };
+  perks: { ids: string[]; tier: number; picks?: number; perks: PerkInfo[] };
   cityWon: { days: number; harvested: number; earned: number; paidTotal: number; cash: number; grit: number; bestChain: number };
   foreclosed: { bill: string; amt: number; short: number; grit: number; days: number; billsPaid: number; billTotal: number; paidTotal: number; cash: number; bossKept?: boolean };
   bossAppear: { name: string; hp: number; max: number };
   bossStomp: { phase: number; name: string };
   bossDown: { name: string; bounty: number; day: number };
+  cleave: { killed: number; x: number; y: number };
 }
 
 type Handler<K extends keyof EngineEvents> = (detail: EngineEvents[K]) => void;

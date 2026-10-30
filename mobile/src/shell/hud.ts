@@ -3,6 +3,7 @@
 
 import { clamp, money, cap } from './dom';
 import { engine, type DayEvent, type HudState } from './engine';
+import { rivalFace } from './rival';
 
 const EVENT_ICON: Record<string, string> = { market: '💰', gale: '🍂', rain: '🌧️', frost: '❄️', fair: '🧶', stampede: '🐐' };
 // Gemini's and Claude's bill names, shortened to fit the bank chip (the notice keeps the full name)
@@ -78,6 +79,7 @@ export const HUD_HTML = `<div id="dbdHud" hidden>
   </div>
   <div class="grp tr">
     <div class="st-chip hb-rush" id="dbdRush"><span class="rl" id="dbdRushLbl">RUSH</span><span class="rn" id="dbdRushN">0/22</span><span class="rbar"><i id="dbdRushFill"></i></span></div>
+    <div class="st-chip hb-rival" id="dbdRival" hidden><span class="hb-rface" id="dbdRivalFace"></span><span class="hb-rbar"><i id="dbdRivalFill"></i></span><span class="hb-ramt" id="dbdRivalAmt">$0</span></div>
     <button type="button" class="st-btn st-sq hb-sound" id="dbdSound" aria-label="Sound">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2B1708" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="#2B1708"/><path class="w" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="x" d="M15.5 9.5l5 5M20.5 9.5l-5 5" style="display:none"/></svg>
     </button>
@@ -109,7 +111,8 @@ export class FarmHud {
     stage.insertAdjacentHTML('beforeend', HUD_HTML);
     this.root = document.getElementById('dbdHud') as HTMLElement;
     for (const k of ['Bank', 'Cash', 'BillFill', 'BillName', 'BillAmt', 'Jar', 'JarGold', 'Badge', 'Chain', 'Mult', 'ChainLbl', 'ChainFill', 'Next', 'ChainTimer',
-      'Arc', 'Sun', 'Secs', 'Boss', 'BossName', 'BossFill', 'Rush', 'RushLbl', 'RushN', 'RushFill', 'Sound', 'Pause', 'Banner', 'BannerIc', 'BannerT', 'BannerD']) {
+      'Arc', 'Sun', 'Secs', 'Boss', 'BossName', 'BossFill', 'Rush', 'RushLbl', 'RushN', 'RushFill', 'Sound', 'Pause', 'Banner', 'BannerIc', 'BannerT', 'BannerD',
+      'Rival', 'RivalFace', 'RivalFill', 'RivalAmt']) {
       this.E[k] = document.getElementById('dbd' + k) as HTMLElement & SVGElement;
     }
     this.E.Pause.addEventListener('click', () => engine().setPaused(true));
@@ -122,12 +125,39 @@ export class FarmHud {
     this.goal = g;
   }
 
+  /** The city's rival rides on the HUD at the record; passing it knocks the face off (null hides the chip). */
+  private rival: { record: number; beaten: boolean } | null = null;
+  /** Called once when today's harvest passes the rival's record. */
+  onRivalBeaten: (() => void) | null = null;
+
+  setRival(r: { name: string; record: number } | null): void {
+    const E = this.E;
+    this.rival = r ? { record: Math.max(1, r.record), beaten: false } : null;
+    E.Rival.hidden = !r;
+    E.Rival.classList.remove('beaten', 'gone');
+    if (!r) return;
+    E.RivalFace.innerHTML = rivalFace(r.name, 30);
+    E.RivalFace.setAttribute('aria-label', r.name);
+    E.RivalAmt.textContent = money(r.record);
+    E.RivalFill.style.width = '0%';
+  }
+
+  /** Today's harvest so far (the engine's tally for the day). */
+  private earnedToday(): number {
+    try {
+      const p = (engine() as unknown as { peek(): { today: { earned: number } } }).peek();
+      return p.today.earned || 0;
+    } catch {
+      return 0;
+    }
+  }
+
   show(on: boolean): void {
     this.visible = on;
     this.root.hidden = !on;
   }
 
-  dayStarted(ev: DayEvent): void {
+  dayStarted(ev: DayEvent, quiet = false): void {
     this.ev = ev;
     try {
       const h = engine().hud();
@@ -138,7 +168,7 @@ export class FarmHud {
     }
     this.lastTier = 0;
     this.show(true);
-    setTimeout(() => this.showBanner(true), 30);
+    if (!quiet) setTimeout(() => this.showBanner(true), 30);
   }
 
   dayEnded(): void {
@@ -222,6 +252,18 @@ export class FarmHud {
     E.RushLbl.textContent = rushing ? 'RUSH!' : 'RUSH';
     E.RushN.textContent = rushing ? h.rushT.toFixed(1) + 's' : h.rushCharge + '/' + h.rushGoal;
     E.RushFill.style.width = ((rushing ? h.rushT / h.rushDur : h.rushCharge / h.rushGoal) * 100).toFixed(1) + '%';
+    const rv = this.rival;
+    if (rv && !rv.beaten) {
+      const got = this.earnedToday();
+      E.RivalFill.style.width = (clamp(got / rv.record, 0, 1) * 100).toFixed(1) + '%';
+      if (got >= rv.record && h.mode === 'day') {
+        rv.beaten = true;
+        E.Rival.classList.add('beaten');
+        E.RivalAmt.textContent = 'Crown!';
+        setTimeout(() => E.Rival.classList.add('gone'), 2600);
+        this.onRivalBeaten?.();
+      }
+    }
     const bo = h.boss;
     const bossOn = !!(bo && bo.onField && !bo.down);
     if (E.Boss.hidden === bossOn) E.Boss.hidden = !bossOn;

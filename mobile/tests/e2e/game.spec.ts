@@ -17,13 +17,15 @@ function seeded(won: string[], wallet: number, extra: Save = {}): Save {
   };
 }
 
-async function boot(page: Page, save?: Save): Promise<string[]> {
-  await page.addInitScript(s => {
+async function boot(page: Page, save?: Save, coach = false): Promise<string[]> {
+  await page.addInitScript(([s, c]) => {
+    // the coach (intro, lessons, first sights) holds the field still for the player: most tests turn it off
+    if (!c) (window as any).__DBD_NO_COACH = true;
     if (sessionStorage.getItem('dbd-e2e')) return;
     localStorage.clear();
     if (s) localStorage.setItem('dbd-game-v3', s);
     sessionStorage.setItem('dbd-e2e', '1');
-  }, save ? JSON.stringify(save) : '');
+  }, [save ? JSON.stringify(save) : '', coach] as const);
   const errors: string[] = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto('/?testads=1');
@@ -295,6 +297,89 @@ test('music: pick a field track and a menu track in Settings', async ({ page }) 
   expect(errors).toEqual([]);
 });
 
+test('a new player: Play runs the intro (the boss falls), then the first farm points at Start', async ({ page }) => {
+  const errors = await boot(page, undefined, true);
+  await act(page, 'play');
+  await expect(page.locator('#dbdCoach.cinema')).toBeVisible();
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  // the finale plays itself: the boss is knocked out and the bank stamps the deed
+  await expect(page.locator('#dbdCoach .co-stamp')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.scr-farmhouse')).toBeVisible({ timeout: 15_000 });
+  const st = await page.evaluate(() => ({ run: (window as any).__DBD_APP.g.run?.cityId, seen: (window as any).__DBD_APP.g.seen, cash: (window as any).__DBD_ENGINE.state().cash }));
+  expect(st.run).toBe('ca_charlottetown');
+  expect(st.seen.intro).toBe(true);
+  expect(st.cash).toBe(0);
+  await expect(page.locator('#dbdCoach .co-hole')).toBeVisible();
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  // day 1: the ghost cuts a carrot, then the field waits for the player
+  await expect(page.locator('#dbdCoach .co-cap')).toHaveText(/Your turn/, { timeout: 12_000 });
+  const t = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().time);
+  await page.waitForTimeout(1500);
+  const t2 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().time);
+  expect(Math.abs(t2 - t)).toBeLessThan(0.05);
+  expect(errors).toEqual([]);
+});
+
+test('Skip ends the intro at once', async ({ page }) => {
+  const errors = await boot(page, undefined, true);
+  await act(page, 'play');
+  await expect(page.locator('#dbdCoach .co-skip')).toBeVisible();
+  await page.locator('#dbdCoach .co-skip').click();
+  await expect(page.locator('.scr-farmhouse')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('#dbdCoach.cinema')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('an ad upgrades a closed chest; a diamond chest gives two of four gold perks', async ({ page }) => {
+  const errors = await boot(page);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await expect(page.locator('.scr-farmhouse')).toBeVisible();
+  await page.evaluate(() => {
+    const w = window as any;
+    w.__DBD_CHEST_ROLL = 0;
+    w.__DBD_UPGRADE_ROLL = 0.95; // wooden goes all the way to diamond
+    w.__DBD_ENGINE.addCash(400);
+    w.__DBD_ENGINE.devDue();
+    w.__DBD_APP.payBill();
+  });
+  await expect(page.locator('.scr-modal .chest-box.ch-t1')).toBeVisible();
+  await act(page, 'ad-chest');
+  await expect(page.locator('.scr-modal .chest-box.ch-t4')).toBeVisible({ timeout: 6000 });
+  await expect(page.locator('.scr-modal .chest-box')).toContainText('A diamond chest');
+  // one upgrade per chest
+  await expect(page.locator('.scr-modal [data-act="ad-chest"]')).toHaveCount(0);
+  await act(page, 'chest-open');
+  await expect(page.locator('.scr-modal [data-act="perk"]')).toHaveCount(4);
+  await expect(page.locator('.scr-modal .perk-card.pk-t3')).toHaveCount(4);
+  const L = await boxes(page, ['.scr-modal .modal-card', '.scr-modal .perk-card']);
+  for (const c of [...L.b['.scr-modal .modal-card'], ...L.b['.scr-modal .perk-card']]) expect(inside(c, L.vw, L.vh)).toBe(true);
+  await page.locator('.scr-modal [data-act="perk"]').nth(0).click();
+  await expect(page.locator('.scr-modal .chest-box.one-left')).toBeVisible();
+  await expect(page.locator('.scr-modal')).toBeVisible();
+  await page.locator('.scr-modal [data-act="perk"]:not(.taken)').first().click();
+  await expect(page.locator('.scr-modal')).toBeHidden();
+  const st = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
+  expect(st.perks).toHaveLength(2);
+  expect(st.pendingPerks).toBeNull();
+  const ads = await page.evaluate(() => (window as any).__DBD_APP.g.ads.chests);
+  expect(ads).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('perks from silver and gold chests survive a reload', async ({ page }) => {
+  const errors = await boot(page);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await expect(page.locator('.scr-farmhouse')).toBeVisible();
+  const ok = await page.evaluate(() => (window as any).__DBD_ENGINE.devPerks(['coffee2', 'spite3', 'heavy']));
+  expect(ok).toBe(true);
+  await page.reload();
+  await page.waitForFunction(() => !!(window as any).__DBD_ENGINE && !!(window as any).__DBD_APP);
+  const perks = await page.evaluate(() => (window as any).__DBD_ENGINE.state().perks);
+  expect(perks).toEqual(expect.arrayContaining(['coffee2', 'spite3', 'heavy']));
+  expect(errors).toEqual([]);
+});
+
 test('the first farm: carrots only, a bill paid on its evening opens a chest, and the radish joins the field', async ({ page }) => {
   const errors = await boot(page);
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
@@ -304,6 +389,7 @@ test('the first farm: carrots only, a bill paid on its evening opens a chest, an
   expect(new Set(types0)).toEqual(new Set(['carrot']));
   await page.evaluate(() => {
     const e = (window as any).__DBD_ENGINE;
+    (window as any).__DBD_CHEST_ROLL = 0; // chests are rolled: this one is wooden
     e.addCash(400);
     e.devDue();
     (window as any).__DBD_APP.payBill();

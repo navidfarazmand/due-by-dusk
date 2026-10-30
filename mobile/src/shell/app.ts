@@ -16,8 +16,10 @@ import { TOOLS, isToolId, modCost, modLevel, toolDef, toolStats, toolSummary, ty
 import { ART, BAND, MAP, NODES, PREVIEW, SPRITE, bandFor, spriteImg } from './art';
 import { $, ICON, TOOL_ICON, cap, clamp, esc, money, stars } from './dom';
 import { engine, on, type BillInfo, type ChestInfo, type DayEvent, type EngineState, type Today } from './engine';
-import { chestBurst, chestName, chestSvg, newCropHtml, perkCard, perkIcon } from './chest';
-import { FarmHud, cleaveTip, deviceText, eventIcon } from './hud';
+import { CHEST_UP_ICON, chestBurst, chestName, chestSvg, newCropHtml, perkCard, perkIcon } from './chest';
+import { rivalFace } from './rival';
+import { FarmHud, deviceText, eventIcon, touchy } from './hud';
+import { Coach, peek, type FieldPeek, type Pt } from './coach';
 import { watchLayout, layout } from './layout';
 import { adsAvailable, canOffer, coinsWait, onAdsChanged, watch } from './offers';
 import { PINS } from './pins';
@@ -77,6 +79,8 @@ interface CityResult {
   /** Savings banked from this run, and what the farm had paid before it (0 on a first win). */
   banked: number;
   mark: number;
+  /** Cash left on the farm after the deed (the second star wants the farm's spare goal). */
+  kept?: number;
   short?: number;
   bill?: string;
   bossKept?: boolean;
@@ -113,6 +117,13 @@ export class GameApp {
   private barnTab: FlairKind = 'finish';
   private barnSel = '';
   private side: SideRun | null = null;
+  /** The intro (first Play): a boss finale played by the ghost finger on a side farm. */
+  private intro: { snap: string; sound: boolean; ending: boolean; down: boolean; at: Pt | null } | null = null;
+  private coach = new Coach();
+  /** Charge Cleaves struck since launch (the cleave lesson watches it). */
+  private cleaves = 0;
+  /** No new field moment before this time (ms). */
+  private momentCool = 0;
   /** Where the skill map and the Bling Barn go back to. */
   private backTo: Screen = 'menu';
   private sideOut: SideOutcome | null = null;
@@ -152,6 +163,14 @@ export class GameApp {
     this.modal.hidden = true;
     this.root.append(this.modal);
     this.hud = new FarmHud($('stage'), () => this.toggleSound());
+    this.hud.onRivalBeaten = () => {
+      try {
+        navigator.vibrate?.([30, 40, 70]);
+      } catch {
+        /* no vibration */
+      }
+      if (!this.coach.busy && this.coachOn) void this.coach.momentEl(() => document.getElementById('dbdRival'), 'Crown!', 1300, 0.35);
+    };
     this.root.addEventListener('click', e => this.click(e));
     watchLayout(this.root);
     onAdsChanged(() => this.refresh());
@@ -208,6 +227,7 @@ export class GameApp {
     setInterval(() => this.tick(), 1000);
     const loop = (t: number) => {
       this.hud.frame(t);
+      this.watchField(t);
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
@@ -266,16 +286,23 @@ export class GameApp {
     on('dayStart', d => {
       this.pendingEvent = d.event;
       this.day = null;
-      this.hud.dayStarted(d.event);
-      // once, from the second bill on: how to charge a cleave on this device
-      if (!this.side && !this.g.seen.cleaveTip && this.g.run && engine().state().billsPaid >= 1) {
-        this.g.seen.cleaveTip = true;
-        this.save();
-        setTimeout(() => this.toast(cleaveTip(), 6000), 2600);
+      if (this.intro) {
+        this.hud.setRival(null);
+        this.hud.dayStarted(d.event, true);
+        return;
       }
+      this.hud.setRival(this.rivalToday());
+      // a lesson keeps the day's event banner out of its way
+      const lesson = !this.side && !!this.g.run && this.dayLessons();
+      this.hud.dayStarted(d.event, lesson);
+    });
+    on('cleave', () => this.cleaves++);
+    on('bossDown', () => {
+      if (this.intro) this.intro.down = true;
     });
     on('dayEnd', d => {
       this.hud.dayEnded();
+      if (this.intro) return;
       if (this.side) {
         this.side.score = Math.round(d.today.earned);
         return;
@@ -299,6 +326,10 @@ export class GameApp {
       this.save();
     });
     on('idle', () => {
+      if (this.intro) {
+        this.finishIntro();
+        return;
+      }
       if (this.side) {
         this.endSide();
         return;
@@ -332,7 +363,7 @@ export class GameApp {
     this.g.run = null;
     this.result = {
       kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.spare, crown: p.crown, firstWin, diamonds, ribbons,
-      days: d.days, earned: d.earned, harvested: d.harvested, wallet: this.g.wallet, banked, mark: run.mark,
+      days: d.days, earned: d.earned, harvested: d.harvested, wallet: this.g.wallet, banked, mark: run.mark, kept: Math.round(d.cash),
     };
     this.saveNow();
     this.show('won');
@@ -358,6 +389,7 @@ export class GameApp {
 
   private show(s: Screen): void {
     this.scr = s;
+    if (!this.intro) this.coach.cancel();
     this.closeModal();
     for (const [k, el] of Object.entries(this.sections)) el.hidden = k !== s;
     this.root.style.display = s === 'farm' ? 'none' : '';
@@ -367,12 +399,27 @@ export class GameApp {
     if (s !== 'farm') this.render(s);
     layout(this.root);
     if (s === 'farmhouse' && this.g.run) {
+      let chest = false;
       try {
         const c = engine().pendingChest();
-        if (c) this.showChest(c);
+        if (c) {
+          this.showChest(c);
+          chest = true;
+        }
       } catch {
         /* engine not ready */
       }
+      if (!chest) this.pointAtStart();
+    }
+    // the first ribbons and diamond: where they go
+    if (s === 'won' && this.result && (this.result.ribbons || this.result.diamonds) && !this.g.seen.gains && this.coachOn) {
+      this.g.seen.gains = true;
+      this.save();
+      // after the stars have landed
+      setTimeout(() => {
+        if (this.scr === 'won' && !this.coach.busy)
+          void this.coach.point(() => this.sections.won.querySelector('.r-gains'), 'Spend them!', () => this.scr !== 'won', 4200);
+      }, 1700);
     }
   }
 
@@ -416,7 +463,7 @@ export class GameApp {
     }
     switch (act) {
       case 'go': this.show(arg as Screen); break;
-      case 'play': this.show('world'); break;
+      case 'play': this.play(); break;
       case 'continue': this.continueGame(); break;
       case 'country': this.worldSel = arg as CountryCode; this.render('world'); break;
       case 'enter': this.countrySel = arg as CountryCode; this.citySel = this.firstCityToShow(arg as CountryCode); this.show('country'); break;
@@ -438,6 +485,7 @@ export class GameApp {
       case 'track-menu': this.pickTrack('menu', arg); break;
       case 'perk': this.pickPerk(arg, t); break;
       case 'chest-open': this.openChest(); break;
+      case 'ad-chest': void this.adChest(); break;
       case 'ad-double': void this.adDouble(); break;
       case 'ad-coins': void this.adCoins(); break;
       case 'ad-finish': void this.adFinish(); break;
@@ -563,8 +611,247 @@ export class GameApp {
     if (!this.g.run) return;
     const e = engine();
     if (e.state().pendingPerks) return;
+    if (!this.g.seen.start) {
+      this.g.seen.start = true;
+      this.coach.cancel();
+    }
     this.show('farm');
     if (!e.startDay()) this.show('farmhouse');
+  }
+
+  // ------------------------------------------------------------------ the coach: showing, not telling
+
+  /** Tests can turn the coach off (window.__DBD_NO_COACH). */
+  private get coachOn(): boolean {
+    return !(window as unknown as { __DBD_NO_COACH?: boolean }).__DBD_NO_COACH;
+  }
+
+  /** Play on the menu: a new player first watches the intro, then lands on the first farm. */
+  private play(): void {
+    const fresh = this.coachOn && !this.g.seen.intro && !this.g.run && this.g.totals.days === 0 && totalStars(this.g) === 0;
+    if (fresh) void this.playIntro();
+    else this.show('world');
+  }
+
+  /** The intro (Navid, 30 Oct): the last seconds of a boss farm, played by the ghost finger. The boss falls to a
+   * Charge Cleave, the deed is paid, and the player lands on their own first farm. */
+  private async playIntro(): Promise<void> {
+    const e = engine();
+    if (this.side || this.intro || e.state().mode !== 'idle') return this.show('world');
+    this.g.seen.intro = true;
+    this.saveNow();
+    const snap = e.snapshot();
+    const sound = e.state().sound;
+    const cityId = 'ca_kelowna';
+    const plan = planFor(cityId);
+    const levels = { scythe: 16, swing: 6, hands: 10, days: 2, soil: 8, market: 2, clover: 6 };
+    const tool = toolStats({ owned: ['scythe'], equipped: 'scythe', mods: {} }, 'scythe');
+    e.setSaving(false);
+    e.setFieldSeed(20261030);
+    e.setSkills([]);
+    e.setTool(tool);
+    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: levels, plan, tools: [tool] })) {
+      this.restoreFarm(snap, sound);
+      return this.show('world');
+    }
+    this.intro = { snap, sound, ending: false, down: false, at: null };
+    $('dbdHud').classList.add('intro');
+    this.show('farm');
+    if (!e.startDay()) {
+      this.finishIntro();
+      return;
+    }
+    const co = this.coach;
+    const it = this.intro;
+    await co.run(async () => {
+      co.cinema(true, () => this.endIntro());
+      const boss = () => peek()?.crops.find(c => c.boss && !c.dead) || null;
+      await co.until(() => !!boss(), 3000);
+      e.introFinale(5, 10.5);
+      const at = (): Pt | null => {
+        const b = boss();
+        if (!b) return null;
+        it.at = co.cropAt(b);
+        return it.at;
+      };
+      const start = at() || { x: innerWidth / 2, y: innerHeight * 0.6 };
+      co.showHand(0, { x: start.x - 170, y: start.y + 100 });
+      await co.wait(500);
+      await co.glide(0, at, 650);
+      co.press(0);
+      const t0 = performance.now();
+      const chase = (ms: number) =>
+        co.tween(
+          ms,
+          () => {
+            const q = at();
+            if (!q) return;
+            const a = (performance.now() - t0) / 240;
+            co.showHand(0, { x: q.x + Math.cos(a) * 18, y: q.y + Math.sin(a * 1.3) * 12 });
+          },
+          t => t,
+        );
+      await chase(1700);
+      // the finisher: a second finger charges a Charge Cleave and lets go
+      if (!it.down) {
+        const q = at() || start;
+        const p2 = { x: Math.min(innerWidth - 80, q.x + 250), y: Math.min(innerHeight - 70, q.y + 80) };
+        co.showHand(1, { x: p2.x + 70, y: p2.y + 80 });
+        await co.glide(1, p2, 320);
+        co.press(1);
+        await chase(700);
+        co.lift(1);
+        co.hideHand(1);
+      }
+      const t1 = performance.now();
+      while (!it.down && performance.now() - t1 < 5000) await chase(250);
+      co.lift(0);
+      co.hideHand(0);
+      if (it.down) {
+        await co.explode(it.at || start);
+        await co.deed();
+      }
+    });
+    this.endIntro();
+  }
+
+  /** Skip, or the finale is over: end the side day (its idle event finishes the intro). */
+  private endIntro(): void {
+    const it = this.intro;
+    if (!it || it.ending) return;
+    it.ending = true;
+    this.coach.cancel();
+    const e = engine();
+    if (e.state().mode === 'day' && e.endDayNow()) return;
+    this.finishIntro();
+  }
+
+  /** Back to the real game: the player's first farm, with a finger on its Start button. */
+  private finishIntro(): void {
+    const it = this.intro;
+    if (!it) return;
+    this.intro = null;
+    this.coach.cancel();
+    $('dbdHud').classList.remove('intro');
+    let soundNow = it.sound;
+    try {
+      soundNow = engine().state().sound;
+    } catch {
+      /* keep the old setting */
+    }
+    this.restoreFarm(it.snap, soundNow);
+    const first = ROUTE[0].id;
+    if (!this.g.run && cityLock(this.g, first).open) this.beginRun(first);
+    else this.show('world');
+  }
+
+  /** The Start button gets a finger until it is pressed (first farm only). */
+  private pointAtStart(): void {
+    if (this.g.seen.start || this.coach.busy || !this.coachOn) return;
+    const btn = () => this.sections.farmhouse.querySelector('[data-act="start"]');
+    void this.coach.point(btn, 'Start', () => this.scr !== 'farmhouse' || !this.modal.hidden);
+  }
+
+  /** Lessons at the start of a day on a real farm: cutting (a new player's first day), then the Charge Cleave.
+   * Returns whether one started. */
+  private dayLessons(): boolean {
+    if (!this.coachOn) return false;
+    const seen = this.g.seen;
+    const st = engine().state();
+    if (!seen.cut && this.g.totals.days === 0) {
+      seen.cut = true;
+      this.save();
+      this.momentCool = performance.now() + 16000;
+      void this.coach.cutLesson(() => document.getElementById('dbdBank'));
+      return true;
+    }
+    seen.cut = true;
+    if (!seen.cleave && (st.day >= 2 || this.g.totals.days >= 1)) {
+      const tries = seen.cleave2 ? 3 : seen.cleave1 ? 2 : 1;
+      if (tries === 1) seen.cleave1 = true;
+      else if (tries === 2) seen.cleave2 = true;
+      this.save();
+      this.momentCool = performance.now() + 16000;
+      void this.coach.cleaveLesson(() => this.cleaves).then(ok => {
+        if (ok || tries >= 2) seen.cleave = true;
+        this.save();
+      });
+      return true;
+    }
+    return false;
+  }
+
+  /** The rival on today's HUD: the city's record holder, until the player takes the crown. */
+  private rivalToday(): { name: string; record: number } | null {
+    const run = this.g.run;
+    if (this.side || !run) return null;
+    const ct = cityById(run.cityId);
+    if (!ct || cityProgress(this.g, run.cityId).crown) return null;
+    return { name: ct.rival, record: planFor(run.cityId).record };
+  }
+
+  /** First sights on the field: slow motion and a spotlight that follows the thing (once each). */
+  private watchField(now: number): void {
+    if (this.scr !== 'farm' || this.side || this.intro || this.coach.busy || now < this.momentCool || !this.coachOn) return;
+    const p = peek();
+    if (!p || p.mode !== 'day' || p.time < 2) return;
+    const seen = this.g.seen;
+    const co = this.coach;
+    const show = (key: string, find: () => Pt | null, word: string, r = 64) => {
+      if (!find()) return false;
+      seen[key] = true;
+      this.save();
+      this.momentCool = now + 6000;
+      void co.moment(find, word, 1500, r);
+      return true;
+    };
+    // something that moves is followed by matching the nearest one of its kind to where it was last
+    const follow = (list: () => Array<{ x: number; y: number }>, lift = 0) => {
+      let last: { x: number; y: number } | null = null;
+      return (): Pt | null => {
+        const all = list();
+        if (!all.length) return null;
+        let best = all[0];
+        if (last) {
+          let bd = Infinity;
+          for (const a of all) {
+            const d = Math.hypot(a.x - last.x, a.y - last.y);
+            if (d < bd) {
+              bd = d;
+              best = a;
+            }
+          }
+        }
+        last = best;
+        return co.toScreen(best.x, best.y - lift);
+      };
+    };
+    const live = (pred: (c: FieldPeek['crops'][number]) => boolean) => () =>
+      (peek()?.crops || []).filter(c => !c.dead && c.age > 0.4 && pred(c)).map(c => ({ x: c.x, y: c.y - c.r * c.ds * 0.55 }));
+    if (!seen.mBoss && show('mBoss', follow(live(c => c.boss)), 'Knock it out!', 110)) return;
+    if (!seen.mRadish && show('mRadish', follow(live(c => c.type === 'radish')), 'It runs!')) return;
+    if (!seen.mGolden && show('mGolden', follow(() => peek()?.lucky || []), 'Golden!')) return;
+    const treaty = engine().state().perks.includes('treaty') || this.g.skills.includes('gold_treaty') || this.g.skills.includes('gold_herd');
+    if (!seen.mGoat && !treaty && show('mGoat', follow(() => (peek()?.goat ? [peek()!.goat!] : []), 20), "Don't touch!", 70)) return;
+    if (!seen.mGoatPet && treaty && show('mGoatPet', follow(() => (peek()?.goat ? [peek()!.goat!] : []), 20), 'Pet it: tips!', 70)) return;
+    if (!seen.mCrow && show('mCrow', follow(() => peek()?.crows || []), 'Shoo it!')) return;
+    if (!seen.mProp && show('mProp', follow(() => peek()?.props || []), 'Grab it!')) return;
+    if (!seen.mBolt && p.bolts > 0 && show('mBolt', () => co.toScreen(p.pointer.x, p.pointer.y), 'Lightning!', 90)) return;
+    // the HUD: the rival's record, the chain bonus, a harvest rush
+    const hud = (key: string, id: string, word: string) => {
+      const el = document.getElementById(id);
+      if (!el || (el as HTMLElement).hidden || el.classList.contains('beaten')) return false;
+      seen[key] = true;
+      this.save();
+      this.momentCool = now + 6000;
+      void co.momentEl(() => document.getElementById(id), word);
+      return true;
+    };
+    const h = engine().hud();
+    const rv = this.rivalToday();
+    if (!seen.mRival && rv && p.today.earned > 0 && p.time < 15 && hud('mRival', 'dbdRival', `Beat ${money(rv.record)} today`)) return;
+    if (!seen.mChain && h.tiers.length > 1 && h.combo >= h.tiers[1].count && hud('mChain', 'dbdChain', 'Chain bonus!')) return;
+    if (!seen.mRush && h.rushT > 0 && hud('mRush', 'dbdRush', 'Rush!')) return;
   }
 
   private payBill(): void {
@@ -580,12 +867,25 @@ export class GameApp {
 
   private picking = false;
   private pickPerk(id: string, btn?: HTMLElement): void {
-    if (this.picking) return;
+    if (this.picking || btn?.classList.contains('taken')) return;
     const box = this.modal.querySelector<HTMLElement>('.chest-box');
     const done = () => {
       this.picking = false;
       const info = engine().perkInfo(id);
-      if (!engine().choosePerk(id)) return;
+      const before = engine().pendingChest();
+      const finished = engine().choosePerk(id);
+      if (!finished) {
+        // a diamond chest: the first of its two picks is in; that card stays lit and the others wait
+        const after = engine().pendingChest();
+        if (!box || !before || !after || (after.picks || 1) >= (before.picks || 1)) return;
+        box.classList.remove('picked');
+        box.classList.add('one-left');
+        btn?.classList.add('taken');
+        btn?.setAttribute('aria-disabled', 'true');
+        const sub = box.querySelector('.chest-sub');
+        if (sub) sub.textContent = 'Pick 1 more';
+        return;
+      }
       this.closeModal();
       this.render('farmhouse');
       if (info) this.toast(`${info.name}: ${deviceText(info.line)}`);
@@ -1467,13 +1767,21 @@ export class GameApp {
     if (r.kind === 'won') {
       const next = ROUTE[routeIndex(r.cityId) + 1];
       const nextOpen = next && cityLock(this.g, next.id).open;
+      // star 2 is shown as the piggy bank filling past the farm's goal; star 3 as the rival's face
+      const kept = Math.max(0, r.kept ?? r.banked + r.mark);
+      const top = Math.max(kept, plan.spare) * 1.25;
+      const keptPct = Math.min(100, (kept / Math.max(1, top)) * 100);
+      const goalPct = Math.min(100, (plan.spare / Math.max(1, top)) * 100);
       const starRow = [
-        ['Paid off the farm', true],
-        [`Kept ${money(plan.spare)} after the deed`, r.spare],
-        [`Beat ${ct.rival}`, r.crown],
-      ]
-        .map(([t, ok], i) => `<div class="star-row${ok ? ' ok' : ''}" style="animation-delay: ${0.25 + i * 0.25}s">${ICON.star(!!ok, 26)}<span>${esc(String(t))}</span></div>`)
-        .join('');
+        `<div class="star-row ok" style="animation-delay: .25s">${ICON.star(true, 26)}<span>Paid off the farm</span></div>`,
+        `<div class="star-row spare-row${r.spare ? ' ok' : ''}" style="animation-delay: .5s">${ICON.star(r.spare, 26)}<span class="sp-pig">${ICON.piggy(24)}</span>
+          <span class="sp-bar" aria-label="Kept ${money(kept)} after the deed; the goal is ${money(plan.spare)}"><i style="--w: ${keptPct.toFixed(1)}%"></i><b style="left: ${goalPct.toFixed(1)}%"></b></span>
+          <span class="sp-amt">${money(kept)}<small> / ${money(plan.spare)}</small></span></div>`,
+        `<div class="star-row rival-row${r.crown ? ' ok' : ''}" style="animation-delay: .75s">${ICON.star(r.crown, 26)}<span class="rv-face${r.crown ? ' down' : ''}">${rivalFace(ct.rival, 30)}</span><span>Beat ${esc(ct.rival)}</span></div>`,
+      ].join('');
+      const gains =
+        (r.ribbons ? `<button type="button" class="dia dia-btn" data-act="barn" aria-label="Spend ribbons in the Bling Barn">${ribbonIcon(18)} +${r.ribbons}</button>` : '') +
+        (r.diamonds ? `<button type="button" class="dia dia-btn" data-act="skills" aria-label="Spend it on the skill map">${ICON.diamond(16)} +${r.diamonds}</button>` : '');
       return `<div class="grp mc" style="width: 470px; height: 350px"><div class="st-chip result-card">
         <div class="letter-head"><span class="eyebrow">GRUMBLE &amp; SONS SAVINGS &amp; LOAN</span><span class="stamp ok big">PAID IN FULL</span></div>
         <h2 class="r-title">The ${esc(ct.short)} farm is yours.</h2>
@@ -1481,7 +1789,7 @@ export class GameApp {
         <div class="star-rows">${starRow}</div>${plan.bossFight ? this.clearedLine(ct.country) : ''}
         <div class="r-rewards"><span>${r.days} days · ${money(r.earned)} earned · ${
           r.mark > 0 ? (r.banked > 0 ? `+${money(r.banked)} above your best` : `nothing above your best of ${money(r.mark)}`) : `+${money(r.banked)} saved`
-        }</span><span class="r-gains">${r.ribbons ? `<span class="dia">${ribbonIcon(18)} +${r.ribbons}</span>` : ''}${r.diamonds ? `<button type="button" class="dia dia-btn" data-act="skills" aria-label="Spend it on the skill map">${ICON.diamond(16)} +${r.diamonds}</button>` : ''}</span></div>
+        }</span><span class="r-gains">${gains}</span></div>
         <div class="r-actions"><button type="button" class="st-btn blue btn-md flex1" data-act="map" data-arg="${r.cityId}">Map</button>
           ${nextOpen ? `<button type="button" class="st-btn gold btn-md flex1" data-act="next-city">Next farm${ICON.next()}</button>` : ''}</div>
       </div></div>`;
@@ -1516,20 +1824,75 @@ export class GameApp {
     this.music.setPreview(null);
   }
 
-  /** The chest after a bill: tap to open, then pick one of three perks for this farm. */
-  private showChest(c: ChestInfo): void {
+  /** The chest after a bill: tap to open, then pick a perk for this farm (two from a diamond chest). Before it is
+   * opened, a rewarded ad can upgrade it once. */
+  private showChest(c: ChestInfo, again = false): void {
     if (!c || !c.perks || !c.perks.length) return;
     if (this.scr !== 'farmhouse') this.show('farmhouse');
-    if (this.modal.dataset.kind === 'perks' && !this.modal.hidden) return;
+    if (!again && this.modal.dataset.kind === 'perks' && !this.modal.hidden) return;
     const st = engine().state();
-    const cards = c.perks.map((p, i) => perkCard(p, i, deviceText(p.line))).join('');
-    this.openModal('perks', `<div class="chest-box ch-t${c.tier}">
-        <div class="chest-head"><span class="eyebrow">BILL ${st.billsPaid} OF ${st.billCount} PAID</span><h2 class="m-title">${esc(chestName(c.tier))}!</h2>
-          <p class="chest-sub">Pick one perk for this farm.</p></div>
+    const picks = Math.max(1, c.picks || 1);
+    const two = c.tier >= 4;
+    const cards = c.perks.map((p, i) => perkCard(p, i, deviceText(p.line), touchy)).join('');
+    const up =
+      !c.upgraded && c.tier < 4 && canOffer(this.g, 'chest')
+        ? `<button type="button" class="st-btn blue btn-md ad-btn chest-up" data-act="ad-chest">${ICON.play()}<span>Upgrade</span>${CHEST_UP_ICON}</button>`
+        : '';
+    const sub = two ? `<p class="chest-sub picks">${picks > 1 ? 'Pick 2' : 'Pick 1 more'}</p>` : '';
+    this.openModal('perks', `<div class="chest-box ch-t${c.tier}${two ? ' two' : ''}${two && picks < 2 ? ' one-left open' : ''}">
+        <div class="chest-head"><span class="eyebrow">BILL ${st.billsPaid} OF ${st.billCount} PAID</span><h2 class="m-title">${esc(chestName(c.tier))}!</h2>${sub}</div>
         <button type="button" class="chest-btn" data-act="chest-open" aria-label="Open the chest"><span class="ch-stage">${chestBurst(c.tier)}${chestSvg(c.tier)}</span><span class="chest-tap">Tap to open</span></button>
+        ${up}
         <div class="chest-cards perk-grid">${cards}</div>
         ${this.newCropLine()}
-      </div>`, 480);
+      </div>`, two ? 600 : 480);
+    // the first chest: a finger taps it
+    if (!this.g.seen.chest && !again && this.coachOn) {
+      this.g.seen.chest = true;
+      this.save();
+      const box = () => this.modal.querySelector<HTMLElement>('.chest-box');
+      void this.coach.point(
+        () => this.modal.querySelector('.chest-btn'),
+        'Tap',
+        () => this.modal.hidden || !!box()?.classList.contains('open'),
+        20000,
+      );
+    }
+  }
+
+  /** Rewarded ad on a closed chest: it shakes, flashes and comes back as a better one. */
+  private async adChest(): Promise<void> {
+    const box = this.modal.querySelector<HTMLElement>('.chest-box');
+    if (this.busy || !box || box.classList.contains('open')) return;
+    this.busy = true;
+    const ok = await watch(this.g, 'chest');
+    this.busy = false;
+    if (!ok) {
+      this.refreshChestOffer();
+      return;
+    }
+    const c = engine().upgradeChest();
+    this.saveNow();
+    if (!c) return;
+    const still = this.modal.querySelector<HTMLElement>('.chest-box');
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (still && !calm) {
+      still.classList.add('upgrading');
+      await new Promise(r => setTimeout(r, 900));
+    }
+    this.showChest(c, true);
+    this.modal.querySelector<HTMLElement>('.chest-box')?.classList.add('upgraded');
+    try {
+      navigator.vibrate?.([20, 40, 30]);
+    } catch {
+      /* no vibration */
+    }
+  }
+
+  /** Drops the upgrade button when no ad can be offered any more. */
+  private refreshChestOffer(): void {
+    if (canOffer(this.g, 'chest')) return;
+    this.modal.querySelector('.chest-up')?.remove();
   }
 
   private openChest(): void {

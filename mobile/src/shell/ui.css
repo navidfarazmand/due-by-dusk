@@ -69,6 +69,21 @@ header.bar, aside.ledger, #fieldSign, #eventLabel, #hud, .dbd-badge, .dbd-btns, 
 .hb-secs { position: absolute; left: 0; width: 150px; top: 35px; text-align: center; font-family: var(--ui-display); font-size: 21px; line-height: 1; font-variant-numeric: tabular-nums; }
 .hb-secs.late { color: #C9473A; }
 .hb-pause { position: absolute; right: 0; top: 10px; pointer-events: auto; }
+/* the city's rival at the record: today's harvest fills the bar; passing it knocks the face off */
+.hb-rival { position: absolute; right: 0; top: 62px; width: 208px; height: 30px; box-sizing: border-box; border-radius: 12px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 3px; }
+.hb-rival[hidden] { display: none; }
+.hb-rface { width: 30px; height: 30px; margin-top: -8px; flex: none; }
+.hb-rface svg { display: block; }
+.hb-rbar { flex: 1; height: 10px; box-sizing: border-box; border: 2px solid var(--dbd-ink); border-radius: 5px; background: #fff; overflow: hidden; }
+.hb-rbar i { display: block; height: 100%; width: 0; background: #F07A62; transition: width .25s ease; }
+.hb-ramt { font-family: var(--ui-display); font-size: 15px; line-height: 1; white-space: nowrap; }
+.hb-rival.beaten { background: var(--dbd-gold); }
+.hb-rival.beaten .hb-rbar i { background: var(--dbd-deep-green); }
+.hb-rival.gone { opacity: 0; transition: opacity .5s; }
+@media (prefers-reduced-motion: no-preference) {
+  .hb-rival.beaten .hb-rface { animation: hbKnock .9s cubic-bezier(.3, .6, .6, 1) both; }
+  @keyframes hbKnock { 30% { transform: translate(-6px, -14px) rotate(-30deg); } 100% { transform: translate(70px, -90px) rotate(260deg); opacity: 0; } }
+}
 .hb-sound { position: absolute; right: 52px; top: 10px; pointer-events: auto; }
 .hb-rush { position: absolute; right: 104px; top: 10px; width: 104px; height: 44px; border-radius: 14px; }
 .hb-rush .rl { position: absolute; left: 10px; top: 5px; font-weight: 900; font-size: 10.5px; line-height: 14px; letter-spacing: .6px; color: var(--dbd-muted); }

@@ -48,6 +48,8 @@ export interface AdCounters {
   finishes: number;
   /** Free-ribbon ads in the Bling Barn. */
   ribbons: number;
+  /** Chest upgrades. */
+  chests?: number;
   lastCoinsAt: number;
 }
 
@@ -111,7 +113,7 @@ export function newGame(now = Date.now()): GameSave {
     flair: newFlair(),
     daily: newDaily(),
     duelDay: { date: '', rewarded: 0 },
-    ads: { date: '', coins: 0, doubles: 0, finishes: 0, ribbons: 0, lastCoinsAt: 0 },
+    ads: { date: '', coins: 0, doubles: 0, finishes: 0, ribbons: 0, chests: 0, lastCoinsAt: 0 },
     settings: { music: true, haptics: true, fieldTrack: 'meatball', menuTrack: 'gone_fishin' },
     seen: {},
     totals: { days: 0, crops: 0, earned: 0 },
@@ -209,6 +211,7 @@ export function parseGame(raw: string | null): GameSave {
       doubles: Math.floor(num(o.ads.doubles)),
       finishes: Math.floor(num(o.ads.finishes)),
       ribbons: Math.floor(num(o.ads.ribbons)),
+      chests: Math.floor(num(o.ads.chests)),
       lastCoinsAt: num(o.ads.lastCoinsAt),
     };
   }

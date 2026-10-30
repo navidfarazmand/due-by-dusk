@@ -1,6 +1,7 @@
 // The chest that comes after each bill (Navid, 29 Oct: perks should come "as a chest", not a text box).
-// Wooden after the first bills, silver in the middle, gold before the deed. Tap it: the lid flies open, coins
-// spill out and three perk cards rise from it. The cards are buttons the player picks from.
+// Its tier is rolled (mostly wooden at first, mostly silver later, gold before the deed), and a rewarded ad can
+// upgrade it once, up to diamond: four gold perks, pick two (Navid, 30 Oct). Tap it: the lid flies open, coins
+// spill out and the perk cards rise from it. The cards are buttons the player picks from.
 
 import { esc } from './dom';
 import { spriteImg } from './art';
@@ -13,7 +14,11 @@ const TIERS: Record<number, { body: string; dark: string; band: string; trim: st
   1: { body: '#B9773E', dark: '#8A5326', band: '#6B4A2E', trim: '#D9DEE6', name: 'A wooden chest' },
   2: { body: '#AFC1D3', dark: '#7F93A8', band: '#55667A', trim: '#FFFFFF', name: 'A silver chest' },
   3: { body: '#FFC23D', dark: '#E3961C', band: '#B8660E', trim: '#FFF4B0', name: 'A gold chest' },
+  4: { body: '#8FDCF7', dark: '#4FB0DE', band: '#2D7FB0', trim: '#FFFFFF', name: 'A diamond chest' },
 };
+
+/** The upgrade button's icon: an arrow going up. */
+export const CHEST_UP_ICON = `<svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true"><path d="M9 2 L16 10 H11.5 V18 H6.5 V10 H2 Z" fill="#FFC23D" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/></svg>`;
 
 export function chestName(tier: number): string {
   return (TIERS[tier] || TIERS[1]).name;
@@ -22,10 +27,14 @@ export function chestName(tier: number): string {
 /** The chest itself: a body and a lid that hinges open (the CSS moves `.ch-lid`). */
 export function chestSvg(tier: number): string {
   const t = TIERS[tier] || TIERS[1];
+  const gem = (x: number, y: number, s: number) =>
+    `<path d="M${x} ${y - s} L${x + s * 0.8} ${y} L${x} ${y + s} L${x - s * 0.8} ${y} Z" fill="#FFFFFF" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/>`;
   const gems =
     tier === 3
       ? `<circle cx="34" cy="74" r="4.2" fill="#E5484D" stroke="${INK}" stroke-width="2"/><circle cx="86" cy="74" r="4.2" fill="#4FA3E0" stroke="${INK}" stroke-width="2"/>`
-      : '';
+      : tier >= 4
+        ? gem(34, 74, 6) + gem(86, 74, 6) + gem(60, 31, 5)
+        : '';
   const studs = [22, 40, 80, 98].map(x => `<circle cx="${x}" cy="86" r="2.2" fill="${t.trim}" stroke="${INK}" stroke-width="1.4"/>`).join('');
   return `<svg class="ch-svg" viewBox="0 0 120 104" aria-hidden="true">
     <ellipse cx="60" cy="99" rx="50" ry="5" fill="rgba(43,23,8,.25)"/>
@@ -43,7 +52,7 @@ export function chestSvg(tier: number): string {
       <path d="M18 30 Q60 18 102 30" stroke="${t.trim}" stroke-width="3" fill="none" stroke-linecap="round" opacity=".7"/>
     </g>
     <g class="ch-lock">
-      <rect x="51" y="44" width="18" height="20" rx="4" fill="${tier === 3 ? '#FFF4B0' : '#FFC23D'}" stroke="${INK}" stroke-width="3"/>
+      <rect x="51" y="44" width="18" height="20" rx="4" fill="${tier === 3 ? '#FFF4B0' : tier >= 4 ? '#E8FBFF' : '#FFC23D'}" stroke="${INK}" stroke-width="3"/>
       <circle cx="60" cy="52" r="2.6" fill="${INK}"/><rect x="58.8" y="52" width="2.4" height="6" fill="${INK}"/>
     </g>
   </svg>`;
@@ -85,11 +94,16 @@ export function perkIcon(key: string, size = 26): string {
 
 export const TIER_LABEL = ['', 'Common', 'Rare', 'Epic'];
 
-/** One perk card (a button the player picks). */
-export function perkCard(p: PerkInfo, i: number, line: string): string {
+/** Two fingertips and a charging ring: the Charge Cleave gesture (on cards for perks that improve it). */
+const TWO_FINGERS = `<svg class="pk-gest" width="34" height="22" viewBox="0 0 34 22" aria-hidden="true"><circle cx="9" cy="11" r="8" fill="none" stroke="#38BDF8" stroke-width="2.4"/><circle cx="9" cy="11" r="3.6" fill="#fff" stroke="${INK}" stroke-width="2"/><circle cx="26" cy="11" r="3.6" fill="#fff" stroke="${INK}" stroke-width="2"/><path d="M26 3.5 V1 M30.5 5 L32 3 M21.5 5 L20 3" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+
+/** One perk card (a button the player picks). Perks that change a gesture show it. */
+export function perkCard(p: PerkInfo, i: number, line: string, touch = false): string {
+  const gesture = p.id === 'cleaver' ? TWO_FINGERS : '';
+  const text = p.id === 'cleaver' && touch ? 'Charge Cleave (hold a 2nd finger) charges 50% faster and hits wider.' : line;
   return `<button type="button" class="perk-card pk-t${p.tier}" data-act="perk" data-arg="${esc(p.id)}" style="--i: ${i}">
-    <span class="pk-top"><span class="pk-ic">${perkIcon(p.icon)}</span><span class="pk-tier">${TIER_LABEL[p.tier] || ''}</span></span>
-    <b>${esc(p.name)}</b><span class="pk-line">${esc(line)}</span></button>`;
+    <span class="pk-top"><span class="pk-ic">${perkIcon(p.icon)}</span>${gesture}<span class="pk-tier">${TIER_LABEL[p.tier] || ''}</span></span>
+    <b>${esc(p.name)}</b><span class="pk-line">${esc(text)}</span></button>`;
 }
 
 /** The crop that joins the field after this bill: sprite, name, what it pays and how many cuts it takes. */

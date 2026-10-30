@@ -2564,6 +2564,8 @@ export function startGeminiEngine() {
       line: () => 'Shed prices 5% lower per level',
     },
   ];
+  /** Chest perks added after this list was written (silver and gold variants). */
+  const SAVE_EXTRA_PERKS = ['spite2', 'coffee2', 'elbow2', 'saving2', 'fever2', 'clover2', 'hungry2', 'spite3', 'fever3', 'saving3'];
   const PERKS = [
     {
       id: 'spite',
@@ -2954,15 +2956,16 @@ export function startGeminiEngine() {
         // workshop levels go far beyond Gemini's per-farm shed caps
         shed[s.id] = clamp(Math.floor(num(rawFarm.shed && rawFarm.shed[s.id], 0)), 0, 60);
       });
-      const pendingPerks = Array.isArray(rawFarm.pendingPerks)
-        ? rawFarm.pendingPerks.filter((p) => PERKS.some((x) => x.id === p))
-        : null;
+      // every perk a chest can hold: the old list plus the silver and gold ones added in v0.9 (before v0.11 a
+      // reload dropped those from the farm)
+      const perkOk = (p) => PERKS.some((x) => x.id === p) || SAVE_EXTRA_PERKS.includes(p);
+      const pendingPerks = Array.isArray(rawFarm.pendingPerks) ? rawFarm.pendingPerks.filter(perkOk) : null;
       const farm = {
         no: Math.max(1, Math.floor(num(rawFarm.no, 1))),
         day: Math.max(1, Math.floor(num(rawFarm.day, 1))),
         cash: Math.max(0, num(rawFarm.cash, 0)),
         shed,
-        perks: Array.isArray(rawFarm.perks) ? rawFarm.perks.filter((p) => PERKS.some((x) => x.id === p)) : [],
+        perks: Array.isArray(rawFarm.perks) ? rawFarm.perks.filter(perkOk) : [],
         bill: clamp(Math.floor(num(rawFarm.bill, 0)), 0, BILLS.length - 1),
         due: num(rawFarm.due, BILLS[0].days),
         paidTotal: Math.max(0, num(rawFarm.paidTotal, 0)),
@@ -2973,6 +2976,10 @@ export function startGeminiEngine() {
         earned: Math.max(0, num(rawFarm.earned, 0)),
         harvested: Math.max(0, Math.floor(num(rawFarm.harvested, 0))),
         pendingPerks: pendingPerks && pendingPerks.length ? pendingPerks : null,
+        pendingTier: clamp(Math.floor(num(rawFarm.pendingTier, 0)), 0, 4),
+        pendingPicks: clamp(Math.floor(num(rawFarm.pendingPicks, 0)), 0, 2),
+        chestUp: !!rawFarm.chestUp,
+        pickedFromChest: !!rawFarm.pickedFromChest,
         lastBest: Math.max(0, Math.floor(num(rawFarm.lastBest, 0))),
         lastBonus: Math.max(0, num(rawFarm.lastBonus, 0)),
         bestChain: Math.max(0, Math.floor(num(rawFarm.bestChain, 0))),
@@ -16490,17 +16497,57 @@ export function startGeminiEngine() {
     { id: 'fever3', tier: 3, icon: 'coin', name: 'Fair day', line: 'Crops sell for 18% more.' },
     { id: 'saving3', tier: 3, icon: 'sun', name: 'Midsummer', line: '+3 s of daylight.' },
   ];
-  /** The chest after `paid` bills of `n`: wooden for the first two, gold before the deed, silver between. */
-  function chestTier(paid, n) {
+  /** Chest odds [wooden, silver, gold] (Navid, 30 Oct: "a gold chest that can be found in the early days is more
+   * exciting"). The first chests are mostly wooden, the middle ones mostly silver; the one before the deed is gold. */
+  const CHEST_ODDS = { early: [0.7, 0.22, 0.08], mid: [0.3, 0.5, 0.2] };
+  /** The chest after `paid` bills of `n`. `r` is a roll in [0, 1). */
+  /** Tests can fix the rolls (window.__DBD_CHEST_ROLL, window.__DBD_UPGRADE_ROLL). */
+  function chestRoll(key) {
+    const v = window[key];
+    return typeof v === 'number' && v >= 0 && v < 1 ? v : Math.random();
+  }
+  function chestTier(paid, n, r = chestRoll('__DBD_CHEST_ROLL')) {
     if (paid >= n - 1) return 3;
-    return paid <= 2 ? 1 : 2;
+    const odds = paid <= 2 ? CHEST_ODDS.early : CHEST_ODDS.mid;
+    if (r < odds[0]) return 1;
+    return r < odds[0] + odds[1] ? 2 : 3;
+  }
+  /** A rewarded ad upgrades the chest: always at least one tier, sometimes more. Diamond (4) is the top: four gold
+   * perks, pick two. */
+  function upgradedTier(tier, r = chestRoll('__DBD_UPGRADE_ROLL')) {
+    if (tier >= 3) return 4;
+    if (tier === 2) return r < 0.75 ? 3 : 4;
+    return r < 0.6 ? 2 : r < 0.9 ? 3 : 4;
   }
   function perkChoices(tier) {
+    const t = Math.min(3, tier);
+    const want = tier >= 4 ? 4 : 3;
     const ok = (p) => (!p.req || p.req(farm)) && (!p.once || !farm.perks.includes(p.id));
-    let pool = shuffle(FarmScene_PERKS.filter((p) => p.tier === tier && ok(p)).map((p) => p.id));
-    if (pool.length < 3)
-      pool = pool.concat(shuffle(FarmScene_PERKS.filter((p) => p.tier === tier - 1 && ok(p)).map((p) => p.id)));
-    return pool.slice(0, 3);
+    let pool = shuffle(FarmScene_PERKS.filter((p) => p.tier === t && ok(p)).map((p) => p.id));
+    if (pool.length < want)
+      pool = pool.concat(shuffle(FarmScene_PERKS.filter((p) => p.tier === t - 1 && ok(p)).map((p) => p.id)));
+    return pool.slice(0, want);
+  }
+  function pendingChestInfo() {
+    if (!farm.pendingPerks) return null;
+    const tier = farm.pendingTier || chestTier(farm.billsPaid, billCount(), 0);
+    return {
+      tier,
+      perks: farm.pendingPerks.map((id) => perkPublic(id)).filter(Boolean),
+      picks: Math.max(1, farm.pendingPicks || 1),
+      upgraded: !!farm.chestUp,
+    };
+  }
+  /** After a rewarded ad: the waiting chest becomes a better one, once per chest and only before a perk is taken. */
+  function upgradeChest() {
+    if (!farm.pendingPerks || farm.chestUp || farm.pickedFromChest) return null;
+    const tier = upgradedTier(farm.pendingTier || 1);
+    farm.pendingTier = tier;
+    farm.pendingPicks = tier >= 4 ? 2 : 1;
+    farm.pendingPerks = perkChoices(tier);
+    farm.chestUp = true;
+    save();
+    return pendingChestInfo();
   }
   function perkPublic(id) {
     const p = FarmScene_PERKS.find((x) => x.id === id);
@@ -16608,6 +16655,10 @@ export function startGeminiEngine() {
       earned: 0,
       harvested: 0,
       pendingPerks: null,
+      pendingTier: 0,
+      pendingPicks: 0,
+      chestUp: false,
+      pickedFromChest: false,
       lastBest: 0,
       lastBonus: 0,
       bestChain: 0,
@@ -18030,6 +18081,7 @@ export function startGeminiEngine() {
       Sound.coin();
     }
     checkPropsAndCrows(cleaveR);
+    dbdEvent('cleave', { killed, x: pointer.x, y: pointer.y });
   }
   function spawnFieldProp() {
     if (fieldProps.length >= 2) return;
@@ -22384,6 +22436,9 @@ export function startGeminiEngine() {
     farm.due = Math.max(farm.due, farm.day - 1) + billList()[farm.bill].days;
     const tier = chestTier(farm.billsPaid, billCount());
     farm.pendingTier = tier;
+    farm.pendingPicks = tier >= 4 ? 2 : 1;
+    farm.chestUp = false;
+    farm.pickedFromChest = false;
     farm.pendingPerks = perkChoices(tier);
     cur = stats();
     fillIdle();
@@ -22393,6 +22448,7 @@ export function startGeminiEngine() {
       dbdEvent('perks', {
         ids: farm.pendingPerks.slice(),
         tier,
+        picks: farm.pendingPicks,
         perks: farm.pendingPerks.map((id) => perkPublic(id)),
       });
     else openPerkModal();
@@ -22417,8 +22473,23 @@ export function startGeminiEngine() {
   function choosePerk(id) {
     if (!farm.pendingPerks || !farm.pendingPerks.includes(id)) return;
     farm.perks.push(id);
+    const left = Math.max(1, farm.pendingPicks || 1) - 1;
+    if (left > 0) {
+      // a diamond chest: one more pick from what is left
+      farm.pendingPicks = left;
+      farm.pickedFromChest = true;
+      farm.pendingPerks = farm.pendingPerks.filter((x) => x !== id);
+      cur = stats();
+      Sound.click();
+      save();
+      renderAll();
+      return;
+    }
     farm.pendingPerks = null;
     farm.pendingTier = 0;
+    farm.pendingPicks = 0;
+    farm.chestUp = false;
+    farm.pickedFromChest = false;
     closeModal();
     cur = stats();
     Sound.click();
@@ -23309,10 +23380,9 @@ export function startGeminiEngine() {
         bills: () => billList().map((b, i) => Object.assign({ index: i }, billObj(i))),
         perkInfo: (id) => perkPublic(id),
         /** The chest waiting to be opened (after a reload too). */
-        pendingChest: () =>
-          farm.pendingPerks
-            ? { tier: farm.pendingTier || chestTier(farm.billsPaid, billCount()), perks: farm.pendingPerks.map((id) => perkPublic(id)) }
-            : null,
+        pendingChest: () => pendingChestInfo(),
+        /** After a rewarded ad: the waiting chest becomes a better one (null if it can't). */
+        upgradeChest: () => upgradeChest(),
         stats: () => Object.assign({}, cur),
         hud: () => {
           const b = billObj(farm.bill);
@@ -23471,6 +23541,25 @@ export function startGeminiEngine() {
           renderAll();
           return true;
         },
+        /** The intro (a side farm only): the boss falls after about `sec` seconds of steady hitting, and the day has
+         * `left` seconds of light. */
+        introFinale: (sec, left) => {
+          if (!savingOff || mode !== 'day' || !bossCrop || !farm.boss) return false;
+          const hp = Math.max(1, Math.round(bossDpsWith(window.__DBD_TOOL) * sec));
+          bossCrop.hp = hp;
+          bossCrop.maxHp = Math.max(hp * 5, farm.boss.max);
+          farm.boss.max = bossCrop.maxHp;
+          farm.boss.hp = hp;
+          farm.boss.phase = 2;
+          time = Math.min(time, left);
+          return true;
+        },
+        /** Ends a side farm's day now (the intro after its finale). */
+        endDayNow: () => {
+          if (!savingOff || mode !== 'day') return false;
+          time = Math.min(time, 0.05);
+          return true;
+        },
         /** Side farms don't save: their days must not overwrite the real farm. */
         setSaving: (on) => {
           savingOff = !on;
@@ -23520,6 +23609,14 @@ export function startGeminiEngine() {
         pointer: { x: pointer.x, y: pointer.y, active: pointer.active, charge2: !!pointer.charge2 },
         pad: PAD,
         today: Object.assign({}, today),
+        mode,
+        time,
+        goat: goat ? { x: goat.x, y: goat.y, angry: !!goat.bumped } : null,
+        crows: crows.map((c) => ({ x: c.x, y: c.y })),
+        props: fieldProps.map((p) => ({ kind: p.kind, x: p.x, y: p.y })),
+        bolts: bolts.length,
+        lucky: crops.filter((c) => c.lucky && !c.dead).map((c) => ({ x: c.x, y: c.y - c.r * c.ds * 0.5 })),
+        frosted: crops.filter((c) => c.frosted && !c.dead).length,
       });
       /** Tests only: the current bill is due tonight (as if its days had been played). */
       engineApi.devDue = () => {
@@ -23527,6 +23624,14 @@ export function startGeminiEngine() {
         farm.day = Math.max(farm.day, farm.due + 1);
         save();
         renderAll();
+        return true;
+      };
+      /** Tests only: give the farm these perks (as if picked from chests). */
+      engineApi.devPerks = (ids) => {
+        if (!window.__DBD_DEV_HOOKS || mode !== 'idle' || !farm || !Array.isArray(ids)) return false;
+        for (const id of ids) if (FarmScene_PERKS.some((p) => p.id === id) && !farm.perks.includes(id)) farm.perks.push(id);
+        cur = stats();
+        save();
         return true;
       };
       window.__DBD_ENGINE = engineApi;

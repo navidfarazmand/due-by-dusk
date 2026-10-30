@@ -446,7 +446,15 @@
 .wallet-chip .wc-save { font-size: 17px; color: var(--dbd-muted); }
 
 /* the chest after each bill: wooden, silver or gold; tap it, the lid flies open and three perks rise out */
-.chest-box { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "chest" "cards" "new"; gap: 8px; }
+.chest-box { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "chest" "up" "cards" "new"; gap: 8px; }
+.chest-up { grid-area: up; justify-self: center; height: 40px; padding: 0 16px; font-size: 18px; gap: 7px; }
+.chest-box.open .chest-up { display: none; }
+.ch-t4 .chest-tap { background: #CFF3FF; }
+.chest-sub.picks { justify-self: center; padding: 1px 10px; border: 2px solid var(--dbd-ink); border-radius: 999px; background: #CFF3FF; font: 400 14px var(--ui-display); color: var(--dbd-ink); }
+.chest-box.two .perk-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.chest-box.two .perk-card { padding: 8px; }
+.chest-box.two .perk-card .pk-line { font-size: 11px; }
+.perk-card.taken { box-shadow: 0 0 0 4px #8FDCF7, 0 3px 0 var(--dbd-ink); opacity: .6; cursor: default; }
 .chest-head { grid-area: head; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 2px; }
 .chest-head .m-title { font-size: 27px; }
 .chest-sub { margin: 0; font: 800 12.5px var(--ui-body); color: var(--dbd-muted); }
@@ -488,6 +496,7 @@
 .perk-card.pk-t3 { background: #FFF6D6; box-shadow: 0 3px 0 var(--dbd-ink), inset 0 0 0 2px #FFC23D; }
 .pk-top { display: flex; align-items: center; justify-content: space-between; }
 .pk-ic { display: grid; place-items: center; width: 32px; height: 32px; box-sizing: border-box; border: 2.5px solid var(--dbd-ink); border-radius: 50%; background: #fff; }
+.pk-gest { margin: 0 auto 0 6px; flex: none; }
 .pk-tier { font: 900 9.5px var(--ui-body); letter-spacing: .8px; text-transform: uppercase; color: var(--dbd-muted); }
 .pk-t3 .pk-tier { color: #B8660E; }
 .perk-card .pk-line { font-weight: 800; font-size: 12px; line-height: 1.3; color: var(--dbd-muted); }
@@ -502,7 +511,91 @@
   .chest-box.open .ch-coin { animation: dbdChestCoin .8s cubic-bezier(.2, .8, .4, 1) both; animation-delay: var(--dl); }
   @keyframes dbdChestCoin { 0% { opacity: 1; transform: translate(0, 0) scale(.6); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); } }
   .chest-box.open .perk-card { animation: dbdCardIn .5s cubic-bezier(.2, 1.5, .4, 1) both; animation-delay: calc(.18s + var(--i) * .12s); }
+  .chest-box.one-left .perk-card { animation: none; }
+  /* an ad upgrade: the chest shakes, glows white, and the better one pops in */
+  .chest-box.upgrading:not(.open) .ch-svg { animation: dbdChestShake .9s ease-in both; transform-origin: 50% 90%; }
+  @keyframes dbdChestShake { 0% { transform: none; filter: none; } 20% { transform: rotate(-8deg) scale(1.04); } 40% { transform: rotate(8deg) scale(1.08); }
+    60% { transform: rotate(-10deg) scale(1.12); filter: brightness(1.5); } 80% { transform: rotate(10deg) scale(1.18); filter: brightness(2.4); }
+    100% { transform: scale(1.3); filter: brightness(3.2); opacity: .15; } }
+  .chest-box.upgraded:not(.open) .ch-svg { animation: dbdChestArrive .6s cubic-bezier(.2, 1.6, .4, 1) both, dbdChestWiggle 1.8s ease-in-out .6s infinite; transform-origin: 50% 90%; }
+  @keyframes dbdChestArrive { from { transform: scale(.4); filter: brightness(3); } to { transform: none; filter: none; } }
+  .chest-box.upgraded:not(.open) .ch-glow { animation: dbdChestGlow .9s ease-out both; }
   @keyframes dbdCardIn { from { opacity: 0; transform: translateY(46px) scale(.5); } to { opacity: 1; transform: none; } }
 }
 .mus-status { font-size: 11.5px; margin-top: -4px; }
 .mus-status b { color: var(--dbd-ink); }
+
+/* the coach (v0.11): a ghost finger, a spotlight and a word or two, instead of instructions to read */
+#dbdCoach { position: fixed; inset: 0; z-index: 150; pointer-events: none; font-family: var(--ui-display); color: var(--dbd-ink); }
+#dbdCoach[hidden] { display: none; }
+#dbdCoach.blocking .co-block { position: absolute; inset: 0; pointer-events: auto; }
+.co-veil { position: absolute; inset: 0; opacity: 0; transition: opacity .25s; }
+.co-veil.on { opacity: 1; }
+.co-hole { position: absolute; border-radius: 18px; box-shadow: 0 0 0 4000px rgba(24, 11, 3, .6), inset 0 0 0 4px var(--dbd-gold); transition: left .2s, top .2s, width .2s, height .2s; }
+.co-hole[hidden] { display: none; }
+.co-cap { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; color: var(--dbd-cream); -webkit-text-stroke: 8px var(--dbd-ink); paint-order: stroke fill;
+  line-height: 1; letter-spacing: .3px; text-shadow: 0 4px 0 var(--dbd-ink); }
+.co-cap[hidden] { display: none; }
+.co-hand { position: absolute; left: 0; top: 0; width: 56px; height: 70px; filter: drop-shadow(0 4px 0 rgba(43, 23, 8, .35)); will-change: transform; }
+.co-hand[hidden] { display: none; }
+.co-hand svg { position: relative; display: block; transform-origin: 20px 6px; transition: transform .12s; }
+.co-hand.down svg { transform: scale(.88) translateY(3px); }
+.co-press { position: absolute; left: 20px; top: 6px; width: 46px; height: 46px; margin: -23px 0 0 -23px; box-sizing: border-box; border-radius: 50%; border: 4px solid var(--dbd-gold);
+  opacity: 0; transform: scale(.4); transition: transform .18s, opacity .18s; }
+.co-hand.down .co-press { opacity: 1; transform: scale(1); }
+.co-bars i { display: none; position: absolute; left: 0; right: 0; height: 8vh; background: #120A03; }
+.co-bars i:first-child { top: 0; }
+.co-bars i:last-child { bottom: 0; }
+#dbdCoach.cinema .co-bars i { display: block; }
+.co-skip { position: absolute; right: max(12px, env(safe-area-inset-right)); top: calc(8vh + 8px); height: 40px; padding: 0 12px 0 16px; font-size: 18px; gap: 4px; pointer-events: auto; }
+.co-skip[hidden] { display: none; }
+.co-boom { position: absolute; inset: 0; }
+.co-boom[hidden] { display: none; }
+.co-flash { position: absolute; inset: 0; background: #FFF8DD; opacity: 0; }
+.co-ring { position: absolute; left: var(--x); top: var(--y); width: 40px; height: 40px; margin: -20px 0 0 -20px; box-sizing: border-box; border-radius: 50%; border: 10px solid var(--dbd-gold); opacity: 0; }
+.co-boom > i { position: absolute; left: var(--x); top: var(--y); width: 18px; height: 18px; margin: -9px 0 0 -9px; box-sizing: border-box; border: 2.5px solid var(--dbd-ink); border-radius: 50%;
+  background: var(--dbd-gold); opacity: 0; }
+.co-deed { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(24, 11, 3, .45); }
+.co-paper { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 34px 22px; border: 3px solid var(--dbd-ink); border-radius: 16px;
+  background: #FFFDF4; box-shadow: 0 6px 0 var(--dbd-ink); transform: scale(var(--s, 1)); }
+.co-bank { font: 700 12px 'Courier Prime', 'Courier New', monospace; letter-spacing: .6px; }
+.co-paper b { font: 400 34px var(--ui-display); line-height: 1; }
+.co-stamp { padding: 2px 14px; border: 4px solid var(--dbd-deep-green); border-radius: 10px; color: var(--dbd-deep-green); font: 400 30px var(--ui-display); letter-spacing: 1px;
+  transform: rotate(-7deg); background: rgba(234, 246, 220, .6); }
+#dbdHud.intro .hb-bank, #dbdHud.intro .hb-chain, #dbdHud.intro .hb-rush, #dbdHud.intro .hb-sound, #dbdHud.intro .hb-pause, #dbdHud.intro .hb-badge { visibility: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .co-cap.pop { animation: coPop .32s cubic-bezier(.2, 1.6, .4, 1) both; }
+  @keyframes coPop { from { transform: translate(-50%, -100%) scale(.4); opacity: 0; } to { transform: translate(-50%, -100%) scale(1); opacity: 1; } }
+  .co-hand.hint svg { animation: coHint 1.1s ease-in-out infinite; }
+  @keyframes coHint { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-5px, -11px); } }
+  #dbdCoach.cinema .co-bars i { animation: coBar .5s ease-out both; }
+  @keyframes coBar { from { transform: scaleY(0); } to { transform: none; } }
+  .co-flash { animation: coFlash .75s ease-out both; }
+  @keyframes coFlash { 0% { opacity: 0; } 12% { opacity: 1; } 100% { opacity: 0; } }
+  .co-ring { animation: coRing .8s ease-out both; }
+  @keyframes coRing { from { transform: scale(.2); opacity: 1; } to { transform: scale(16); opacity: 0; } }
+  .co-boom > i { animation: coBit .95s cubic-bezier(.2, .8, .4, 1) both; animation-delay: var(--dl); }
+  @keyframes coBit { 0% { transform: translate(0, 0) scale(.5); opacity: 1; } 75% { opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(1.1); opacity: 0; } }
+  body.co-shake #stage { animation: coShake .45s linear both; }
+  @keyframes coShake { 0%, 100% { transform: none; } 15% { transform: translate(-9px, 5px); } 30% { transform: translate(8px, -6px); } 45% { transform: translate(-6px, -4px); }
+    60% { transform: translate(5px, 5px); } 80% { transform: translate(-3px, 2px); } }
+  .co-paper { animation: coPaper .45s cubic-bezier(.2, 1.4, .4, 1) both; }
+  @keyframes coPaper { from { transform: translateY(70px) scale(calc(var(--s, 1) * .7)); opacity: 0; } to { transform: scale(var(--s, 1)); opacity: 1; } }
+  .co-stamp { animation: coStamp .4s cubic-bezier(.3, 1.5, .5, 1) .55s both; }
+  @keyframes coStamp { from { transform: rotate(-7deg) scale(2.6); opacity: 0; } to { transform: rotate(-7deg) scale(1); opacity: 1; } }
+}
+
+/* the won card: star 2 is the piggy bank filling past the farm's goal, star 3 the rival's face */
+.spare-row .sp-pig { display: flex; flex: none; }
+.sp-bar { position: relative; flex: 1; max-width: 180px; height: 14px; box-sizing: border-box; border: 2.5px solid var(--dbd-ink); border-radius: 8px; background: #fff; }
+.sp-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--w); border-radius: 5px; background: #F4A5B8; }
+.spare-row.ok .sp-bar i { background: var(--dbd-gold); }
+.sp-bar b { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--dbd-ink); }
+.sp-amt { font: 400 18px var(--ui-display); white-space: nowrap; }
+.sp-amt small { font: 900 12px var(--ui-body); color: var(--dbd-muted); }
+.rv-face { display: flex; flex: none; margin: -6px 0 -4px; }
+.rv-face.down svg { transform: rotate(-80deg) translate(-3px, 4px); }
+@media (prefers-reduced-motion: no-preference) {
+  .sp-bar i { animation: spFill 1s cubic-bezier(.3, .7, .4, 1) .7s both; }
+  @keyframes spFill { from { width: 0; } }
+}
