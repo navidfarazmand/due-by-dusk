@@ -17027,6 +17027,11 @@ export function startGeminiEngine() {
     out: null,
     on: true,
     lastHit: 0,
+    // v0.11: the effects were about 15 dB under the music on a phone speaker (Navid: "when the music is playing
+    // the sound effect has no sound"). The master is now 2.1 (was 0.32) times the player's Sound effects
+    // volume (Settings, 0.64 at the default 80%), and a soft limiter keeps stacked hits from clipping.
+    base: 2.1,
+    vol: 0.64,
     init() {
       if (this.ctx || !this.on) return;
       try {
@@ -17034,11 +17039,31 @@ export function startGeminiEngine() {
         if (!AC) return;
         this.ctx = new AC();
         this.out = this.ctx.createGain();
-        this.out.gain.value = 0.32;
-        this.out.connect(this.ctx.destination);
+        this.out.gain.value = this.base * this.vol;
+        // soft limiter: straight up to 0.6, then a smooth knee to 1 (inputs up to 2x full scale)
+        const ws = this.ctx.createWaveShaper(),
+          n = 2049,
+          curve = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+          const u = ((i / (n - 1)) * 2 - 1) * 2,
+            a = Math.abs(u);
+          curve[i] = Math.sign(u) * (a <= 0.6 ? a : 0.6 + 0.4 * Math.tanh((a - 0.6) / 0.4));
+        }
+        ws.curve = curve;
+        ws.oversample = '2x';
+        const pre = this.ctx.createGain();
+        pre.gain.value = 0.5; // the curve spans -2..2
+        this.out.connect(pre);
+        pre.connect(ws);
+        ws.connect(this.ctx.destination);
       } catch (e) {
         this.ctx = null;
       }
+    },
+    /** The player's volume for the effects (a gain, 0..1). */
+    setVol(v) {
+      this.vol = Math.max(0, Math.min(1, +v || 0));
+      if (this.out) this.out.gain.setTargetAtTime(this.base * this.vol, this.ctx.currentTime, 0.03);
     },
     ok() {
       if (!this.on) return false;
@@ -17088,7 +17113,7 @@ export function startGeminiEngine() {
       const n = performance.now();
       if (n - this.lastHit < 55) return;
       this.lastHit = n;
-      this.noise(0.05, { v: crit ? 0.4 : 0.15, f: crit ? 900 : 2600, q: 1.1 });
+      this.noise(0.05, { v: crit ? 0.4 : 0.26, f: crit ? 900 : 2600, q: 1.1 });
       if (crit) this.tone(150, 0.13, { type: 'triangle', v: 0.25, to: 70 });
     },
     pop(n) {
@@ -17098,8 +17123,8 @@ export function startGeminiEngine() {
     },
     coin() {
       if (!this.ok()) return;
-      this.tone(1568, 0.1, { type: 'square', v: 0.05 });
-      this.tone(2093, 0.24, { type: 'square', v: 0.045, at: 0.07 });
+      this.tone(1568, 0.1, { type: 'square', v: 0.07 });
+      this.tone(2093, 0.24, { type: 'square', v: 0.063, at: 0.07 });
     },
     baah(v = 1) {
       if (!this.ok()) return;
@@ -17133,7 +17158,7 @@ export function startGeminiEngine() {
     },
     tick() {
       if (!this.ok()) return;
-      this.tone(1200, 0.04, { type: 'square', v: 0.035 });
+      this.tone(1200, 0.04, { type: 'square', v: 0.06 });
     },
     dawn() {
       if (!this.ok()) return;
@@ -17163,7 +17188,7 @@ export function startGeminiEngine() {
     },
     click() {
       if (!this.ok()) return;
-      this.tone(660, 0.05, { type: 'square', v: 0.035 });
+      this.tone(660, 0.05, { type: 'square', v: 0.06 });
     },
     flame() {
       if (!this.ok()) return;
@@ -23520,6 +23545,11 @@ export function startGeminiEngine() {
           if (meta.sound) Sound.init();
           save();
           renderAll();
+        },
+        /** The effects volume from Settings (a gain, 0..1); `sample` plays a coin so the player hears it. */
+        setSfxVolume: (v, sample) => {
+          Sound.setVol(v);
+          if (sample && Sound.vol > 0) Sound.coin();
         },
         setPaused: (v) => setPaused(v),
         /** The shell's equipped tool (style plus multipliers); takes effect now and at the next day start. */

@@ -54,6 +54,17 @@ export function trackById(id: string): Track | undefined {
 const VOLUME: Record<Mood, number> = { field: 0.5, menu: 0.4 };
 const PREVIEW_VOLUME = 0.45;
 const FADE_PER_SEC = 0.9;
+/** The rooster at full effects volume (it follows the Sound effects slider, not the music). */
+const ROOSTER_VOLUME = 0.45;
+
+/** Settings → volume sliders (v0.11): 0–100 %, 80 % by default. */
+export const DEFAULT_VOLUME = 80;
+
+/** A slider's percent as a gain. Squared, so the slider feels even to the ear (50 % is about -12 dB). */
+export function volGain(pct: number): number {
+  const v = Math.max(0, Math.min(1, (Number.isFinite(pct) ? pct : DEFAULT_VOLUME) / 100));
+  return v * v;
+}
 
 /** One-file builds inline audio as data: URLs; blob URLs stream and seek better, so convert them. */
 function playableSrc(src: string, set: (url: string) => void): void {
@@ -83,6 +94,10 @@ export class Music {
   private ourPause = new WeakSet<HTMLAudioElement>();
   private lastError = '';
   private retries = 0;
+  /** The player's music volume, as a gain (Settings). */
+  private gain = volGain(DEFAULT_VOLUME);
+  /** The effects volume, for the rooster. */
+  private sfxGain = volGain(DEFAULT_VOLUME);
 
   constructor(
     private enabled: boolean,
@@ -93,7 +108,7 @@ export class Music {
     if (choice?.menu && trackById(choice.menu)) this.choice.menu = choice.menu;
     this.rooster = new Audio();
     this.rooster.preload = 'auto';
-    this.rooster.volume = 0.7;
+    this.rooster.volume = ROOSTER_VOLUME * this.sfxGain;
     playableSrc(roosterUrl, u => (this.rooster.src = u));
     document.addEventListener('visibilitychange', () => this.setHidden(document.hidden));
     window.addEventListener('dbd:ad-open', () => {
@@ -155,6 +170,13 @@ export class Music {
     this.apply();
   }
 
+  /** The two volume sliders, in percent. The music fades to its new level. */
+  setVolumes(music: number, sfx: number): void {
+    this.gain = volGain(music);
+    this.sfxGain = volGain(sfx);
+    this.apply();
+  }
+
   setMood(m: Mood): void {
     if (this.mood === m) return;
     this.mood = m;
@@ -202,6 +224,7 @@ export class Music {
   crow(soundOn: boolean): boolean {
     if (!soundOn || !this.unlocked || this.hidden) return false;
     try {
+      this.rooster.volume = Math.min(1, ROOSTER_VOLUME * this.sfxGain);
       this.rooster.currentTime = 0;
       void this.rooster.play().catch(() => {});
       return true;
@@ -275,9 +298,10 @@ export class Music {
   /** Which track should be heard now, and how loud. */
   private wanted(): { id: string; vol: number } | null {
     if (!this.unlocked || this.hidden || this.adOn) return null;
-    if (this.preview) return { id: this.preview, vol: PREVIEW_VOLUME };
-    if (!this.enabled) return null;
-    return { id: this.choice[this.mood], vol: VOLUME[this.mood] };
+    // a preview in the track picker plays even when the slider is at zero (at the default level then)
+    if (this.preview) return { id: this.preview, vol: PREVIEW_VOLUME * (this.gain > 0 ? this.gain : volGain(DEFAULT_VOLUME)) };
+    if (!this.enabled || this.gain <= 0) return null;
+    return { id: this.choice[this.mood], vol: VOLUME[this.mood] * this.gain };
   }
 
   private apply(): void {

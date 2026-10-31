@@ -62,6 +62,9 @@ export interface Settings {
   menuTrack: string;
   /** The player's language (v0.11); unset means the device's language when it is one of ours. */
   lang?: string;
+  /** Volume sliders (v0.11), 0–100 %; unset means the default (80 %). */
+  musicVol?: number;
+  sfxVol?: number;
 }
 
 /** Economy version. 10: v0.10's longer farms and small-step workshop (older workshop levels are refunded). */
@@ -227,6 +230,10 @@ export function parseGame(raw: string | null): GameSave {
       menuTrack: str(o.settings.menuTrack, g.settings.menuTrack),
     };
     if (isLang(o.settings.lang)) g.settings.lang = o.settings.lang;
+    for (const k of ['musicVol', 'sfxVol'] as const) {
+      const v = o.settings[k];
+      if (typeof v === 'number' && Number.isFinite(v)) g.settings[k] = Math.max(0, Math.min(100, Math.round(v)));
+    }
   }
   if (o.seen && typeof o.seen === 'object') for (const k of Object.keys(o.seen)) g.seen[k] = !!o.seen[k];
   if (o.totals && typeof o.totals === 'object') {

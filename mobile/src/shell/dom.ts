@@ -54,6 +54,21 @@ export const ICON = {
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 C4.5 8.2 8.2 5.6 12.6 5.6 C16.4 5.6 19.4 7.6 20.2 10.6 L22 11 L21.7 14 L20 14.6 C19.4 16.3 18.1 17.6 16.4 18.3 L16 21 H13.4 L13 19 H10.4 L10 21 H7.4 L7 18 C5.4 16.8 4.5 14.8 4.5 12.5 Z" fill="#F4A5B8" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/><path d="M10 5.9 L12.4 3.2 L13.6 6" fill="#F4A5B8" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16.6" cy="10.4" r="1.2" fill="${INK}"/><path d="M9.5 8.6 H13.6" stroke="${INK}" stroke-width="2" stroke-linecap="round"/><path d="M4.6 12 C3.2 11.8 2.4 10.8 2.6 9.6" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linecap="round"/></svg>`,
   diamond: (size = 16) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6 L6 2.5 H10 L13 6 L8 14 Z" fill="#7FD1F5" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 6 H13 M6 2.5 L8 6 L10 2.5 M8 6 V14" stroke="${INK}" stroke-width="1.1" fill="none"/></svg>`,
+  /** A bank notice (the bills tile, the day card's bill). */
+  notice: (size = 24) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5Z" fill="#FFFDF4" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/><path d="M15 3v4h4" fill="none" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 11h8M8 14.5h8M8 18h5" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  /** A wooden chest (the perks tile). */
+  chest: (size = 24) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5C3 6 6 4.5 12 4.5S21 6 21 10.5Z" fill="#B9773E" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><rect x="3" y="10.5" width="18" height="9.5" rx="1.5" fill="#B9773E" stroke="${INK}" stroke-width="1.8"/><path d="M7 10.5V20M17 10.5V20" stroke="#6B4A2E" stroke-width="2"/><rect x="10" y="9" width="4" height="5" rx="1" fill="#FFC23D" stroke="${INK}" stroke-width="1.5"/></svg>`,
+  /** A wrench (the upgrades tile). */
+  wrench: (size = 24) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.8 3.6a5 5 0 0 0-5.7 6.5l-5.6 5.6a2.3 2.3 0 0 0 3.3 3.3l5.6-5.6a5 5 0 0 0 6.5-5.7l-2.9 2.9-2.8-.5-.5-2.8Z" fill="#D9DEE6" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/></svg>`,
+  /** The sun coming up (the Start button). */
+  sunrise: (w = 40) =>
+    `<svg width="${w}" height="${Math.round((w * 28) / 40)}" viewBox="0 0 40 28" aria-hidden="true"><path d="M8 23a12 12 0 0 1 24 0Z" fill="#FFF4DC" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><path d="M20 3.5v4.5M7 9l3 3M33 9l-3 3M2.5 23h35" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round"/></svg>`,
+  /** A green check (a bill that is covered). */
+  check: (size = 24) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#6DBE45" stroke="${INK}" stroke-width="2.4"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   gear: () =>
     `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.9 1.9M17.5 17.5l1.9 1.9M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.9-1.9M17.5 6.5l1.9-1.9"/></svg>`,
   sound: () =>

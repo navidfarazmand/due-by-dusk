@@ -158,6 +158,8 @@ export interface EngineApi {
   refreshStats(): void;
   addDiamonds(n: number): void;
   setSound(on: boolean): void;
+  /** The effects volume (a gain, 0..1); `sample` plays a coin at the new level. */
+  setSfxVolume(v: number, sample?: boolean): void;
   setPaused(v: boolean): void;
   setTool(t: unknown): void;
   statsWith(t: unknown): Record<string, number | string | boolean>;

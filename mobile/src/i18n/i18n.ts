@@ -54,6 +54,11 @@ export function t(s: string, vars?: Record<string, string | number>): string {
   return fill(dict[s] ?? s, vars);
 }
 
+/** A name used inside a sentence ("your seed loan"): lower case, except in German, where nouns keep their capital. */
+export function inner(s: string): string {
+  return cur === 'de' ? s : s.toLowerCase();
+}
+
 /** Singular or plural: t1(n, '{n} day', '{n} days'). */
 export function tn(n: number, one: string, many: string, vars?: Record<string, string | number>): string {
   return t(n === 1 ? one : many, { n, ...vars });

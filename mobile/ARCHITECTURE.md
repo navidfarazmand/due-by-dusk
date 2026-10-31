@@ -1,4 +1,4 @@
-# Due by Dusk mobile architecture (v0.10)
+# Due by Dusk mobile architecture (v0.11)
 
 Landscape farm game: Gemini's v0.6.05 farm engine runs the harvest days; Claude's game shell runs everything around them. TypeScript + Vite + Capacitor 8. Android and iOS hold local web assets; no server is needed to play.
 
@@ -16,6 +16,10 @@ Landscape farm game: Gemini's v0.6.05 farm engine runs the harvest days; Claude'
   - `flair.ts`: the Bling Barn, looks only (tool finish, swing trail, bird, coins), bought with ribbons. `lookFor` becomes `window.__DBD_LOOK`, which the engine reads when it draws.
   - `daily.ts`: the daily farm and duels. One-day side farms on a seeded field with a set loadout, medal targets, and the day's tries.
 - `src/shell/`: the screens (menu, world and country maps, farmhouse, sundown, won and lost, modals; `extras.ts` for the skill map, Bling Barn, daily farm and duel), the farm HUD, rewarded offers, music (eight tracks, one picked for the field and one for the menus), the item and skill drawings (`looks.ts`), art lookup and layout scaling.
+  - `coach.ts`: the intro and the lessons. It drives the real field (a hand that touches through pointer events, slow motion, spotlights, a word or two) instead of rule screens: the intro farm's boss falls about ten seconds before sunset, then each mechanic (cut, chain, Charge Cleave, Storm, rival, diamonds, ribbons, savings after the deed) is shown the first time it matters. `seen` flags in the save keep each lesson to once; `window.__DBD_NO_COACH` turns it off for tests.
+  - `rival.ts`: the face drawn for each city's rival (the HUD chip that shows how close today is to their best day, the won card).
+  - Volume: Settings keeps a music and a sound-effects volume (0–100 %, squared to a gain). `music.ts` multiplies its track levels by the music gain and the dawn rooster by the effects gain; the engine's effects go through `setSfxVolume` (master gain 2.1 × the effects gain, then a soft limiter). v0.11 raised the effects by about 20 dB against the music: they had been about 15 dB under it on a phone speaker.
+- `src/i18n/`: five languages. `t('English text', {vars})` and `tn(n, one, many)` look the English text up in `fr.ts`, `es.ts`, `pt.ts` or `de.ts` (English is the key, so untranslated text shows in English); `tx` translates the words the engine draws on the field (`window.__DBD_T`). The language is the player's pick (`settings.lang`), else the phone's. `npm run i18n:check` lists any text without a translation.
 - `src/platform/`: native storage mirror, lifecycle, orientation, haptics and AdMob (rewarded ads only, with Google's consent message).
 
 ## Rules worth keeping
@@ -23,7 +27,7 @@ Landscape farm game: Gemini's v0.6.05 farm engine runs the harvest days; Claude'
 - Two pots. The farm's cash (in the engine) pays its bills; savings (`g.wallet`, what is left after a deed and free-coin ads) buy upgrades and tools, and so does farm cash above the farm's mark. A foreclosure keeps savings, workshop levels and tools.
 - A farm pays out once (`paid` per city, `mark` and `spent` per run): during a run only farm cash above the farm's `paid` buys upgrades, and only cash above it after the deed is banked. Quitting or losing still adds what the farm's cash bought. So replays, retries and quitting early can't mine a farm twice (Navid, 29 Oct).
 - A bill is paid on the evening it is due, never earlier, so every farm runs its full length and each crop stage lasts two days.
-- Perks come in a chest after every bill but the deed: wooden (+5%), silver (+10% and one-per-farm tricks), gold before the deed (+15%, Heavy swing, Storm, Cleaver). They last for that farm.
+- Perks come in a chest after every bill but the deed: wooden (+5%), silver (+10% and one-per-farm tricks), gold (+15%, Heavy swing, Storm, Cleaver). The kind is rolled (`CHEST_ODDS` in the engine: 70/22/8 % for the first two chests, 30/50/20 % after; the chest before the deed is always gold). One rewarded ad per chest upgrades it while it is closed, at least one kind and sometimes to diamond (four gold perks, pick two). Perks last for that farm.
 - Touch: the sickle cuts exactly under the finger; a second finger held anywhere charges the Charge Cleave and lifting it strikes. Mouse: hold the button; keyboard: Space. The field keeps crops at least 3.5% of its width (or the camera cutout) away from each side.
 - A boss farm's deed cannot be paid until its boss is knocked out. Boss health is set when the farm starts, from the player's strongest owned tool (`focusSec` seconds of steady hitting), and it carries over between days.
 - Ads are never forced. Every reward (double a day, free coins, finish an upgrade, one more day) is a button the player can ignore, shown only while an ad is loaded, and granted only when AdMob reports the reward.
@@ -34,7 +38,7 @@ Landscape farm game: Gemini's v0.6.05 farm engine runs the harvest days; Claude'
 
 ## Verification and delivery
 
-Run `npm ci`, `npm test`, `npm run build` and `npm run test:e2e` (five landscape sizes: the day loop, farmhouse layout on every tab, tools, the boss farm with a test ad, settings, the skill map, the Bling Barn, a daily farm that must leave the real farm untouched, a two-player duel, the first farm's carrots and chest, the payout mark on a replay, touch position and the second-finger charge, crops away from the edges, and text staying inside its cards on a short screen). `npm run build:pc` plus `node scripts/inline-html.mjs dist-pc Due-by-Dusk.html` makes one self-contained HTML for playing on a computer (with labelled test ads).
+Run `npm ci`, `npm test`, `npm run build` and `npm run test:e2e` (five landscape sizes: the day loop, the farmhouse day card and every panel tab, tools, the boss farm with a test ad, settings and the volume sliders, a language switch that the whole game follows, the intro and its Skip, a chest upgraded by an ad to diamond, perks surviving a reload, the skill map, the Bling Barn, a daily farm that must leave the real farm untouched, a two-player duel, the first farm's carrots and chest, the payout mark on a replay, touch position and the second-finger charge, crops away from the edges, and text staying inside its cards on a short screen). `npm run i18n:check` reports untranslated text. `npm run build:pc` plus `node scripts/inline-html.mjs dist-pc Due-by-Dusk.html` makes one self-contained HTML for playing on a computer (with labelled test ads).
 
 Keep generated builds, dependencies, local SDK paths, signing material and test output out of Git.
 

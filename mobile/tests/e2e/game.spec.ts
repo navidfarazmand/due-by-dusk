@@ -50,50 +50,64 @@ test('menu to the first farm and through one day', async ({ page }) => {
   await act(page, 'enter', 'CA');
   await expect(page.locator('.scr-country .city-card')).toContainText('Charlottetown');
   await act(page, 'farm', 'ca_charlottetown');
-  await expect(page.locator('.scr-farmhouse .notice')).toContainText('Notice 1 of 5');
-  // the first bill is paid on the evening it is due, not before
-  await expect(page.locator('.scr-farmhouse .btn-pay')).toHaveText('Pay on day 2');
+  // the day card: the day, the bill coming up, and one big button
+  await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Day 1');
+  await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('Seed loan');
+  await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('Due day 2');
+  // the first bill is paid on the evening it is due, not before: the button starts the day
+  await expect(page.locator('.scr-farmhouse .dc-go[data-act="start"]')).toBeVisible();
+  await expect(page.locator('.scr-farmhouse .dc-dots i')).toHaveCount(10);
   await fast(page);
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
   await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
   await act(page, 'farmhouse');
-  await expect(page.locator('.scr-farmhouse .fh-title')).toContainText('Day 2');
+  await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Day 2');
   expect(errors).toEqual([]);
 });
 
-test('the farmhouse fits the screen on every tab', async ({ page }) => {
+test('the farmhouse fits the screen: the day card between the tiles, and every panel tab', async ({ page }) => {
   await boot(page, seeded(CA.slice(0, 5), 3000, { tools: { owned: ['sickle', 'scythe'], equipped: 'sickle', mods: {} } }));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_kelowna'));
   await expect(page.locator('.scr-farmhouse')).toBeVisible();
-  for (const tab of ['workshop', 'tools', 'perks', 'bills']) {
-    await act(page, 'tab', tab);
-    const r = await page.evaluate(() => {
-      const box = (sel: string) => {
+  const boxes2 = (sels: string[]) =>
+    page.evaluate(ss => {
+      const out: Record<string, { l: number; r: number; t: number; b: number }> = {};
+      for (const sel of ss) {
         const b = document.querySelector(sel)!.getBoundingClientRect();
-        return { l: b.left, r: b.right, t: b.top, b: b.bottom };
-      };
-      return {
-        notice: box('.scr-farmhouse .notice'), panel: box('.scr-farmhouse .fh-panel'), top: box('.scr-farmhouse .fh-top'),
-        action: box('.scr-farmhouse .btn-top'), pay: box('.scr-farmhouse .btn-pay'), vw: innerWidth, vh: innerHeight,
-      };
-    });
-    expect(r.notice.r).toBeLessThanOrEqual(r.panel.l + 1);
-    expect(r.top.r).toBeLessThanOrEqual(r.action.l + 1);
-    expect(r.top.b).toBeLessThanOrEqual(r.panel.t + 1);
-    for (const b of [r.notice, r.panel, r.action]) {
-      expect(b.l).toBeGreaterThanOrEqual(0);
-      expect(b.r).toBeLessThanOrEqual(r.vw);
-      expect(b.b).toBeLessThanOrEqual(r.vh);
-    }
-    expect(r.pay.b).toBeLessThanOrEqual(r.notice.b);
+        out[sel] = { l: b.left, r: b.right, t: b.top, b: b.bottom };
+      }
+      return { out, vw: innerWidth, vh: innerHeight };
+    }, sels);
+  const L = await boxes2(['.scr-farmhouse .fh-top', '.scr-farmhouse .grp.ml', '.scr-farmhouse .day-card', '.scr-farmhouse .grp.mr', '.scr-farmhouse .dc-go']);
+  const [top, left, card, right, go] = Object.values(L.out);
+  expect(left.r).toBeLessThanOrEqual(card.l + 1);
+  expect(card.r).toBeLessThanOrEqual(right.l + 1);
+  expect(top.b).toBeLessThanOrEqual(card.t + 1);
+  for (const b of [left, card, right, go]) {
+    expect(b.l).toBeGreaterThanOrEqual(0);
+    expect(b.r).toBeLessThanOrEqual(L.vw);
+    expect(b.b).toBeLessThanOrEqual(L.vh);
+  }
+  expect(go.b).toBeLessThanOrEqual(card.b);
+  await act(page, 'panel', 'workshop');
+  for (const tab of ['workshop', 'tools', 'perks', 'bills']) {
+    // the panel's own tabs (the tiles behind it are covered)
+    await page.locator(`.scr-modal .pn-head [data-act="panel"][data-arg="${tab}"]`).click();
+    await expect(page.locator(`.scr-modal .pn-head [data-arg="${tab}"].on`)).toBeVisible();
+    const P = await boxes2(['.scr-modal .modal-card', '.scr-modal .pn-done']);
+    const [m, done] = Object.values(P.out);
+    expect(m.l).toBeGreaterThanOrEqual(0);
+    expect(m.r).toBeLessThanOrEqual(P.vw);
+    expect(m.b).toBeLessThanOrEqual(P.vh + 1);
+    expect(done.b).toBeLessThanOrEqual(m.b);
   }
 });
 
 test('tools: buy the scythe, put it in hand and add an attachment', async ({ page }) => {
   await boot(page, seeded(CA, 15000));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('us_austin'));
-  await act(page, 'tab', 'tools');
+  await act(page, 'panel', 'tools');
   await act(page, 'tool', 'scythe');
   await act(page, 'buy-tool', 'scythe');
   await expect(page.locator('.tool-detail .td-head')).toContainText('In your hands');
@@ -108,7 +122,7 @@ test('tools: buy the scythe, put it in hand and add an attachment', async ({ pag
 test('boss farm: the deed waits until the boss is knocked out', async ({ page }) => {
   const errors = await boot(page, seeded(CA.slice(0, 5), 0));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_kelowna'));
-  await expect(page.locator('.scr-farmhouse .notice')).toContainText('King Russet');
+  await expect(page.locator('.scr-farmhouse .dc-boss')).toContainText('King Russet');
   // pay the first five bills with test money (each on its due evening) so the deed is the current bill
   for (let i = 0; i < 5; i++) {
     await page.evaluate(() => {
@@ -125,7 +139,9 @@ test('boss farm: the deed waits until the boss is knocked out', async ({ page })
   expect(bill.name).toBe('The deed');
   expect(bill.bossBlock).toBe(true);
   expect(bill.canPay).toBe(false);
-  await expect(page.locator('.scr-farmhouse .btn-pay')).toHaveText('Boss first');
+  // the deed waits in the boss's pocket: the boss row is lit and the day can still start
+  await expect(page.locator('.scr-farmhouse .dc-boss.hot')).toBeVisible();
+  await expect(page.locator('.scr-farmhouse .dc-go[data-act="start"]')).toBeVisible();
   // a test tool strong enough to knock the boss out in a moment
   await page.evaluate(() =>
     (window as any).__DBD_ENGINE.setTool({ style: 'blaster', dmg: 1e5, speed: 3, reach: 1, crit: 0, value: 1, gold: 0, burn: 0, targets: 40, range: 3000, storm: false, frost: false }),
@@ -166,6 +182,59 @@ test('settings show the credits and keep the toggles', async ({ page }) => {
   await act(page, 'close');
   const g = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g.settings.music).toBe(false);
+});
+
+test('volume: music and sound effects each have a slider, kept after a reload', async ({ page }) => {
+  await boot(page);
+  await act(page, 'settings');
+  const music = page.locator('.scr-modal input[data-vol="music"]');
+  const sfx = page.locator('.scr-modal input[data-vol="sound"]');
+  await expect(music).toHaveValue('80');
+  await expect(sfx).toHaveValue('80');
+  // switch the effects off, then move their slider: they come back on at the new level
+  await page.locator('.scr-modal [data-act="sound"]').click();
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().sound)).toBe(false);
+  await page.locator('.scr-modal input[data-vol="sound"]').fill('35');
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().sound)).toBe(true);
+  await expect(page.locator('.scr-modal .vol-row:has([data-vol="sound"]) .toggle-row')).toHaveAttribute('aria-pressed', 'true');
+  await music.fill('0');
+  const g = await page.evaluate(() => (window as any).__DBD_APP.g.settings);
+  expect(g.musicVol).toBe(0);
+  expect(g.sfxVol).toBe(35);
+  await page.evaluate(() => (window as any).__DBD_APP.saveNow());
+  await page.reload();
+  await page.waitForFunction(() => !!(window as any).__DBD_APP);
+  await act(page, 'settings');
+  await expect(page.locator('.scr-modal input[data-vol="music"]')).toHaveValue('0');
+  await expect(page.locator('.scr-modal input[data-vol="sound"]')).toHaveValue('35');
+});
+
+test('languages: German from the menu, the whole game follows, kept after a reload', async ({ page }) => {
+  const errors = await boot(page);
+  await page.locator('.scr-menu [data-act="languages"]').click();
+  await expect(page.locator('.scr-modal .lang-row')).toHaveCount(5);
+  // opened from the menu: Done only (Back would lead to Settings)
+  await expect(page.locator('.scr-modal [data-act="settings"]')).toHaveCount(0);
+  await page.locator('.scr-modal [data-act="lang"][data-arg="de"]').click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+  await expect(page.locator('.scr-modal [data-act="lang"][data-arg="de"]')).toHaveAttribute('aria-pressed', 'true');
+  await act(page, 'close');
+  await expect(page.locator('.scr-menu [data-act="play"]')).toContainText('Spielen');
+  await page.reload();
+  await page.waitForFunction(() => !!(window as any).__DBD_APP);
+  await expect(page.locator('.scr-menu [data-act="play"]')).toContainText('Spielen');
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Tag 1');
+  await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('Saatkredit');
+  // from Settings the list has Back as well
+  await page.evaluate(() => (window as any).__DBD_APP.openSettings());
+  await expect(page.locator('.scr-modal')).toContainText('Soundeffekte');
+  await page.locator('.scr-modal [data-act="languages"]').click();
+  await expect(page.locator('.scr-modal [data-act="settings"]')).toHaveCount(1);
+  await page.locator('.scr-modal [data-act="lang"][data-arg="en"]').click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Day 1');
+  expect(errors).toEqual([]);
 });
 
 type Box = { l: number; r: number; t: number; b: number };
@@ -254,7 +323,7 @@ test('daily farm: one try on a seeded field, then the real farm is back as it wa
   await expect(page.locator('.scr-side [data-act="ad-daily"]')).toBeVisible();
   await page.locator('.scr-side [data-act="go"]').click();
   await act(page, 'continue');
-  await expect(page.locator('.scr-farmhouse .fh-title')).toContainText('Toronto');
+  await expect(page.locator('.scr-farmhouse .dc-city')).toContainText('Toronto');
   expect(errors).toEqual([]);
 });
 
@@ -433,13 +502,16 @@ test('a farm pays out once: a replay keeps its cash for the bills and banks only
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
   await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(300));
   await page.evaluate(() => (window as any).__DBD_APP.refresh());
-  await expect(page.locator('.scr-farmhouse .up-cap')).toContainText('$500');
+  await act(page, 'panel', 'workshop');
+  await expect(page.locator('.scr-modal .up-cap')).toContainText('$500');
   // $300 on the farm is below the $500 mark: no upgrade can be bought with it
-  await expect(page.locator('.scr-farmhouse .btn-buy.gold')).toHaveCount(0);
+  await expect(page.locator('.scr-modal .btn-buy.gold')).toHaveCount(0);
+  await expect(page.locator('.scr-farmhouse .ft-badge')).toHaveCount(0);
   await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(300));
   await page.evaluate(() => (window as any).__DBD_APP.refresh());
   // $600 on the farm: $100 above the mark buys the cheapest upgrades
-  await expect(page.locator('.scr-farmhouse .btn-buy.gold').first()).toBeVisible();
+  await expect(page.locator('.scr-modal .btn-buy.gold').first()).toBeVisible();
+  await expect(page.locator('.scr-farmhouse .ft-badge')).toBeVisible();
   const cost = await page.evaluate(() => (window as any).__DBD_WORKSHOP.upgradeCost('hands', 2));
   await act(page, 'buy', 'hands');
   const g = await page.evaluate(() => (window as any).__DBD_APP.g);
@@ -511,7 +583,7 @@ test('cards keep their text inside on a short phone screen', async ({ page }) =>
   const spills = () =>
     page.evaluate(() => {
       const out: string[] = [];
-      for (const el of document.querySelectorAll('#dbdScreens .statbox, #dbdScreens .up-card, #dbdScreens .notice, #dbdScreens .card-foot, #dbdScreens .city-card')) {
+      for (const el of document.querySelectorAll('#dbdScreens .statbox, #dbdScreens .up-card, #dbdScreens .day-card, #dbdScreens .fh-tile, #dbdScreens .card-foot, #dbdScreens .city-card')) {
         const h = el as HTMLElement;
         if (!h.offsetParent) continue;
         const r = h.getBoundingClientRect();

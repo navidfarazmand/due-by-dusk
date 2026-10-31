@@ -50,6 +50,10 @@ Keep the key and its passwords private (for example in a password manager), outs
 
 Built in a Claude session with a new upload key (Play needs one before the first upload): versionCode 1000, demo ads, for the closed test. The key, its password, the four secret values and the bundle went to Navid's computer (`play_store` next to the game files); nothing of the key is in this repository. CI bundles (1000 + run number) come after it.
 
+### Closed-test testers (30 Oct 2026)
+
+The closed test's tester list is the Google Group `due-by-dusk-testers@googlegroups.com` (https://groups.google.com/g/due-by-dusk-testers, anyone can join). A tester joins the group, then opts in at https://play.google.com/apps/testing/com.khoreh.duebydusk and installs from Play. Production access needs at least 12 testers opted in for 14 days in a row.
+
 ### Building and uploading a Play bundle
 
 1. GitHub **Actions > Play release bundle > Run workflow** (leave *production ads* off for closed testing).

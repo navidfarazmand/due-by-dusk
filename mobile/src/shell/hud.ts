@@ -250,7 +250,9 @@ export class FarmHud {
     E.Secs.classList.toggle('late', late);
     const rushing = h.rushT > 0;
     E.Rush.classList.toggle('on', rushing);
-    E.RushLbl.textContent = rushing ? t('RUSH!') : t('RUSH');
+    const rl = rushing ? t('RUSH!') : t('RUSH');
+    E.RushLbl.textContent = rl;
+    E.RushLbl.classList.toggle('long', rl.length > 5);
     E.RushN.textContent = rushing ? h.rushT.toFixed(1) + 's' : h.rushCharge + '/' + h.rushGoal;
     E.RushFill.style.width = ((rushing ? h.rushT / h.rushDur : h.rushCharge / h.rushGoal) * 100).toFixed(1) + '%';
     const rv = this.rival;

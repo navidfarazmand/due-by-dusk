@@ -88,6 +88,7 @@ header.bar, aside.ledger, #fieldSign, #eventLabel, #hud, .dbd-badge, .dbd-btns, 
 .hb-rush { position: absolute; right: 104px; top: 10px; width: 104px; height: 44px; border-radius: 14px; }
 .hb-rush .rl { position: absolute; left: 10px; top: 5px; font-weight: 900; font-size: 10.5px; line-height: 14px; letter-spacing: .6px; color: var(--dbd-muted); }
 .hb-rush .rn { position: absolute; right: 9px; top: 4px; font-family: var(--ui-display); font-size: 15px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.hb-rush .rl.long { font-size: 9px; letter-spacing: 0; top: 6px; }
 .hb-rush .rbar { position: absolute; left: 9px; right: 9px; top: 23px; height: 10px; box-sizing: border-box; border: 2px solid var(--dbd-ink); border-radius: 5px; background: #fff; overflow: hidden; }
 .hb-rush .rbar i { display: block; height: 100%; width: 0; background: #FF9A3D; }
 .hb-rush.on { background: var(--dbd-gold); animation: dbdRushGlow .5s ease-in-out infinite alternate; }

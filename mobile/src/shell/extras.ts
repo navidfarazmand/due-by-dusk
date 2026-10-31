@@ -10,7 +10,7 @@ import type { GameSave } from '../game/progress';
 import { ART, PREVIEW, bandFor } from './art';
 import { ICON, TOOL_ICON, INK, esc, money } from './dom';
 import { barnPreview, flairIcon, ribbonIcon, skillGlyph } from './looks';
-import { lang, t, tn } from '../i18n/i18n';
+import { inner, lang, t, tn } from '../i18n/i18n';
 
 const LOCALE = { en: 'en-US', fr: 'fr-FR', es: 'es-ES', pt: 'pt-BR', de: 'de-DE' } as const;
 
@@ -82,7 +82,7 @@ function skillCardHtml(g: GameSave, id: string): string {
   const own = g.skills.includes(d.id);
   const chk = canLearn(g, d.id);
   const status = own ? 'Learned' : chk.ok ? 'Ready' : reqsMet(g, d) ? 'Ready' : 'Locked';
-  const statusTxt = t(status);
+  const statusTxt = status === 'Learned' ? t('Learned') : status === 'Ready' ? t('Ready') : t('Locked');
   const kids = SKILLS.filter(s => s.reqs.includes(d.id));
   const kidNames = kids.map(k => (revealed(g, k) || own ? t(k.name) : '?')).join(', ');
   const needs = d.reqs.map(r => t(skillDef(r)!.name)).join(d.reqMode === 'any' ? ` ${t('or')} ` : ', ');
@@ -233,11 +233,11 @@ export function duelHtml(s: DuelSetup, cities: string[], tools: ToolId[]): strin
     <div class="dl-head"><span class="dl-cal">${duelIcon(22)}</span><span class="eyebrow">${t('DUEL · TWO PLAYERS, ONE PHONE')}</span></div>
     <h2 class="du-title">${t('Same farm. Same crops. Most money wins.')}</h2>
     <p class="dl-text">${t('Each player farms one day on the same field with the same tool and upgrades. Pass the phone in between.')}</p>
-    <div class="du-row"><span class="du-k">${t('Farm')}</span>
+    <div class="du-row" role="group" aria-label="${t('Farm')}">
       <button type="button" class="st-btn st-sq du-arrow" data-act="duel-city" data-arg="${cities[(i - 1 + n) % n]}" aria-label="${t('Previous farm')}">${ICON.back()}</button>
       <div class="du-farm">${farmStrip(s.cityId)}<b>${esc(ct.short)}</b></div>
       <button type="button" class="st-btn st-sq du-arrow" data-act="duel-city" data-arg="${cities[(i + 1) % n]}" aria-label="${t('Next farm')}"><span style="transform: scaleX(-1); display: flex">${ICON.back()}</span></button></div>
-    <div class="du-row"><span class="du-k">${t('Tool')}</span><div class="du-tools">${toolBtns}</div></div>
+    <div class="du-row" role="group" aria-label="${t('Tool')}"><div class="du-tools">${toolBtns}</div></div>
     <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="go" data-arg="menu">${t('Back')}</button>
       <button type="button" class="st-btn gold btn-md flex1" data-act="duel-start">${ICON.play()}<span>${t('{name} goes first', { name: esc(s.names[0]) })}</span></button></div>
   </div></div>`;
@@ -288,7 +288,7 @@ export function sideResultHtml(o: SideOutcome): string {
     return `<div class="grp mc" style="width: 420px; height: 300px"><div class="st-chip result-card du-pass">
       <div class="letter-head"><span class="eyebrow">${t('DUEL')} · ${esc(ct.short.toUpperCase())}</span></div>
       <h2 class="r-title">${t('{name} harvested {amt}.', { name: esc(names[0]), amt: money(sc[0]) })}</h2>
-      <p class="r-text">${t('Pass the phone to {name}. Same field, same crops, same {tool}. Beat {amt} to win.', { name: esc(names[1]), tool: esc(t(toolDef(o.def.tool).name).toLowerCase()), amt: money(sc[0]) })}</p>
+      <p class="r-text">${t('Pass the phone to {name}. Same field, same crops, same {tool}. Beat {amt} to win.', { name: esc(names[1]), tool: esc(inner(t(toolDef(o.def.tool).name))), amt: money(sc[0]) })}</p>
       <div class="du-hand" aria-hidden="true">${duelIcon(54)}</div>
       <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="duel-quit">${t('Stop')}</button>
         <button type="button" class="st-btn gold btn-md flex1" data-act="duel-p2">${ICON.play()}<span>${t('{name}, start', { name: esc(names[1]) })}</span></button></div></div></div>`;
