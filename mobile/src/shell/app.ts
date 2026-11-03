@@ -2102,15 +2102,18 @@ export class GameApp {
     const dbl = !d.doubled && earned > 0 && canOffer(this.g, 'double')
       ? `<button type="button" class="st-btn blue btn-md flex1 ad-btn" data-act="ad-double">${ICON.play()}<span>${t('Double it: +{amt}', { amt: money(earned) })}</span></button>`
       : '';
-    return `<div class="grp mc" style="width: 430px; height: 350px"><div class="st-chip sundown-card">
-      <div class="sd-head"><h2>${t('Sundown!')}</h2><span class="eyebrow">${esc(ct.short.toUpperCase())} · ${t('DAY {day}', { day: d.day })}</span></div>
-      <div class="stat3"><div class="statbox"><div class="k">${t('CROPS CUT')}</div><div class="v">${d.today.count}</div></div>
-        <div class="statbox"><div class="k">${t('BEST CHAIN')}</div><div class="v">×${d.today.best}</div></div>
-        <div class="statbox"><div class="k">${t('EARNED')}</div><div class="v money">${money(earned)}${d.doubled ? '<small> ×2</small>' : ''}</div></div></div>
-      <div class="sd-notice"><div>${t('GRUMBLE &amp; SONS · NOTICE {n} OF {m}', { n: b.index + 1, m: b.count })}</div><div>${esc(t(b.name))}${dots}${amtTxt}</div><div class="sd-due">${dueLine}</div>${stamp}</div>
-      <div class="sd-rec"><div class="sd-rec-row"><span>${crownLine}</span><span>${Math.min(100, pct)}%</span></div>
-        <div class="meter"><i style="width: ${Math.min(100, pct)}%"></i></div></div>
-      ${bossLine}
+    // v0.11.1 (Navid, 3 Nov: less text, bigger numbers): what the day earned, big; the bill on one line; crops, the
+    // chain and the city record behind the "i"
+    void dots;
+    void crownLine;
+    void pct;
+    const crownNow = d.crownToday ? `<div class="sd-crown">👑 ${t('New city crown! You beat {rival}.', { rival: esc(ct.rival) })}</div>` : '';
+    return `<div class="grp mc" style="width: 430px; height: 300px"><div class="st-chip sundown-card slim">
+      <div class="sd-head"><h2>${t('Sundown!')}</h2><span class="eyebrow">${esc(ct.short.toUpperCase())} · ${t('DAY {day}', { day: d.day })}</span>
+        <button type="button" class="up-info" data-act="info" data-arg="day" aria-label="${t('About today')}"><i class="info-i">i</i></button></div>
+      <div class="sd-hero"><span class="sd-big money">+${money(earned)}</span>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('earned today')}</span></div>
+      <div class="sd-bill">${ICON.notice(26)}<span class="sb-name">${esc(t(b.name))}</span><b class="sb-amt">${money(b.amt)}</b><span class="sb-due">${dueLine}</span>${stamp}</div>
+      ${crownNow}${bossLine}
       <div class="sd-actions">${dbl}<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button></div>
     </div></div>`;
   }
@@ -2142,16 +2145,9 @@ export class GameApp {
         (r.diamonds ? `<button type="button" class="dia dia-btn" data-act="skills" aria-label="${t('Spend it on the skill map')}">${ICON.diamond(16)} +${r.diamonds}</button>` : '');
       return `<div class="grp mc" style="width: 470px; height: 350px"><div class="st-chip result-card">
         <div class="letter-head"><span class="eyebrow">${t('GRUMBLE &amp; SONS SAVINGS &amp; LOAN')}</span><span class="stamp ok big">${t('PAID IN FULL')}</span></div>
-        <h2 class="r-title">${t('The {farm} farm is yours.', { farm: esc(ct.short) })}</h2>
-        <p class="r-text">${t('Dear former customer, enclosed is the deed. We are, frankly, upset.')}</p>
+        <h2 class="r-title">${t('The {farm} farm is yours.', { farm: esc(ct.short) })}<button type="button" class="up-info" data-act="info" data-arg="farm" aria-label="${t('About this farm')}"><i class="info-i">i</i></button></h2>
         <div class="star-rows">${starRow}</div>${plan.bossFight ? this.clearedLine(ct.country) : ''}
-        <div class="r-rewards"><span>${tn(r.days, '{n} day', '{n} days')} · ${t('{amt} earned', { amt: money(r.earned) })} · ${
-          r.mark > 0
-            ? r.banked > 0
-              ? t('+{amt} above your best', { amt: money(r.banked) })
-              : t('nothing above your best of {amt}', { amt: money(r.mark) })
-            : t('+{amt} saved', { amt: money(r.banked) })
-        }</span><span class="r-gains">${gains}</span></div>
+        <div class="r-rewards"><span class="r-saved"><b class="money">+${money(r.banked)}</b> ${t('to your savings')}</span><span class="r-gains">${gains}</span></div>
         <div class="r-actions"><button type="button" class="st-btn blue btn-md flex1" data-act="map" data-arg="${r.cityId}">${t('Map')}</button>
           ${nextOpen ? `<button type="button" class="st-btn gold btn-md flex1" data-act="next-city">${t('Next farm')}${ICON.next()}</button>` : ''}</div>
       </div></div>`;
@@ -2415,6 +2411,27 @@ export class GameApp {
     let txt = '';
     if (what === 'mark' && run)
       txt = t('This farm has paid you {amt} already. Its cash buys upgrades once you hold more than that; your savings always can.', { amt: money(run.mark) });
+    const rows = (list: Array<[string, string]>) =>
+      `<div class="info-rows">${list.map(([k, v]) => `<div class="ir"><span>${k}</span><b>${v}</b></div>`).join('')}</div>`;
+    if (what === 'day' && this.day && run) {
+      const d = this.day, plan = planFor(run.cityId), p = cityProgress(this.g, run.cityId), b = engine().bill();
+      this.openModal('info', `<h2 class="m-title">${t('Today')}</h2>${rows([
+        [t('Crops cut'), String(d.today.count)],
+        [t('Best chain'), '×' + d.today.best],
+        [t('City record'), p.crown ? t('Yours! Best day {amt}', { amt: money(p.bestDay) }) : `${money(p.bestDay)} / ${money(plan.record)}`],
+        [t('Bill'), t('Notice {n} of {m}', { n: b.index + 1, m: b.count })],
+      ])}<button type="button" class="st-btn gold btn-md" data-act="close">${t('Got it')}</button>`, 380);
+      return;
+    }
+    const r = this.result;
+    if (what === 'farm' && r && r.kind === 'won') {
+      this.openModal('info', `<h2 class="m-title">${t('Dear former customer, enclosed is the deed. We are, frankly, upset.')}</h2>${rows([
+        [t('Days'), String(r.days)],
+        [t('Earned'), money(r.earned)],
+        [t('Saved'), r.mark > 0 ? (r.banked > 0 ? t('+{amt} above your best', { amt: money(r.banked) }) : t('nothing above your best of {amt}', { amt: money(r.mark) })) : money(r.banked)],
+      ])}<button type="button" class="st-btn gold btn-md" data-act="close">${t('Got it')}</button>`, 400);
+      return;
+    }
     if (!txt) return;
     this.openModal('info', `<p class="m-text info-text">${ICON.coin(18)} ${txt}</p><button type="button" class="st-btn gold btn-md" data-act="close">${t('Got it')}</button>`, 380);
   }

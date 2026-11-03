@@ -16783,8 +16783,8 @@ export function startGeminiEngine() {
       tick: tickRate,
       R: swingRad,
       day: daySecs,
-      max: Math.round(maxCrops * dens),
-      spawn: spawnRate / dens / (pl ? pl.spawn || 1 : 1),
+      max: Math.round(maxCrops * dens * FIELD.count),
+      spawn: spawnRate / dens / (pl ? pl.spawn || 1 : 1) / FIELD.spawn,
       vm: valMul,
       cc: Math.min(0.65, 0.04 + 0.04 * shed.clover + 0.03 * H.horseshoe + 0.07 * count(P, 'clover')),
       cm: count(P, 'heavy') ? 4.5 : 2.8,
@@ -16857,8 +16857,8 @@ export function startGeminiEngine() {
       tick,
       R,
       day,
-      max: Math.round(maxCrops * dens),
-      spawn: spawnRate / dens / (pl.spawn || 1),
+      max: Math.round(maxCrops * dens * FIELD.count),
+      spawn: spawnRate / dens / (pl.spawn || 1) / FIELD.spawn,
       vm,
       cc: Math.min(0.65, 0.04 + FX.crit * shed.clover + 0.02 * n('clover') + 0.04 * n('clover2') + (T.crit || 0)),
       cm: n('heavy') ? 3.3 : 2.8,
@@ -16910,9 +16910,15 @@ export function startGeminiEngine() {
     return p ? p.val || 1 : 1;
   }
   /** A crop's base value and toughness on this farm: the ladder's numbers when the plan has them. */
+  /* A fuller field (v0.11.1, Navid 3 Nov: "the vegetables are too small and too few; the fun is many ready to cut at
+     once"): crops are drawn bigger, the field holds more of them, a bunch pops up together every few seconds so one
+     swipe cuts several, and each crop pays less so a day still pays about what the bills expect (plan.ts fieldPay, measured
+     with a bot that chases the nearest crop all day, old field against new). Tests and tuning can override it with
+     window.__DBD_FIELD before the game loads. */
+  const FIELD = Object.assign({ size: 1.25, count: 2, spawn: 1.7, pay: 1, chain: 1.8, wave: 3.2, waveMin: 3, waveMax: 5 }, window.__DBD_FIELD || {});
   function cropBaseVal(type) {
     const p = plan();
-    return p && p.cropVal && p.cropVal[type] != null ? p.cropVal[type] : CROP[type].val;
+    return (p && p.cropVal && p.cropVal[type] != null ? p.cropVal[type] : CROP[type].val) * FIELD.pay;
   }
   function cropBaseHp(type) {
     const p = plan();
@@ -17703,11 +17709,12 @@ export function startGeminiEngine() {
     rushCharge = 0;
   const RUSH_GOAL = 22,
     RUSH_DURATION = 4;
+  // with a fuller field (FIELD.chain) a chain is easier to keep going, so each tier asks for a longer chain
   const CHAIN_TIERS = [
     { count: 0, mul: 1 },
-    { count: 8, mul: 1.25 },
-    { count: 18, mul: 1.5 },
-    { count: 30, mul: 2 },
+    { count: Math.round(8 * FIELD.chain), mul: 1.25 },
+    { count: Math.round(18 * FIELD.chain), mul: 1.5 },
+    { count: Math.round(30 * FIELD.chain), mul: 2 },
   ];
   let crops = [],
     parts = [],
@@ -17716,6 +17723,7 @@ export function startGeminiEngine() {
     goatTimer = Infinity;
   let tickAcc = 0,
     spawnAcc = 0,
+    waveT = 2,
     sweepT = 0,
     sweepA = 0,
     shakeA = 0,
@@ -17771,7 +17779,7 @@ export function startGeminiEngine() {
   const STAGE2_AGE = 0.16;
   const STAGE3_AGE = 0.36;
   function depth(y) {
-    return 1.2 * (0.8 + 0.45 * FarmScene_clamp((y - FIELD_TOP) / (HW - FIELD_TOP), 0, 1));
+    return FIELD.size * 1.2 * (0.8 + 0.45 * FarmScene_clamp((y - FIELD_TOP) / (HW - FIELD_TOP), 0, 1));
   }
   /* ---- seeded fields (daily farm, duels): each spawn, prop, crow, goat and timer gets its own seeded
      stream, so the n-th crop is the same for everyone playing that seed ---- */
@@ -17938,6 +17946,7 @@ export function startGeminiEngine() {
     crows = [];
     bolts = [];
     spawnAcc = 0;
+    waveT = 1.6;
     tickAcc = 0;
     combo = 0;
     comboTimer = 0;
@@ -19706,7 +19715,18 @@ export function startGeminiEngine() {
         swing();
       }
       toolUpdate(dt);
-      spawnAcc += dt; // Charge Cleave charging while holding pointer or Spacebar
+      spawnAcc += dt;
+      // a bunch of crops pops up together every few seconds, so they ripen at once and one swipe cuts several
+      waveT -= dt;
+      if (waveT <= 0) {
+        const R = fieldRng('crop');
+        waveT = FIELD.wave * (0.85 + R() * 0.3);
+        const n = Math.min(cur.max - crops.length, Math.round(FIELD.waveMin + R() * (FIELD.waveMax - FIELD.waveMin)));
+        if (n > 0) {
+          const at = { x: PAD + 60 + R() * Math.max(1, worldW - PAD * 2 - 120), y: FIELD_TOP + 70 + R() * (HW - FIELD_TOP - 130), d: 62 };
+          for (let i = 0; i < n; i++) spawnCrop(i * 0.03, at);
+        }
+      } // Charge Cleave charging while holding pointer or Spacebar
       // v0.11.1: no second finger. With the Charge attachment, a finger held still (or the mouse button, or Space)
       // charges; lifting it strikes. Moving the finger after a full charge keeps it until the lift.
       const still = pointer.kind !== 'mouse' && pointer.down && performance.now() - (pointer.mt || 0) > 220;

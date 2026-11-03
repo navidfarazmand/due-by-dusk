@@ -270,6 +270,14 @@ export function valMul(k: number): number {
   return Math.pow(1.115, Math.min(6, k)) * Math.pow(1.37, Math.max(0, k - 6));
 }
 
+/** The fuller field (v0.11.1): twice the crops on the field, in bunches, so each crop pays less where supply was the
+ * limit. Measured with a bot that chases the nearest ripe crop all day, old field against new: the first farm earned
+ * 2.3 times as much (it ran out of crops before), Austin 1.4 times, Tours the same (cutting is the limit there). So a
+ * crop pays 45% on the first farm, rising 4.5 points a farm to the full price from the thirteenth. */
+export function fieldPay(k: number): number {
+  return Math.min(1, 0.45 + 0.045 * Math.max(0, k));
+}
+
 function roundMoney(v: number): number {
   if (v < 100) return Math.max(10, Math.round(v / 5) * 5);
   if (v < 1000) return Math.round(v / 10) * 10;
@@ -344,7 +352,7 @@ export function planFor(cityId: string): CityPlan {
     // crops toughen a little each day; each bill brings a tougher crop instead of toughening the old ones
     hpDay: 0.02,
     hpBill: 1,
-    val: valMul(k),
+    val: valMul(k) * fieldPay(k),
     density: 1 + 0.02 * k,
     spawn: 1 + 0.015 * k,
     dayBase: DAY_SECONDS,

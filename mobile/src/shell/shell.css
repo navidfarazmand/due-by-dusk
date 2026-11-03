@@ -740,3 +740,24 @@
 @media (prefers-reduced-motion: no-preference) { .co-pulse { animation: coPulse 0.8s ease-in-out 4; } }
 .co-pulse { outline: 4px solid var(--dbd-gold); outline-offset: 3px; border-radius: 18px; }
 @keyframes coPulse { 50% { transform: scale(1.06); } }
+
+/* v0.11.1 (Navid, 3 Nov: less text, bigger numbers): Sundown shows what the day earned, big, and the bill on one line */
+.sd-head .up-info { margin-left: 4px; }
+.sd-head .eyebrow { margin-left: auto; }
+.sd-hero { display: flex; align-items: baseline; justify-content: center; gap: 10px; padding: 4px 0 2px; }
+.sd-big { font: 400 64px/1 var(--ui-display); color: var(--dbd-deep-green, #2E7D32); letter-spacing: .5px; }
+.sd-x2 { font: 400 26px var(--ui-display); color: var(--dbd-ink); }
+.sd-lbl { font-weight: 900; font-size: 14px; color: var(--dbd-muted); }
+.sd-bill { position: relative; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 2.5px solid var(--dbd-ink); border-radius: 14px; background: #FFFDF4; min-height: 52px; box-sizing: border-box; }
+.sd-bill .sb-name { font-weight: 900; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sd-bill .sb-amt { font: 400 24px var(--ui-display); }
+.sd-bill .sb-due { font-weight: 800; font-size: 12px; color: var(--dbd-muted); white-space: nowrap; margin-right: auto; }
+.sd-bill .stamp { position: static; transform: rotate(-6deg); flex: none; }
+.sd-crown { font-weight: 900; font-size: 14px; text-align: center; }
+.r-title { display: flex; align-items: center; gap: 8px; }
+.r-title .up-info { margin: 0; }
+.r-saved { font-weight: 900; font-size: 15px; color: var(--dbd-ink); }
+.r-saved b { font: 400 30px var(--ui-display); color: var(--dbd-deep-green, #2E7D32); margin-right: 4px; }
+.info-rows { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 12px; }
+.info-rows .ir { display: flex; justify-content: space-between; gap: 12px; padding: 7px 10px; border: 2px solid var(--dbd-ink); border-radius: 10px; background: #fff; font-weight: 800; font-size: 14px; }
+.info-rows .ir b { font: 400 18px var(--ui-display); }
