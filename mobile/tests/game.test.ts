@@ -3,7 +3,7 @@ import { BILL_COUNT, DAYS_PER_BILL, LADDER_HP, LADDER_VAL, allPlans, cropName, p
 import { BLASTER_RANGE_GAIN, bestPower, fieldPower } from '../src/game/power';
 import { COUNTRIES, ROUTE, isBossCity } from '../src/game/world';
 import {
-  bankAfterWin, cityLock, countryLock, newGame, nextCity, paidAfterRun, parseGame, spendableFarmCash, starGate, starsFor, toolLock,
+  bankAfterWin, cityLock, coinsForDays, countryLock, newGame, nextCity, paidAfterRun, parseGame, spendableFarmCash, starGate, starsFor, toolLock,
   walletAfterForeclosure, type GameSave, type RunInfo,
 } from '../src/game/progress';
 import { MAX_LEVEL, SHED_FX, UPGRADES, emptyLevels, oldWorkshopRefund, settleJob, startUpgrade, upgradeCost, upgradeDuration } from '../src/game/workshop';
@@ -145,6 +145,23 @@ describe('crop toughness follows the build', () => {
     expect(parseGame(JSON.stringify(g)).run?.tough).toBe(4);
     delete g.run.tough;
     expect(parseGame(JSON.stringify(g)).run?.tough).toBeUndefined();
+  });
+});
+
+describe('free coins follow the player\'s own days', () => {
+  it('pays about one ordinary day (the median of the last five), not the farm\'s estimate', () => {
+    expect(coinsForDays([80, 76, 84], 200)).toBe(80);
+    expect(coinsForDays([10, 500, 90, 100, 95, 85], 200)).toBe(100);
+    expect(coinsForDays([60, 100], 999)).toBe(80);
+  });
+  it('uses the estimate before any day, and never less than 20', () => {
+    expect(coinsForDays(undefined, 204)).toBe(200);
+    expect(coinsForDays([], 204)).toBe(200);
+    expect(coinsForDays([3], 200)).toBe(20);
+  });
+  it('a save keeps only the last five days', () => {
+    const g = parseGame(JSON.stringify({ ...newGame(), recentEarn: [1, 2, 3, 4, 5, 6, 7] }))!;
+    expect(g.recentEarn).toEqual([3, 4, 5, 6, 7]);
   });
 });
 

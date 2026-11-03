@@ -88,7 +88,7 @@ export const HUD_HTML = `<div id="dbdHud" hidden>
       <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="2.5" width="4.5" height="15" rx="1.6" fill="#2B1708"/><rect x="12" y="2.5" width="4.5" height="15" rx="1.6" fill="#2B1708"/></svg>
     </button>
   </div>
-  <div class="hb-bwrap"><div class="hb-banner" id="dbdBanner" hidden><span class="bic" id="dbdBannerIc">🐐</span><span class="btx"><span class="bt" id="dbdBannerT">Pasture stampede</span><span class="bd" id="dbdBannerD"></span></span></div></div>
+  <div class="hb-bwrap"><div class="hb-banner" id="dbdBanner" hidden><span class="bic" id="dbdBannerIc">🐐</span><span class="btx"><span class="bt" id="dbdBannerT">Pasture stampede</span><span class="bd" id="dbdBannerD"></span><span class="bh" id="dbdBannerH"></span></span></div></div>
 </div>`;
 
 type El = Record<string, HTMLElement & SVGElement>;
@@ -112,13 +112,14 @@ export class FarmHud {
     stage.insertAdjacentHTML('beforeend', HUD_HTML);
     this.root = document.getElementById('dbdHud') as HTMLElement;
     for (const k of ['Bank', 'Cash', 'BillFill', 'BillName', 'BillAmt', 'Jar', 'JarGold', 'Badge', 'Chain', 'Mult', 'ChainLbl', 'ChainFill', 'Next', 'ChainTimer',
-      'Arc', 'Sun', 'Secs', 'Boss', 'BossName', 'BossFill', 'Rush', 'RushLbl', 'RushN', 'RushFill', 'Sound', 'Pause', 'Banner', 'BannerIc', 'BannerT', 'BannerD',
+      'Arc', 'Sun', 'Secs', 'Boss', 'BossName', 'BossFill', 'Rush', 'RushLbl', 'RushN', 'RushFill', 'Sound', 'Pause', 'Banner', 'BannerIc', 'BannerT', 'BannerD', 'BannerH',
       'Rival', 'RivalFace', 'RivalFill', 'RivalAmt']) {
       this.E[k] = document.getElementById('dbd' + k) as HTMLElement & SVGElement;
     }
     this.E.Pause.addEventListener('click', () => engine().setPaused(true));
     this.E.Sound.addEventListener('click', () => this.onSound());
-    this.E.Badge.addEventListener('click', () => this.showBanner(false));
+    // the day's event: tapping its badge stops the field and shows the card until the next tap (Navid, 3 Nov)
+    this.E.Badge.addEventListener('click', () => this.showInfo());
     (window as any).__dbdCoin = () => this.coin();
   }
 
@@ -277,7 +278,35 @@ export class FarmHud {
     }
   }
 
-  private showBanner(first: boolean): void {
+  /** The event card on demand: the field holds still until the player taps anywhere. */
+  private showInfo(): void {
+    if (!this.ev) return;
+    let held = false;
+    try {
+      held = engine().hold(true);
+    } catch {
+      /* engine not ready */
+    }
+    this.showBanner(false, true);
+    const done = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.removeEventListener('pointerdown', done, true);
+      this.E.Banner.classList.remove('held');
+      this.shrink();
+      if (held) {
+        try {
+          engine().hold(false);
+        } catch {
+          /* engine gone */
+        }
+      }
+    };
+    // the tap that opened it must not close it
+    setTimeout(() => window.addEventListener('pointerdown', done, true), 0);
+  }
+
+  private showBanner(first: boolean, keep = false): void {
     const E = this.E;
     if (!this.ev) return;
     clearTimeout(this.bannerT);
@@ -286,11 +315,13 @@ export class FarmHud {
     E.Badge.textContent = icon;
     E.BannerT.textContent = cap(t(this.ev.title));
     E.BannerD.textContent = t(deviceText(this.ev.desc));
+    E.BannerH.textContent = keep ? t('Tap to continue') : '';
     E.Banner.getAnimations().forEach(a => a.cancel());
     E.Banner.hidden = false;
     E.Banner.animate([{ opacity: 0, transform: 'translateY(12px) scale(.92)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }], { duration: 220, easing: 'ease-out' });
     if (first) E.Badge.hidden = true;
-    this.bannerT = window.setTimeout(() => this.shrink(), first ? 2600 : 1800);
+    E.Banner.classList.toggle('held', keep);
+    if (!keep) this.bannerT = window.setTimeout(() => this.shrink(), first ? 2600 : 1800);
   }
 
   private shrink(): void {

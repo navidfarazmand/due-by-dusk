@@ -662,6 +662,8 @@
 .dc-go { flex: 1; height: 64px; border-radius: 20px; border-width: 4px; box-shadow: 0 6px 0 var(--dbd-ink); font-size: 34px; gap: 12px; white-space: nowrap; }
 .dc-go span { overflow: hidden; text-overflow: ellipsis; }
 .dc-extra { flex: none; }
+.dc-bank-sm { flex: none; height: 52px; padding: 0 14px; font-size: 17px; white-space: nowrap; }
+.dc-go.dc-more { font-size: 28px; }
 @media (prefers-reduced-motion: no-preference) {
   .dc-go[data-act="start"] { animation: dcGlow 1.8s ease-in-out infinite; }
   @keyframes dcGlow { 0%, 100% { box-shadow: 0 6px 0 var(--dbd-ink), 0 0 0 0 rgba(255, 194, 61, 0); } 50% { box-shadow: 0 6px 0 var(--dbd-ink), 0 0 0 9px rgba(255, 194, 61, .5); } }
@@ -679,3 +681,10 @@
 .dc-rn { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dc-rec { display: flex; align-items: center; gap: 4px; color: var(--dbd-ink); }
 .dc-rec b { font-weight: 400; font-size: 18px; }
+
+/* v0.11.1: the world map's crown count opens what crowns are; an "i" marks things that explain themselves */
+.crown-chip { cursor: pointer; font: inherit; color: inherit; }
+.info-i { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--dbd-ink); background: #fff;
+  font: italic 900 12px/1 Georgia, serif; color: var(--dbd-ink); flex: none; }
+.up-info { flex: none; align-self: center; padding: 4px; margin: 0 -4px; border: 0; background: none; cursor: pointer; }
+.up-info .info-i { width: 24px; height: 24px; font-size: 15px; box-shadow: 0 2px 0 var(--dbd-ink); }

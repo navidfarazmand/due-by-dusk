@@ -17916,6 +17916,7 @@ export function startGeminiEngine() {
     if (mode !== 'idle' || farm.pendingPerks || !el.modal.hidden || billStatus().tonight) return;
     dayCheckpoint = JSON.parse(JSON.stringify(farm));
     Sound.init();
+    held = false;
     updatePad();
     cur = stats();
     dayLen = cur.day;
@@ -17972,6 +17973,7 @@ export function startGeminiEngine() {
     if (mode !== 'day') return;
     if (window.__odDayEnded) window.__odDayEnded(Object.assign({}, today));
     dayCheckpoint = null;
+    held = false;
     if (bossCrop && !bossCrop.dead && farm.boss) farm.boss.hp = Math.max(1, bossCrop.hp);
     seeds = [];
     mode = 'dusk';
@@ -23309,12 +23311,15 @@ export function startGeminiEngine() {
     primaryTouch = null;
     chargeTouch = null;
   });
+  /* A quiet hold (v0.11.1): the field stops while the shell shows a card (the day's event, something new), with
+     no pause overlay. The shell lets go when the card is closed. */
+  let held = false;
   /* loop */ let last = 0;
   function FarmScene_frame(now) {
     const elapsed = last ? Math.max(0, (now - last) / 1000) : 0;
     last = now;
     if (elapsed > 3.5 && mode === 'day' && !paused) setPaused(true);
-    let remaining = Math.min(elapsed, 0.75) * (window.__DBD_TIMESCALE || 1);
+    let remaining = held ? 0 : Math.min(elapsed, 0.75) * (window.__DBD_TIMESCALE || 1);
     while (remaining > 0) {
       const step = Math.min(1 / 60, remaining);
       update(step);
@@ -23592,6 +23597,53 @@ export function startGeminiEngine() {
         },
         /** The whole engine state as JSON, to run a side farm (daily, duel) and come back. */
         snapshot: () => JSON.stringify({ meta, farm }),
+        /** Stops the field without the pause overlay while the shell shows a card; false lets it go. */
+        hold: (v) => {
+          held = !!v && mode === 'day';
+          if (held) {
+            pointer.active = false;
+            pointer.down = false;
+          }
+          return held;
+        },
+        /** Pause → Back to menu (v0.11.1): leaves the day; the farm goes back to how it was at dawn, as when the
+         *  app is closed mid-day, so the day can be played again. Returns what the day had earned so far. */
+        abandonDay: () => {
+          if (mode !== 'day') return -1;
+          const earned = today.earned;
+          if (dayCheckpoint) farm = dayCheckpoint;
+          dayCheckpoint = null;
+          mode = 'idle';
+          paused = false;
+          held = false;
+          rushTimer = 0;
+          rushCharge = 0;
+          comboTimer = 0;
+          combo = 0;
+          chargeT = 0;
+          chargeReady = false;
+          seeds = [];
+          crops = [];
+          dbdVortexes = [];
+          parts = [];
+          texts = [];
+          fieldProps = [];
+          crows = [];
+          bolts = [];
+          bossCrop = null;
+          goat = null;
+          keys.clear();
+          pointer.active = false;
+          pointer.down = false;
+          pointer.charge2 = false;
+          stage.classList.remove('playing');
+          syncPause();
+          cur = stats();
+          fillIdle();
+          save();
+          renderAll();
+          return earned;
+        },
         restore: (json) => {
           if (mode === 'day') return false;
           const o = JSON.parse(json);
@@ -23913,7 +23965,7 @@ export function startGeminiEngine() {
     }
     update(_timeMs, deltaMs) {
       const elapsed = Math.min(deltaMs / 1000, 0.75);
-      let remaining = elapsed * (window.__DBD_TIMESCALE || 1);
+      let remaining = held ? 0 : elapsed * (window.__DBD_TIMESCALE || 1);
       while (remaining > 0) {
         const step = Math.min(1 / 60, remaining);
         update(step);

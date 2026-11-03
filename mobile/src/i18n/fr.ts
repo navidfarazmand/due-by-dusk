@@ -755,5 +755,15 @@ const dict: Record<string, string> = {
   "Off": "Désactivé",
   "How far above your finger the sickle cuts": "À quelle hauteur au-dessus du doigt la faucille coupe",
   "It cuts here, above your finger": "Ça coupe ici, au-dessus de ton doigt",
+  "That leaves too little for tonight's bill of {amt}. Tap again to buy anyway.": "Il restera trop peu pour la facture de ce soir ({amt}). Touche encore pour acheter quand même.",
+  "The ad isn't ready yet. Try again in a moment.": "La pub n'est pas encore prête. Réessaie dans un instant.",
+  "The day ends now with what you have earned.": "La journée s'arrête maintenant avec ce que tu as gagné.",
+  "This day starts over next time.": "Cette journée recommencera la prochaine fois.",
+  "One more day": "Un jour de plus",
+  "About this farm's cash": "À propos de l'argent de cette ferme",
+  "Got it": "Compris",
+  "Every farm has a rival who holds the city's record: their best day. Earn more than that in a single day on that farm and the crown is yours, with ribbons for the Bling Barn.": "Chaque ferme a un rival qui détient le record de la ville : sa meilleure journée. Gagne plus que ça en une seule journée sur cette ferme et la couronne est à toi, avec des rubans pour la Grange Bling.",
+  "Your crowns: {n} of {total}": "Tes couronnes : {n} sur {total}",
+  "Tap to continue": "Touche pour continuer",
 };
 export default dict;

@@ -5,7 +5,7 @@ import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, ro
 import { cropName, planFor, toughnessFor, type CityPlan } from '../game/plan';
 import { bestPower } from '../game/power';
 import {
-  DEFAULT_TOUCH_LIFT, GAME_SAVE_KEY, MAX_TOUCH_LIFT, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, crownCount, newGame, nextCity, paidAfterRun,
+  DEFAULT_TOUCH_LIFT, GAME_SAVE_KEY, RECENT_DAYS, coinsForDays, MAX_TOUCH_LIFT, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, crownCount, newGame, nextCity, paidAfterRun,
   parseGame, spendableFarmCash, starGate, starsFor, todayKey, toolLock, totalStars, type GameSave, type RunInfo,
 } from '../game/progress';
 import { diamondsLeft, learn, resetSkills, skillDef } from '../game/skills';
@@ -113,6 +113,8 @@ export class GameApp {
   private toolSel: ToolId = 'sickle';
   /** The language list was opened from Settings (it then offers Back as well as Done). */
   private langFromSettings = false;
+  /** When a purchase last warned about tonight's bill (a second tap within 5 s buys anyway). */
+  private billWarnAt = 0;
   /** When the effects slider last played its sample coin. */
   private lastVolSample = 0;
   private day: DayResult | null = null;
@@ -175,7 +177,8 @@ export class GameApp {
     this.modal.className = 'scr scr-modal';
     this.modal.hidden = true;
     this.root.append(this.modal);
-    this.hud = new FarmHud($('stage'), () => this.toggleSound());
+    // the field's sound button opens the pause card, which holds the music and effects switches (Navid, 3 Nov)
+    this.hud = new FarmHud($('stage'), () => this.pauseForSound());
     this.hud.onRivalBeaten = () => {
       try {
         navigator.vibrate?.([30, 40, 70]);
@@ -206,6 +209,7 @@ export class GameApp {
     this.wireEngine();
     e.setSfxVolume(volGain(this.volume('sound')));
     e.setTouchLift(this.touchLift());
+    this.wirePauseCard();
     // v0.10 rebuilt the workshop and the farms: old upgrades were refunded, and an old farm's cash is saved too
     if (this.g.migratedRefund != null) {
       let farmCash = 0;
@@ -337,6 +341,7 @@ export class GameApp {
         p.crown = true;
         this.g.ribbons += ribbonsForWin(0, 0, true, false);
       }
+      this.g.recentEarn = [...(this.g.recentEarn || []), earned].slice(-RECENT_DAYS);
       this.g.totals.days++;
       this.g.totals.crops += d.today.count;
       this.g.totals.earned += d.today.earned;
@@ -484,7 +489,7 @@ export class GameApp {
     switch (act) {
       case 'go': this.show(arg as Screen); break;
       case 'play': this.play(); break;
-      case 'continue': this.continueGame(); break;
+      case 'continue': this.openMapAt(this.g.run ? this.g.run.cityId : nextCity(this.g)); break;
       case 'country': this.worldSel = arg as CountryCode; this.render('world'); break;
       case 'enter': this.countrySel = arg as CountryCode; this.citySel = this.firstCityToShow(arg as CountryCode); this.show('country'); break;
       case 'city': this.citySel = arg; this.render('country'); break;
@@ -519,8 +524,9 @@ export class GameApp {
       case 'languages': this.langFromSettings = arg === 'settings'; this.openLanguages(); break;
       case 'lang': this.chooseLang(arg); break;
       case 'crowns': this.openCrowns(); break;
+      case 'info': this.openInfo(arg); break;
       case 'workshop': this.openWorkshopModal(); break;
-      case 'sound': this.toggleSound(); break;
+      case 'sound': this.muteAll(); break;
       case 'music': this.g.settings.music = !this.g.settings.music; this.save(); this.music.setEnabled(this.g.settings.music); this.openSettings(); break;
       case 'haptics': this.g.settings.haptics = !this.g.settings.haptics; this.save(); this.openSettings(); window.dispatchEvent(new CustomEvent('dbd:haptics', { detail: this.g.settings.haptics })); break;
       case 'close': this.closeModal(); break;
@@ -551,13 +557,13 @@ export class GameApp {
     }
   }
 
-  private continueGame(): void {
-    if (this.g.run) {
-      this.citySel = this.g.run.cityId;
-      this.show('farmhouse');
-      return;
-    }
-    this.showCountryOf(nextCity(this.g));
+  /** The menu's next-farm pill: the world map, with the farm's country picked. */
+  private openMapAt(cityId: string): void {
+    const c = cityById(cityId) || ROUTE[0];
+    this.countrySel = c.country;
+    this.worldSel = c.country;
+    this.citySel = c.id;
+    this.show('world');
   }
 
   private showCountryOf(cityId: string): void {
@@ -649,11 +655,22 @@ export class GameApp {
     return !(window as unknown as { __DBD_NO_COACH?: boolean }).__DBD_NO_COACH;
   }
 
-  /** Play on the menu: a new player first watches the intro, then lands on the first farm. */
+  /** Play on the menu: a new player first watches the intro, then lands on the first farm. After that, Play goes
+   *  straight to the day card of the farm in progress, or starts the next farm on the route (Navid, 3 Nov: four taps
+   *  from Play to the field was too many). The world map is the next-farm pill. */
   private play(): void {
     const fresh = this.coachOn && !this.g.seen.intro && !this.g.run && this.g.totals.days === 0 && totalStars(this.g) === 0;
-    if (fresh) void this.playIntro();
-    else this.show('world');
+    if (fresh) return void this.playIntro();
+    if (this.g.run) {
+      this.citySel = this.g.run.cityId;
+      this.show('farmhouse');
+      return;
+    }
+    const next = nextCity(this.g);
+    if (next && cityLock(this.g, next).open) {
+      this.citySel = next;
+      this.farmHere(next);
+    } else this.show('world');
   }
 
   /** The intro (Navid, 30 Oct): the last seconds of a boss farm, played by the ghost finger. The boss falls to a
@@ -931,7 +948,20 @@ export class GameApp {
     const rest = cost - fromSavings;
     if (rest > 0) {
       const run = this.g.run;
-      if (!run || rest > spendableFarmCash(run, this.farmCash()) || !engine().spendCash(rest)) return false;
+      if (!run || rest > spendableFarmCash(run, this.farmCash())) return false;
+      // tonight's bill: a purchase that would leave too little for it asks for a second tap (Navid, 3 Nov)
+      try {
+        const b = engine().bill(), cash = this.farmCash(), now = Date.now();
+        if (b.tonight && cash >= b.amt && cash - rest < b.amt && now - this.billWarnAt > 5000) {
+          this.billWarnAt = now;
+          this.toast(t("That leaves too little for tonight's bill of {amt}. Tap again to buy anyway.", { amt: money(b.amt) }), 3200);
+          return false;
+        }
+      } catch {
+        /* engine not ready */
+      }
+      this.billWarnAt = 0;
+      if (!engine().spendCash(rest)) return false;
       run.spent += rest;
     }
     this.g.wallet -= fromSavings;
@@ -1020,7 +1050,7 @@ export class GameApp {
   private coinsReward(): number {
     const cityId = this.g.run ? this.g.run.cityId : nextCity(this.g);
     const p = planFor(cityId);
-    return Math.max(20, Math.round((p.dayRef * p.billMul * 0.6) / 10) * 10);
+    return coinsForDays(this.g.recentEarn, p.dayRef * p.billMul * 0.6);
   }
 
   private async adCoins(): Promise<void> {
@@ -1051,6 +1081,11 @@ export class GameApp {
   private async adExtraDay(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
+    if (!canOffer(this.g, 'extraDay')) {
+      this.busy = false;
+      this.toast(t("The ad isn't ready yet. Try again in a moment."));
+      return;
+    }
     const ok = await watch(this.g, 'extraDay');
     this.busy = false;
     if (ok && engine().extraDay()) this.toast(t('One more day. The bank can wait until tomorrow.'));
@@ -1306,12 +1341,106 @@ export class GameApp {
 
   // ------------------------------------------------------------------ sound
 
-  private toggleSound(): void {
-    const e = engine();
-    e.setSound(!e.state().sound);
-    this.hud.syncSound(e.state().sound);
+  /** Music or effects playing (what a mute button shows). */
+  private anySound(): boolean {
+    let sfx = true;
+    try {
+      sfx = engine().state().sound;
+    } catch {
+      /* engine not ready */
+    }
+    return sfx || this.g.settings.music;
+  }
+
+  /** The menu's mute button: everything off, or everything back on (it used to switch only the effects). */
+  private muteAll(): void {
+    const on = !this.anySound();
+    this.g.settings.music = on;
+    this.music.setEnabled(on);
+    try {
+      const e = engine();
+      e.setSound(on);
+      this.hud.syncSound(on);
+    } catch {
+      /* engine not ready */
+    }
+    this.save();
     this.syncSoundButtons();
-    if (!this.modal.hidden && this.modal.dataset.kind === 'settings') this.openSettings();
+    this.toast(on ? t('Sound on') : t('Sound off'), 1200);
+  }
+
+  /** The field's sound button: pause, with the music and effects switches on the pause card. */
+  private pauseForSound(): void {
+    try {
+      engine().setPaused(true);
+    } catch {
+      /* engine not ready */
+    }
+  }
+
+  /** The switches on the pause card (rebuilt each time it opens). */
+  private renderPauseSound(): void {
+    const box = document.getElementById('pauseSound');
+    if (!box) return;
+    let sfx = true;
+    try {
+      sfx = engine().state().sound;
+    } catch {
+      /* engine not ready */
+    }
+    const row = (act: string, label: string, onv: boolean) =>
+      `<button type="button" class="toggle-row" data-pact="${act}" aria-pressed="${onv}"><span class="tg${onv ? ' on' : ''}"><i></i></span>${label}</button>`;
+    box.innerHTML = row('music', t('Music'), this.g.settings.music) + row('sfx', t('Sound effects'), sfx);
+    const q = document.getElementById('btnQuitDay');
+    if (q) q.hidden = !!this.intro;
+    const n = document.getElementById('pauseNote');
+    if (n) n.textContent = this.side ? t('The day ends now with what you have earned.') : t('This day starts over next time.');
+    if (n) n.hidden = !!this.intro;
+  }
+
+  /** The pause card: switches, and Back to menu (Navid, 3 Nov: there was no way out of a day). */
+  private wirePauseCard(): void {
+    const ov = document.getElementById('pauseOverlay');
+    if (!ov) return;
+    new MutationObserver(() => {
+      if (!ov.hidden) this.renderPauseSound();
+    }).observe(ov, { attributes: true, attributeFilter: ['hidden'] });
+    ov.addEventListener('click', ev => {
+      const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-pact], #btnQuitDay');
+      if (!el) return;
+      if (el.id === 'btnQuitDay') {
+        this.quitDay();
+        return;
+      }
+      if (el.dataset.pact === 'music') {
+        this.g.settings.music = !this.g.settings.music;
+        this.music.setEnabled(this.g.settings.music);
+        this.save();
+      } else {
+        const e = engine();
+        e.setSound(!e.state().sound);
+        this.hud.syncSound(e.state().sound);
+      }
+      this.syncSoundButtons();
+      this.renderPauseSound();
+    });
+  }
+
+  /** Leaves the day from the pause card. A real farm goes back to dawn (as if the app had been closed); a daily
+   *  farm or a duel turn ends now with what it has earned. */
+  private quitDay(): void {
+    const e = engine();
+    if (e.state().mode !== 'day' || this.intro) return;
+    if (this.side) {
+      e.setPaused(false);
+      e.endDayNow();
+      return;
+    }
+    e.abandonDay();
+    this.day = null;
+    this.hud.dayEnded();
+    this.coach.cancel();
+    this.show('menu');
   }
 
   /** A volume slider's value in percent (80 % until the player moves it). */
@@ -1391,6 +1520,7 @@ export class GameApp {
     } catch {
       /* engine not ready */
     }
+    on = this.anySound();
     this.root.querySelectorAll<HTMLElement>('[data-act="sound"]').forEach(b => {
       b.setAttribute('aria-label', on ? 'Sound on' : 'Sound off');
       const w = b.querySelector<SVGElement>('.w'), x = b.querySelector<SVGElement>('.x');
@@ -1461,8 +1591,7 @@ export class GameApp {
         <button type="button" class="st-btn st-sq" data-act="sound" aria-label="${t('Sound')}">${ICON.sound()}</button></div></div>
       <div class="grp br" style="width: 300px; height: 80px"><div class="dock">
         <button type="button" class="st-btn dock-btn" data-act="skills">${ICON.diamond(24)}<span>${t('Skills')}</span>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
-        <button type="button" class="st-btn dock-btn" data-act="barn">${ribbonIcon(26)}<span>${t('Bling Barn')}</span></button>
-        <button type="button" class="st-btn blue dock-btn" data-act="crowns">${ICON.crown('#FFC23D', 26)}<span>${t('Crowns')}</span></button></div></div>`;
+        <button type="button" class="st-btn dock-btn" data-act="barn">${ribbonIcon(26)}<span>${t('Bling Barn')}</span></button></div></div>`;
   }
 
   /** The menu's farm at dusk, dimmed, behind the daily farm and duel cards. */
@@ -1510,7 +1639,7 @@ export class GameApp {
     return `<div class="bg fit"><img class="art" id="dbdWorldArt" src="${ART.world}" alt="${t('World map with the farm route')}">${pins}${clouds}</div>
       <div class="grp tl" style="width: 330px; height: 64px"><button type="button" class="st-btn st-sq top-btn" data-act="go" data-arg="menu" aria-label="${t('Back to menu')}">${ICON.back()}</button>
         <h2 class="st-chip top-chip">${t('World map')}</h2></div>
-      <div class="grp tr" style="width: 150px; height: 64px"><div class="st-chip top-chip right">${ICON.crown('#FFC23D', 24)}<span>${crownCount(this.g)} / ${ROUTE.length}</span></div></div>
+      <div class="grp tr" style="width: 150px; height: 64px"><button type="button" class="st-chip top-chip right crown-chip" data-act="crowns" aria-label="${t('City crowns')}">${ICON.crown('#FFC23D', 24)}<span>${crownCount(this.g)} / ${ROUTE.length}</span><i class="info-i">i</i></button></div>
       <div class="grp br" style="width: 300px; height: 200px"><div class="st-chip country-card">${card}</div></div>`;
   }
 
@@ -1630,14 +1759,15 @@ export class GameApp {
     const plan = planFor(run.cityId);
     // the one big button: start the day, or pay tonight's bill, or face the bank
     let main: string;
-    if (b.tonight && !b.canPay) main = `<button type="button" class="st-btn red dc-go" data-act="bank">${t('Face the bank')}</button>`;
+    // short on the bill: one more day (an ad, once a farm) is the big choice; the bank is the small one (Navid, 3 Nov)
+    const short = b.tonight && !b.canPay, extraLeft = short && !st.extraDayUsed;
+    if (extraLeft)
+      main = `<button type="button" class="st-btn gold dc-go dc-more" data-act="ad-extra">${ICON.play()}<span>${t('One more day')}</span></button>`;
+    else if (short) main = `<button type="button" class="st-btn red dc-go" data-act="bank">${t('Face the bank')}</button>`;
     else if (b.tonight) main = `<button type="button" class="st-btn gold dc-go" data-act="pay">${ICON.coin(30)}<span>${t('Pay {amt}', { amt: money(b.amt) })}</span></button>`;
     else
       main = `<button type="button" class="st-btn gold dc-go" data-act="start" aria-label="${t('Start day {day}', { day: st.day })}">${ICON.sunrise(46)}<span>${t('Start')}</span>${ICON.next()}</button>`;
-    const extra =
-      b.tonight && !b.canPay && !st.extraDayUsed && canOffer(this.g, 'extraDay')
-        ? `<button type="button" class="ad-chip dc-extra" data-act="ad-extra">${ICON.play()}<span>${t('+1 day')}</span></button>`
-        : '';
+    const extra = extraLeft ? `<button type="button" class="st-btn red dc-bank-sm" data-act="bank">${t('Face the bank')}</button>` : '';
     const coinsOffer = canOffer(this.g, 'coins')
       ? `<button type="button" class="ad-chip" data-act="ad-coins">${ICON.play()}<span>${t('Free {amt}', { amt: money(this.coinsReward()) })}</span></button>`
       : '';
@@ -1743,7 +1873,12 @@ export class GameApp {
     else if (this.fhTab === 'tools') body = this.toolsTab();
     else if (this.fhTab === 'perks') body = this.perksList(st.perks);
     else body = this.billsList();
-    card.innerHTML = `<div class="pn-head">${this.walletChip()}<div class="seg tabs">${tabs}</div></div><div class="fh-body pn-body">${body}</div>
+    // the payout note lives behind an "i" next to the cash so it no longer pushes the cards down (Navid, 3 Nov)
+    const run = this.g.run;
+    const info = run.mark > 0
+      ? `<button type="button" class="up-info" data-act="info" data-arg="mark" aria-label="${t('About this farm\'s cash')}"><i class="info-i">i</i></button>`
+      : '';
+    card.innerHTML = `<div class="pn-head">${this.walletChip()}${info}<div class="seg tabs">${tabs}</div></div><div class="fh-body pn-body">${body}</div>
       <button type="button" class="st-btn gold btn-md pn-done" data-act="close">${t('Done')}</button>`;
     layout(this.root);
   }
@@ -1820,11 +1955,7 @@ export class GameApp {
       return `<div class="up-card"><div class="up-name">${esc(t(u.name))}</div>
         <div class="up-eff"><span class="up-lv" aria-label="${t('Level {n}', { n: l })}">${t('Lv {n}', { n: l })}</span> ${eff}</div>${btn}</div>`;
     }).join('');
-    const run = this.g.run;
-    const capped = run && run.mark > 0
-      ? `<p class="up-cap">${ICON.coin(16)}<span>${t('This farm has paid you {amt} already. Its cash buys upgrades once you hold more than that; your savings always can.', { amt: money(run.mark) })}</span></p>`
-      : '';
-    return `${capped}<div class="up-grid">${cards}${this.jobCellHtml()}</div>`;
+    return `<div class="up-grid">${cards}${this.jobCellHtml()}</div>`;
   }
 
   /** The eighth cell of the workshop grid: the upgrade being built, or how building works. */
@@ -2100,6 +2231,7 @@ export class GameApp {
     set('#pauseTitle', 'A little breather.');
     set('#pauseOverlay .pause-card p', 'Your crops can wait. The daylight is paused until you return.');
     set('#btnResume', 'Back to the field');
+    set('#btnQuitDay', 'Back to menu');
   }
 
   /** The language list: each language in its own name. */
@@ -2212,13 +2344,24 @@ export class GameApp {
       <div class="m-row"><button type="button" class="st-btn" data-act="settings">${t('Back')}</button><button type="button" class="st-btn gold" data-act="close">${t('Done')}</button></div>`, 420);
   }
 
+  /** A small "i" card: words that used to sit on screen all the time. */
+  private openInfo(what: string): void {
+    const run = this.g.run;
+    let txt = '';
+    if (what === 'mark' && run)
+      txt = t('This farm has paid you {amt} already. Its cash buys upgrades once you hold more than that; your savings always can.', { amt: money(run.mark) });
+    if (!txt) return;
+    this.openModal('info', `<p class="m-text info-text">${ICON.coin(18)} ${txt}</p><button type="button" class="st-btn gold btn-md" data-act="close">${t('Got it')}</button>`, 380);
+  }
+
   private openCrowns(): void {
     const rows = COUNTRIES.map(c => {
       const n = c.cities.filter(x => cityProgress(this.g, x.id).crown).length;
       return `<div class="crown-row"><span>${esc(t(c.name))}</span><span>${ICON.crown(n ? '#FFC23D' : '#E4DACA', 18)} ${n}/${c.cities.length}</span></div>`;
     }).join('');
     this.openModal('crowns', `<h2 class="m-title">${ICON.crown('#FFC23D', 24)} ${t('City crowns')}</h2>
-      <p class="m-text">${t("Beat a city's best day to take its crown from the rival who holds it. {n} ★ so far.", { n: totalStars(this.g) })}</p>
+      <p class="m-text">${t("Every farm has a rival who holds the city's record: their best day. Earn more than that in a single day on that farm and the crown is yours, with ribbons for the Bling Barn.")}</p>
+      <p class="m-text"><b>${t('Your crowns: {n} of {total}', { n: crownCount(this.g), total: ROUTE.length })}</b></p>
       <div class="crown-grid">${rows}</div><button type="button" class="st-btn gold btn-md" data-act="close">${t('Done')}</button>`, 400);
   }
 

@@ -69,8 +69,9 @@ export const ICON = {
   /** A green check (a bill that is covered). */
   check: (size = 24) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#6DBE45" stroke="${INK}" stroke-width="2.4"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  /** Settings: a gear with eight teeth (the old drawing read as a sun, Navid 3 Nov). */
   gear: () =>
-    `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.9 1.9M17.5 17.5l1.9 1.9M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.9-1.9M17.5 6.5l1.9-1.9"/></svg>`,
+    `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.15 9.43 L21.98 9.90 L21.98 14.10 L19.15 14.57 L18.88 15.24 L20.54 17.57 L17.57 20.54 L15.24 18.88 L14.57 19.15 L14.10 21.98 L9.90 21.98 L9.43 19.15 L8.76 18.88 L6.43 20.54 L3.46 17.57 L5.12 15.24 L4.85 14.57 L2.02 14.10 L2.02 9.90 L4.85 9.43 L5.12 8.76 L3.46 6.43 L6.43 3.46 L8.76 5.12 L9.43 4.85 L9.90 2.02 L14.10 2.02 L14.57 4.85 L15.24 5.12 L17.57 3.46 L20.54 6.43 L18.88 8.76 Z" fill="#FFF4DC" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.4" fill="none" stroke="${INK}" stroke-width="2.4"/></svg>`,
   sound: () =>
     `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="${INK}"/><path class="w" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="x" d="M15.5 9.5l5 5M20.5 9.5l-5 5" style="display:none"/></svg>`,
 };

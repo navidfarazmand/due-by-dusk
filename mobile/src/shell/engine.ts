@@ -172,6 +172,10 @@ export interface EngineApi {
   /** The whole engine state as JSON, to run a side farm (daily farm, duel) and come back. */
   snapshot(): string;
   restore(json: string): boolean;
+  /** Stops the field without the pause overlay while a card is shown (false lets it go). */
+  hold(on: boolean): boolean;
+  /** Pause → Back to menu: leaves the day; the farm goes back to dawn. Returns what the day had earned (-1: no day). */
+  abandonDay(): number;
   /** Side farms don't save, so their day can't overwrite the real farm. */
   setSaving(on: boolean): void;
   /** Seeded field: the n-th crop, prop, crow and goat are the same for everyone on that seed (0 = random). */

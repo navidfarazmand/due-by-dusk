@@ -69,6 +69,18 @@ export interface Settings {
   touchLift?: number;
 }
 
+/** How many recent route days the free-coins ad looks at. */
+export const RECENT_DAYS = 5;
+
+/** The free-coins ad (v0.11.1, Navid 3 Nov: "200 when a day pays 80"): about one ordinary day of the player's own,
+ *  the median of their last few route days, rounded to 10. Before any day is played, `fallback` (the farm's
+ *  expected day) is used. Never less than 20. */
+export function coinsForDays(days: number[] | undefined, fallback: number): number {
+  const d = (days || []).filter(v => Number.isFinite(v) && v >= 0).slice(-RECENT_DAYS).sort((a, b) => a - b);
+  const base = d.length ? (d.length % 2 ? d[(d.length - 1) / 2] : (d[d.length / 2 - 1] + d[d.length / 2]) / 2) : fallback;
+  return Math.max(20, Math.round(base / 10) * 10);
+}
+
 /** Settings → Finger offset (v0.11.1): CSS px the sickle sits above a finger. 40 is about a fingertip. */
 export const DEFAULT_TOUCH_LIFT = 40;
 export const MAX_TOUCH_LIFT = 80;
@@ -84,6 +96,8 @@ export interface GameSave {
   run: RunInfo | null;
   /** Savings. Since v0.9 a farm starts with $0 and its bills are paid from what is harvested there; savings
    * (what is left after each deed, free-coin ads between farms) buy upgrades and tools. */
+  /** What the last few days on the route earned (newest last, v0.11.1): the free-coins ad pays about one of them. */
+  recentEarn?: number[];
   wallet: number;
   /** Set once the save uses separate savings (v0.9). Older saves kept savings inside a running farm's cash. */
   splitWallet: boolean;
@@ -204,6 +218,7 @@ export function parseGame(raw: string | null): GameSave {
   g.tools = parseTools(o.tools);
   if (Array.isArray(o.skills)) g.skills = o.skills.filter((s: unknown) => typeof s === 'string' && /^[a-z_]{3,30}$/.test(s as string)).slice(0, 40);
   g.bonusDiamonds = Math.max(0, Math.floor(num(o.bonusDiamonds)));
+  if (Array.isArray(o.recentEarn)) g.recentEarn = o.recentEarn.map(num).filter((v: number) => v >= 0).slice(-RECENT_DAYS);
   g.flair = parseFlair(o.flair);
   if (o.daily && typeof o.daily === 'object' && typeof o.daily.date === 'string') {
     g.daily = {

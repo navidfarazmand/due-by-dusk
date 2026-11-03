@@ -102,6 +102,8 @@ header.bar, aside.ledger, #fieldSign, #eventLabel, #hud, .dbd-badge, .dbd-btns, 
   display: grid; place-items: center; font-size: 21px; line-height: 1; }
 .hb-banner .btx { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .hb-banner .bt { font-family: var(--ui-display); font-size: 21px; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hb-banner .bh { display: none; font-weight: 900; font-size: 12px; color: var(--dbd-green, #3F8A2E); }
+.hb-banner.held .bh { display: block; }
 .hb-banner .bd { font-weight: 900; font-size: 12px; line-height: 1.25; color: var(--dbd-muted); }
 
 /* ===== screens ===== */
@@ -167,6 +169,15 @@ header.bar, aside.ledger, #fieldSign, #eventLabel, #hud, .dbd-badge, .dbd-btns, 
 #stage .pause-card p { font-weight: 800 !important; color: var(--dbd-muted) !important; font-size: 13px !important; line-height: 1.35 !important; margin: 0 0 14px !important; }
 #stage .pause-card .btn { background: var(--dbd-gold) !important; color: var(--dbd-ink) !important; border: 3px solid var(--dbd-ink) !important; border-radius: 14px !important;
   box-shadow: 0 3px 0 var(--dbd-ink) !important; font: 400 20px/1 var(--ui-display) !important; letter-spacing: 0 !important; text-transform: none !important; padding: 11px 20px !important; }
+
+/* the pause card (v0.11.1): music and effects switches, Back to the field, Back to menu */
+#stage .pause-card { max-width: 340px !important; }
+#stage .pause-card > svg, #stage .pause-card > p:not(.pause-note) { display: none !important; }
+#stage .pause-sound { display: flex; justify-content: center; gap: 18px; margin: 0 0 14px; }
+#stage .pause-sound .toggle-row { font-size: 14px; }
+#stage .pause-card .btn { display: block; width: 100%; box-sizing: border-box; }
+#stage .pause-card .pause-quit { margin-top: 10px; background: #fff !important; font-size: 17px !important; padding: 9px 16px !important; }
+#stage .pause-card .pause-note { margin: 6px 0 0 !important; font-size: 11px !important; }
 
 body.dbd-onscr #stage .toast { display: none !important; }
 #dbdScreens .grp { pointer-events: none; }

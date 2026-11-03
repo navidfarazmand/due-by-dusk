@@ -45,11 +45,13 @@ async function fast(page: Page, k = 8): Promise<void> {
 
 test('menu to the first farm and through one day', async ({ page }) => {
   const errors = await boot(page);
-  await act(page, 'play');
+  // the next-farm pill opens the world map; Play goes straight to the next farm's day card (Navid, 3 Nov)
+  await act(page, 'continue');
   await expect(page.locator('.scr-world')).toBeVisible();
   await act(page, 'enter', 'CA');
   await expect(page.locator('.scr-country .city-card')).toContainText('Charlottetown');
-  await act(page, 'farm', 'ca_charlottetown');
+  await page.evaluate(() => (window as any).__DBD_APP.show('menu'));
+  await act(page, 'play');
   // the day card: the day, the bill coming up, and one big button
   await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Day 1');
   await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('Seed loan');
@@ -322,7 +324,7 @@ test('daily farm: one try on a seeded field, then the real farm is back as it wa
   // the second try is a rewarded ad, never forced
   await expect(page.locator('.scr-side [data-act="ad-daily"]')).toBeVisible();
   await page.locator('.scr-side [data-act="go"]').click();
-  await act(page, 'continue');
+  await act(page, 'play');
   await expect(page.locator('.scr-farmhouse .dc-city')).toContainText('Toronto');
   expect(errors).toEqual([]);
 });
@@ -495,7 +497,7 @@ test('a farm pays out once: a replay keeps its cash for the bills and banks only
   const save = seeded([], 0);
   (save.cities as any).ca_charlottetown = { won: true, stars: 1, bestDay: 200, crown: false, bestDays: 10, plays: 1, paid: 500 };
   const errors = await boot(page, save);
-  await act(page, 'play');
+  await act(page, 'continue');
   await act(page, 'enter', 'CA');
   await act(page, 'city', 'ca_charlottetown');
   await expect(page.locator('.scr-country .city-card')).toContainText('Paid you so far: $500');
@@ -503,7 +505,11 @@ test('a farm pays out once: a replay keeps its cash for the bills and banks only
   await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(300));
   await page.evaluate(() => (window as any).__DBD_APP.refresh());
   await act(page, 'panel', 'workshop');
-  await expect(page.locator('.scr-modal .up-cap')).toContainText('$500');
+  // the payout note sits behind an "i" next to the cash (Navid, 3 Nov), not above the cards
+  await page.locator('.scr-modal .up-info').click();
+  await expect(page.locator('.scr-modal .info-text')).toContainText('$500');
+  await act(page, 'close');
+  await act(page, 'panel', 'workshop');
   // $300 on the farm is below the $500 mark: no upgrade can be bought with it
   await expect(page.locator('.scr-modal .btn-buy.gold')).toHaveCount(0);
   await expect(page.locator('.scr-farmhouse .ft-badge')).toHaveCount(0);
@@ -608,6 +614,52 @@ test('touch: a second finger charges the cleave and does not move the sickle', a
   expect(errors).toEqual([]);
 });
 
+test('pause: sound switches on the card, and Back to menu leaves the day (it starts over)', async ({ page }) => {
+  const errors = await boot(page);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  const day0 = await page.evaluate(() => (window as any).__DBD_ENGINE.state().day);
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  // the field's sound button pauses and shows the music and effects switches
+  await page.locator('#dbdSound').click();
+  await expect(page.locator('#pauseOverlay')).toBeVisible();
+  await page.locator('#pauseSound [data-pact="sfx"]').click();
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().sound)).toBe(false);
+  await page.locator('#btnQuitDay').click();
+  await expect(page.locator('.scr-menu')).toBeVisible();
+  const st = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
+  expect(st.mode).toBe('idle');
+  expect(st.day).toBe(day0);
+  expect(errors).toEqual([]);
+});
+
+test('the day\'s event badge holds the field until the next tap', async ({ page }) => {
+  const errors = await boot(page);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await act(page, 'start');
+  await expect(page.locator('#dbdBadge')).toBeVisible({ timeout: 8000 });
+  await page.locator('#dbdBadge').click();
+  await expect(page.locator('#dbdBanner.held')).toBeVisible();
+  const t1 = await page.evaluate(() => (window as any).__DBD_ENGINE.state().time);
+  await page.waitForTimeout(700);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().time)).toBe(t1);
+  await page.mouse.click(300, 300);
+  await page.waitForTimeout(700);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().time)).toBeLessThan(t1);
+  expect(errors).toEqual([]);
+});
+
+test('menu: the mute button silences music and effects together', async ({ page }) => {
+  const errors = await boot(page, seeded([], 0, { settings: { music: true, haptics: true } }));
+  await page.locator('.scr-menu [data-act="sound"]').click();
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.settings.music)).toBe(false);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().sound)).toBe(false);
+  await page.locator('.scr-menu [data-act="sound"]').click();
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.settings.music)).toBe(true);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().sound)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test('the field keeps crops away from the screen edges', async ({ page }) => {
   await boot(page);
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
@@ -631,7 +683,7 @@ test('the field keeps crops away from the screen edges', async ({ page }) => {
 test('cards keep their text inside on a short phone screen', async ({ page }) => {
   await page.setViewportSize({ width: 740, height: 340 });
   const errors = await boot(page, seeded(CA.slice(0, 1), 0));
-  await act(page, 'play');
+  await act(page, 'continue');
   await act(page, 'enter', 'CA');
   const spills = () =>
     page.evaluate(() => {
