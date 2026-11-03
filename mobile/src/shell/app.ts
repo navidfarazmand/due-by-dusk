@@ -2401,6 +2401,7 @@ export class GameApp {
         <a href="${LICENCE_URL[t.licence]}" target="_blank" rel="noopener">${esc(t.licence)}</a>${t.changes ? ` · ${esc(t.changes)}` : ''}</span></div>`,
     ).join('');
     this.openModal('credits', `<h2 class="m-title">${t('Credits')}</h2><span class="eyebrow">${t('MUSIC')}</span>${rows}
+      <span class="eyebrow">${t('SOUND')}</span><div class="credit-row"><span>“Cartoon Rooster Sounds” by DRAGON-STUDIO (Pixabay). <a href="https://pixabay.com/service/license-summary/" target="_blank" rel="noopener">Pixabay Content License</a> · ${t('Loudness matched and re-encoded.')}</span></div>
       <p class="m-text">${t('Fonts: Lilita One, Nunito, Courier Prime, Figtree and Big Shoulders Stencil, under the SIL Open Font License.')}</p>
       <div class="m-row"><button type="button" class="st-btn" data-act="settings">${t('Back')}</button><button type="button" class="st-btn gold" data-act="close">${t('Done')}</button></div>`, 420);
   }

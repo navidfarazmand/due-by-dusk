@@ -21,6 +21,6 @@ Licence texts: CC BY 4.0 https://creativecommons.org/licenses/by/4.0/ · CC BY 3
 
 OpenGameArt's FAQ notes that Apple's App Store terms have been found to conflict with CC BY; check this before an iOS release.
 
-## Rooster (needs a licence check before a store release)
+## Rooster
 
-`src/audio/rooster.mp3` is cut from `Rooster_Sound_Effect.mp3`, which Navid supplied on 29 Oct 2026: one crow (1.42 s to 4.2 s of the file), faded out, played back at double speed, loudness-matched and re-encoded to 112 kbps mono. The file's metadata points to a YouTube upload (channel "Animal Jam Giveaway", https://www.youtube.com/watch?v=SztUSAooJKc) and carries no licence. Until its rights are confirmed, treat it as unlicensed: before a Play Store release, either get written permission or replace it with a CC0 or CC BY crow (the earlier build used "Rooster Crow" by Mike Koenig, SoundBible.com, CC BY 3.0).
+`src/audio/rooster.mp3` (v0.11.2) is "Cartoon Rooster Sounds" by DRAGON-STUDIO, from Pixabay (https://pixabay.com/sound-effects/nature-cartoon-rooster-sounds-487663/), under the Pixabay Content License (free for commercial and non-commercial use, no attribution required; credited anyway in Settings → Credits). Navid supplied the file on 3 Nov 2026. Changes: loudness-matched to the old crow (about −16 LUFS), a 150 ms fade at the end, mono 44.1 kHz, re-encoded to 112 kbps. It replaces the earlier crow cut from a YouTube upload with no licence.

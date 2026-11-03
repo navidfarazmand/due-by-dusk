@@ -829,5 +829,7 @@ const dict: Record<string, string> = {
   "Days": "Días",
   "Earned": "Ganado",
   "Saved": "Ahorrado",
+  "SOUND": "SONIDO",
+  "Loudness matched and re-encoded.": "Volumen igualado y recodificado.",
 };
 export default dict;
