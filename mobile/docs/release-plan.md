@@ -62,12 +62,32 @@ The closed test's tester list is the Google Group `due-by-dusk-testers@googlegro
 
 ### Sending bundles to Play Console automatically (v0.11.1)
 
-Once a service account can release for the game, the workflow uploads the bundle itself. One-time setup:
+Once a service account can release for the game, the workflow uploads the bundle itself. New Google Cloud accounts block service-account key files (the `iam.disableServiceAccountKeyCreation` policy), so the workflow signs in without a key: Google trusts GitHub's own sign-in for this repository (Workload Identity Federation). One-time setup:
 
-1. **Google Cloud project.** At https://console.cloud.google.com create a project (for example `due-by-dusk-release`), then **APIs & Services > Library**, search **Google Play Android Developer API** and press **Enable**.
-2. **Service account.** **IAM & Admin > Service accounts > Create service account**, name it `play-upload`, skip the optional roles. Open it, **Keys > Add key > Create new key > JSON**: a `.json` file downloads. Keep it private, like the upload key.
-3. **Give it access in Play Console.** **Users and permissions > Invite new users**, paste the service account's email (`play-upload@…iam.gserviceaccount.com`). Under **App permissions** add Due by Dusk and tick **Release apps to testing tracks** (and **Release to production…** if production uploads should work too). Send the invite; a service account needs no acceptance. Permissions can take up to a day to start working.
-4. **GitHub secret.** Repository **Settings > Secrets and variables > Actions > New repository secret**: name `PLAY_SERVICE_ACCOUNT_JSON`, value: the whole contents of the `.json` file (in PowerShell: `Get-Content .\key.json -Raw | Set-Clipboard`).
+1. **Google Cloud project and API.** In the project that holds the `play-upload` service account: **APIs & Services > Library > Google Play Android Developer API > Enable**.
+2. **Let GitHub act as the service account.** Open **Cloud Shell** (the `>_` button at the top of Google Cloud), check it shows that project, and paste:
+
+   ```bash
+   PROJECT_ID=$(gcloud config get-value project)
+   PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+   SA="play-upload@$PROJECT_ID.iam.gserviceaccount.com"
+   gcloud services enable iamcredentials.googleapis.com sts.googleapis.com androidpublisher.googleapis.com
+   gcloud iam workload-identity-pools create github --location=global --display-name="GitHub"
+   gcloud iam workload-identity-pools providers create-oidc due-by-dusk --location=global --workload-identity-pool=github \
+     --display-name="due-by-dusk" --issuer-uri="https://token.actions.githubusercontent.com" \
+     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+     --attribute-condition="assertion.repository=='navidfarazmand/due-by-dusk'"
+   gcloud iam service-accounts add-iam-policy-binding "$SA" --role=roles/iam.workloadIdentityUser \
+     --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/navidfarazmand/due-by-dusk"
+   echo "GCP_WIF_PROVIDER = projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/due-by-dusk"
+   echo "GCP_SERVICE_ACCOUNT = $SA"
+   ```
+
+   Only workflows in `navidfarazmand/due-by-dusk` can use it (the attribute condition).
+3. **Give the service account access in Play Console.** **Users and permissions > Invite new users**, paste the service account's email. Under **App permissions** add Due by Dusk and tick **Release apps to testing tracks** (and the production release permission if production uploads should work). Send the invite; a service account needs no acceptance. It can take up to a day to start working.
+4. **GitHub variables.** Repository **Settings > Secrets and variables > Actions > Variables tab > New repository variable**, twice: `GCP_WIF_PROVIDER` and `GCP_SERVICE_ACCOUNT`, with the two values Cloud Shell printed. These are not secret (they only work for this repository's workflows).
+
+(An account that allows key files can instead put the whole JSON key in a secret `PLAY_SERVICE_ACCOUNT_JSON`.)
 
 Then:
 
@@ -75,4 +95,4 @@ Then:
 - **Tag `play-prod-v0.11.1`**: builds with real ads and puts the release in production as a **draft**: review it and press **Roll out** in Play Console yourself.
 - **Run workflow by hand**: choose in the *upload* box (no upload, closed testing rolled out or as a draft, production as a draft).
 
-Without the secret, everything works as before and the run says the bundle was not sent. Release notes and store-listing changes are still written in Play Console.
+Without either, everything works as before and the run says the bundle was not sent. Release notes and store-listing changes are still written in Play Console.
