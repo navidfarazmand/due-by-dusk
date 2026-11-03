@@ -11,10 +11,11 @@ then it bumps the version and runs the Play release (closed testing).
 - [x] Report a problem: one strong shake (one jolt above ~26 m/s², then quiet for 4 s) or Settings → Report a problem
       opens a short report (the player's words plus version, device, screen, where they were, recent errors); a day
       pauses. Settings → "Shake to report a problem" turns the shake off.
-      - [ ] Where reports go: waiting for Navid's support email (REPORT_EMAIL in src/platform/report.ts). Until then the
-            report is copied to paste anywhere.
-- [ ] New app icon and splash: Navid picks from the new designs (carrot alone; sickle about to cut; sickle cut through
-      and passing), each with a different face.
+      - [x] Reports go to info@khoreh.com (the phone's email app opens with the report filled in).
+- [x] New app icon and splash: concept A kept simple (Navid's pick): the carrot's face only, no hands, no sickle, no
+      extra tooth, no sparkle. Android (legacy, round, adaptive foreground), iOS icon, all splash screens. Sources in
+      art/source/app-icon.svg and app-icon-foreground.svg. The Play Store listing icon is uploaded by hand:
+      docs/store/play-icon-512.png (Play Console → Grow users → Store presence → Main store listing → App icon).
 - [ ] Country looks for the other six countries, once Navid approves Canada's snow (USA dust, Brazil rain and mud,
       France autumn leaves, Morocco heat and sand, China drizzle, Japan cherry blossom).
 
