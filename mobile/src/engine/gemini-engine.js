@@ -19237,6 +19237,7 @@ export function startGeminiEngine() {
       return;
     }
     c.dead = true;
+    snowPuff(c.x, c.y, c.r * c.ds);
     const def = CROP[c.type],
       previousTier = chainMultiplier();
     combo = comboTimer > 0 ? combo + 1 : 1;
@@ -19652,8 +19653,118 @@ export function startGeminiEngine() {
       }
     }
   }
+  /* ===== country weather (v0.11.1, Navid 3 Nov: each country its own look). Canada first: snow falls all day, the
+     flakes that land settle on the soil and pile up, every crop sits in a ring of ice, and a cut throws up a puff of
+     snow. Other countries keep the clear sky until their weather is drawn. ===== */
+  function countryWx() {
+    return meta && meta.country === 'CA' ? 'snow' : '';
+  }
+  let flakes = [],
+    settled = [],
+    puffs = [],
+    snowKey = '';
+  function updateWeather(dt) {
+    if (countryWx() !== 'snow') {
+      if (flakes.length || settled.length) flakes = settled = [];
+      return;
+    }
+    // the snow on the ground starts over each morning
+    const key = (meta.cityId || '') + ':' + (farm ? farm.day : 0);
+    if (key !== snowKey) {
+      snowKey = key;
+      settled = [];
+    }
+    const want = reduceMotion ? 30 : 110;
+    while (flakes.length < want) {
+      flakes.push({ x: Math.random() * (worldW + 60) - 30, y: -10 - Math.random() * HW, r: 2.4 + Math.random() * 3.2, vy: 26 + Math.random() * 34, ph: Math.random() * 6.28,
+        land: FIELD_TOP + 20 + Math.random() * (HW - FIELD_TOP - 26) });
+    }
+    for (let i = flakes.length - 1; i >= 0; i--) {
+      const f = flakes[i];
+      f.ph += dt * 1.3;
+      f.x += Math.sin(f.ph) * 14 * dt - 8 * dt;
+      f.y += f.vy * dt;
+      if (f.y >= f.land) {
+        // it settles on the soil (only while the field is in play: a day's snow piles up)
+        if (mode === 'day' && settled.length < 700) settled.push({ x: f.x, y: f.y, r: f.r * (1.6 + Math.random() * 1.2), a: 0 });
+        flakes.splice(i, 1);
+      }
+    }
+    for (const s of settled) if (s.a < 1) s.a = Math.min(1, s.a + dt * 1.5);
+    for (let i = puffs.length - 1; i >= 0; i--) {
+      const p = puffs[i];
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 160 * dt;
+      p.vx *= 1 - dt * 2.2;
+      if (p.life <= 0) puffs.splice(i, 1);
+    }
+  }
+  /** A cut in the snow: white puffs fly up around the crop. */
+  function snowPuff(x, y, size) {
+    if (countryWx() !== 'snow') return;
+    const n = reduceMotion ? 5 : 12;
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI * (0.1 + 0.8 * Math.random());
+      const sp = 60 + Math.random() * 120;
+      puffs.push({ x: x + (Math.random() - 0.5) * size, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 2.5 + Math.random() * 3.5, life: 0.5 + Math.random() * 0.35, max: 0.85 });
+    }
+  }
+  /** Under the crops: the snow that has settled today, and a ring of ice around each crop. */
+  function drawSnowGround() {
+    if (countryWx() !== 'snow') return;
+    // a frost over the whole field that thickens as the day goes on (light at dawn, white-ish at dusk)
+    const prog = mode === 'day' ? FarmScene_clamp(1 - time / Math.max(1, dayLen), 0, 1) : mode === 'dusk' ? 1 : 0.35;
+    ctx.globalAlpha = 0.1 + 0.22 * prog;
+    ctx.fillStyle = '#eef5fa';
+    ctx.fillRect(0, FIELD_TOP - 4, worldW, HW - FIELD_TOP + 4);
+    ctx.globalAlpha = 1;
+    // the flakes that landed today, as little drifts on the soil
+    ctx.fillStyle = '#f7fbfd';
+    for (const s of settled) {
+      ctx.globalAlpha = 0.92 * s.a;
+      ell(ctx, s.x, s.y, s.r * 1.7, s.r * 0.8);
+    }
+    ctx.globalAlpha = 1;
+    // a ring of ice around every crop
+    for (const c of crops) {
+      if (c.dead || c.boss) continue;
+      const rx = c.r * c.ds * 1.05, ry = rx * 0.36;
+      ctx.fillStyle = 'rgba(190,228,250,.85)';
+      ell(ctx, c.x, c.y + 3, rx, ry);
+      ctx.strokeStyle = 'rgba(90,150,190,.75)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y + 3, rx, ry, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,.95)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y + 3, rx * 0.8, ry * 0.7, 0, Math.PI * 1.08, Math.PI * 1.7);
+      ctx.stroke();
+    }
+  }
+  /** Over everything on the field: falling flakes and the puffs from cuts. */
+  function drawSnowFront() {
+    if (countryWx() !== 'snow') return;
+    for (const f of flakes) {
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = 'rgba(120,160,190,.55)';
+      circ(ctx, f.x + 0.6, f.y + 0.8, f.r);
+      ctx.fillStyle = '#ffffff';
+      circ(ctx, f.x, f.y, f.r);
+    }
+    ctx.fillStyle = '#ffffff';
+    for (const p of puffs) {
+      ctx.globalAlpha = Math.max(0, p.life / p.max) * 0.95;
+      circ(ctx, p.x, p.y, p.r);
+    }
+    ctx.globalAlpha = 1;
+  }
   function update(dt) {
     if (paused) return;
+    updateWeather(dt);
     if (hitStopTimer > 0) {
       hitStopTimer = Math.max(0, hitStopTimer - dt);
       shakeA = Math.max(0, shakeA - dt * 25);
@@ -22134,6 +22245,7 @@ export function startGeminiEngine() {
       }
     }
     drawPuddles();
+    drawSnowGround();
     const sunX = sx,
       shDx = mode === 'day' ? (-(sunX - worldW / 2) / worldW) * 1.4 : 0,
       shA = (night > 0.5 ? 0.16 : 0.3) * (0.55 + 0.45 * beamVisibility),
@@ -22165,7 +22277,8 @@ export function startGeminiEngine() {
     drawParts();
     drawSeeds();
     drawVortexes();
-    drawPropsCrowsAndWeather(); // Seamless full-canvas evening/night atmospheric tint (NO horizontal cut line at y=105!)
+    drawPropsCrowsAndWeather();
+    drawSnowFront(); // Seamless full-canvas evening/night atmospheric tint (NO horizontal cut line at y=105!)
     if (warm > 0.05 || night > 0.05 || dawnAmt(p) > 0.02) {
       const ambGrad = ctx.createLinearGradient(0, 0, 0, HW);
       ambGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
