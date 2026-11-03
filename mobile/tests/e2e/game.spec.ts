@@ -735,6 +735,39 @@ test('menu: the signpost (Design 4), Barn opens skills or the Bling Barn, the pl
   expect(errors).toEqual([]);
 });
 
+test('a newer version on Play: one pop-up on a menu screen', async ({ page }) => {
+  await page.addInitScript(() => { (window as any).__DBD_FAKE_UPDATE = { version: '1200', immediate: true }; });
+  const errors = await boot(page);
+  await expect(page.locator('.scr-modal')).toContainText('A new version is ready!', { timeout: 8000 });
+  await expect(page.locator('.scr-modal [data-act="update-now"]')).toBeVisible();
+  await act(page, 'close');
+  // once per launch
+  await page.waitForTimeout(5000);
+  await expect(page.locator('.scr-modal')).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test('Report a problem: from Settings and by one strong shake, with the game version and where you were', async ({ page }) => {
+  const errors = await boot(page);
+  await act(page, 'settings');
+  await page.locator('.scr-modal [data-act="report"]').click();
+  await expect(page.locator('.scr-modal h2')).toHaveText('Report a problem');
+  await expect(page.locator('.scr-modal .report-det pre')).toContainText('Due by Dusk 0.11');
+  await act(page, 'close');
+  // a gentle movement does nothing; one strong shake opens it (and pauses a day)
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  const shake = (x: number) => page.evaluate(v => window.dispatchEvent(new DeviceMotionEvent('devicemotion', { acceleration: { x: v, y: 0, z: 0 }, accelerationIncludingGravity: { x: v, y: 9.8, z: 0 }, interval: 16 })), x);
+  await shake(6);
+  await expect(page.locator('.scr-modal')).toBeHidden();
+  await shake(34);
+  await expect(page.locator('.scr-modal h2')).toHaveText('Report a problem');
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().paused)).toBe(true);
+  await expect(page.locator('.scr-modal .report-det pre')).toContainText('Charlottetown');
+  expect(errors).toEqual([]);
+});
+
 test('the field keeps crops away from the screen edges', async ({ page }) => {
   await boot(page);
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));

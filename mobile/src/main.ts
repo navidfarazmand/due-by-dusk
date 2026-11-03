@@ -71,6 +71,8 @@ async function start(): Promise<void> {
     },
   });
   setTimeout(() => void initializeAds(), 1200);
+  // a newer version on Google Play: one friendly pop-up per launch, on a menu screen, never during a day
+  setTimeout(() => void app.offerUpdate(), 2500);
   if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') {
     // hooks for the browser tests and the balance simulation
     w.__DBD_APP = app;

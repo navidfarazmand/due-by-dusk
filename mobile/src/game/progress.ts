@@ -67,6 +67,8 @@ export interface Settings {
   sfxVol?: number;
   /** Finger offset (v0.11.1), CSS px the sickle sits above a finger; unset means the default (40). */
   touchLift?: number;
+  /** One strong shake opens Report a problem (v0.11.2); unset means on. */
+  shakeReport?: boolean;
 }
 
 /** How many recent route days the free-coins ad looks at. */
@@ -255,6 +257,7 @@ export function parseGame(raw: string | null): GameSave {
       const v = o.settings[k];
       if (typeof v === 'number' && Number.isFinite(v)) g.settings[k] = Math.max(0, Math.min(100, Math.round(v)));
     }
+    if (o.settings.shakeReport === false) g.settings.shakeReport = false;
     const tl = o.settings.touchLift;
     if (typeof tl === 'number' && Number.isFinite(tl)) g.settings.touchLift = Math.max(0, Math.min(MAX_TOUCH_LIFT, Math.round(tl)));
   }

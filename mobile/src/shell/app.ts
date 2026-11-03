@@ -19,6 +19,8 @@ import { engine, on, type BillInfo, type ChestInfo, type DayEvent, type EngineSt
 import { CHEST_UP_ICON, chestBurst, chestName, chestSvg, newCropHtml, perkCard, perkIcon } from './chest';
 import { rivalFace } from './rival';
 import { FarmHud, deviceText, eventIcon, touchy } from './hud';
+import { REPORT_EMAIL, reportDetails, sendReport, watchErrors, watchShake } from '../platform/report';
+import { checkForUpdate, startUpdate, type UpdateOffer } from '../platform/update';
 import { Coach, peek, type FieldPeek, type Pt } from './coach';
 import { LANGS, deviceLang, inner, isLang, lang, setLang, t, tn, tx, type Lang } from '../i18n/i18n';
 import { watchLayout, layout } from './layout';
@@ -138,6 +140,11 @@ export class GameApp {
   private momentCool = 0;
   /** A "something new" card is holding the field. */
   private carding = false;
+  /** Where the player was when they opened Report a problem. */
+  private reportPlace: { screen: string; farm?: string; day?: number; lang: string } | null = null;
+  /** The update pop-up was shown this launch, and what it offered. */
+  private updateAsked = false;
+  private updateOffer: UpdateOffer | null = null;
   /** Where the skill map and the Bling Barn go back to. */
   private backTo: Screen = 'menu';
   private sideOut: SideOutcome | null = null;
@@ -214,6 +221,9 @@ export class GameApp {
     e.setSfxVolume(volGain(this.volume('sound')));
     e.setTouchLift(this.touchLift());
     this.wirePauseCard();
+    // Report a problem: one strong shake anywhere, or Settings → Report a problem
+    watchErrors();
+    watchShake(() => this.openReport(), () => this.g.settings.shakeReport !== false && this.modal.hidden);
     // a tablet or foldable turned to portrait: the field pauses behind the "turn sideways" card
     try {
       const mq = window.matchMedia('(orientation: portrait) and (max-aspect-ratio: 1/1)');
@@ -538,6 +548,10 @@ export class GameApp {
       case 'lang': this.chooseLang(arg); break;
       case 'crowns': this.openCrowns(); break;
       case 'info': this.openInfo(arg); break;
+      case 'report': this.openReport(); break;
+      case 'report-send': void this.submitReport(); break;
+      case 'shakeReport': this.g.settings.shakeReport = this.g.settings.shakeReport === false; this.save(); this.openSettings(); break;
+      case 'update-now': this.closeModal(); if (this.updateOffer) void startUpdate(this.updateOffer); break;
       case 'replay-practice': this.closeModal(); void this.playPractice(true); break;
       case 'replay-intro': this.closeModal(); void this.playIntro(true); break;
       case 'workshop': this.openWorkshopModal(); break;
@@ -2345,7 +2359,8 @@ export class GameApp {
       <button type="button" class="music-row" data-act="music-picker"><span class="mr-k">${t('Tracks')}</span><span class="mr-v">${t('Field:')} <b>${esc(ft ? ft.title : '')}</b> ${t('· Menus:')} <b>${esc(mt ? mt.title : '')}</b></span>${ICON.next()}</button>
       ${musicTrouble ? `<p class="m-text mus-status">${t('Music now:')} <b>${esc(t(mst))}</b></p>` : ''}
       ${vol('sound', t('Sound effects'), sound, t('Sound effects volume'))}${row('haptics', t('Vibration'), s.haptics)}
-      ${liftRow}
+      ${liftRow}${touchy || (navigator.maxTouchPoints || 0) > 0 ? row('shakeReport', t('Shake to report a problem'), s.shakeReport !== false) : ''}
+      <button type="button" class="st-btn btn-md report-btn" data-act="report">${t('Report a problem')}</button>
       <div class="m-links"><a id="linkPrivacyPolicy" href="https://khoreh.com/due-by-dusk/privacy.html">${t('Privacy policy')}</a>
         <button type="button" class="linkish" id="btnPrivacyChoices" hidden>${t('Privacy choices')}</button>
         <button type="button" class="linkish" data-act="credits">${t('Credits')}</button>
@@ -2404,6 +2419,64 @@ export class GameApp {
       <span class="eyebrow">${t('SOUND')}</span><div class="credit-row"><span>“Cartoon Rooster Sounds” by DRAGON-STUDIO (Pixabay). <a href="https://pixabay.com/service/license-summary/" target="_blank" rel="noopener">Pixabay Content License</a> · ${t('Loudness matched and re-encoded.')}</span></div>
       <p class="m-text">${t('Fonts: Lilita One, Nunito, Courier Prime, Figtree and Big Shoulders Stencil, under the SIL Open Font License.')}</p>
       <div class="m-row"><button type="button" class="st-btn" data-act="settings">${t('Back')}</button><button type="button" class="st-btn gold" data-act="close">${t('Done')}</button></div>`, 420);
+  }
+
+  /** Report a problem (v0.11.2): what happened, in the player's words, plus the game's details; a day pauses. */
+  private openReport(): void {
+    try {
+      if (engine().state().mode === 'day') engine().setPaused(true);
+    } catch {
+      /* engine not ready */
+    }
+    const run = this.g.run;
+    const ct = run ? cityById(run.cityId) : null;
+    let day: number | undefined;
+    try {
+      day = run ? engine().state().day : undefined;
+    } catch {
+      /* engine not ready */
+    }
+    this.reportPlace = { screen: this.scr, farm: ct?.short, day, lang: lang() };
+    const details = reportDetails(this.reportPlace);
+    this.openModal('report', `<h2 class="m-title">${t('Report a problem')}</h2>
+      <p class="m-text">${t('What happened? A sentence or two helps a lot.')}</p>
+      <textarea id="reportText" class="report-text" rows="4" maxlength="1500" placeholder="${t('For example: the Start button did nothing on day 3.')}"></textarea>
+      <details class="report-det"><summary>${t('Sent with it')}</summary><pre>${esc(details)}</pre></details>
+      <div class="m-row"><button type="button" class="st-btn" data-act="close">${t('Cancel')}</button><button type="button" class="st-btn gold" data-act="report-send">${REPORT_EMAIL ? t('Send') : t('Copy report')}</button></div>`, 440);
+    setTimeout(() => (document.getElementById('reportText') as HTMLTextAreaElement | null)?.focus(), 50);
+  }
+
+  private async submitReport(): Promise<void> {
+    const words = (document.getElementById('reportText') as HTMLTextAreaElement | null)?.value || '';
+    const how = await sendReport(words, reportDetails(this.reportPlace || { screen: this.scr, lang: lang() }));
+    this.closeModal();
+    this.toast(how === 'email' ? t('Thanks! Your email app has the report ready to send.') : how === 'copied' ? t('Report copied. Paste it in a message to the developer.') : t("Couldn't send the report. Please try again."), 3200);
+  }
+
+  /** Google Play has a newer version: a pop-up on a menu screen (not during a day), at most once per launch. */
+  async offerUpdate(): Promise<void> {
+    if (this.updateAsked) return;
+    const offer = await checkForUpdate();
+    if (!offer) return;
+    const tryShow = () => {
+      if (this.updateAsked) return;
+      let busy = true;
+      try {
+        busy = engine().state().mode !== 'idle';
+      } catch {
+        /* engine not ready */
+      }
+      if (busy || this.scr === 'farm' || this.intro || this.side || !this.modal.hidden) {
+        setTimeout(tryShow, 4000);
+        return;
+      }
+      this.updateAsked = true;
+      this.updateOffer = offer;
+      this.openModal('update', `<h2 class="m-title">${t('A new version is ready!')}</h2>
+        <p class="m-text">${t('Update Due by Dusk to enjoy the full experience: the newest farms, fixes and surprises. It only takes a moment, and your farm is saved.')}</p>
+        <div class="m-row"><button type="button" class="st-btn" data-act="close">${t('Later')}</button><button type="button" class="st-btn gold" data-act="update-now">${t('Update now')}</button></div>`, 400);
+    };
+    tryShow();
   }
 
   /** A small "i" card: words that used to sit on screen all the time. */

@@ -3,7 +3,7 @@
   "version": "0.11.1",
   "license": "UNLICENSED",
   "private": true,
-  "description": "Due by Dusk: Harvest Edition \u2014 Phaser 3 + TypeScript + Vite Engine Project",
+  "description": "Due by Dusk: Harvest Edition — Phaser 3 + TypeScript + Vite Engine Project",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -27,6 +27,7 @@
     "@capacitor/ios": "^8.5.3",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/screen-orientation": "^8.0.2",
+    "@capawesome/capacitor-app-update": "8.1.1",
     "@fontsource/big-shoulders-stencil": "^5.3.0",
     "@fontsource/courier-prime": "^5.3.0",
     "@fontsource/figtree": "^5.3.0",

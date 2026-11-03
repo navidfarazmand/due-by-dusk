@@ -761,3 +761,11 @@
 .info-rows { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 12px; }
 .info-rows .ir { display: flex; justify-content: space-between; gap: 12px; padding: 7px 10px; border: 2px solid var(--dbd-ink); border-radius: 10px; background: #fff; font-weight: 800; font-size: 14px; }
 .info-rows .ir b { font: 400 18px var(--ui-display); }
+
+/* Report a problem (v0.11.2) */
+.report-btn { align-self: flex-start; margin-top: 4px; }
+.report-text { width: 100%; box-sizing: border-box; min-height: 90px; padding: 10px 12px; border: 2.5px solid var(--dbd-ink); border-radius: 12px; background: #fff;
+  font: 700 14px/1.35 var(--ui-body); color: var(--dbd-ink); resize: vertical; }
+.report-text:focus { outline: 3px solid var(--dbd-gold); outline-offset: 1px; }
+.report-det { margin: 8px 0 12px; font-weight: 800; font-size: 12px; color: var(--dbd-muted); }
+.report-det pre { margin: 6px 0 0; padding: 8px; max-height: 110px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: #FFF8E6; border-radius: 8px; font: 11px/1.35 'Courier Prime', monospace; color: var(--dbd-ink); }
