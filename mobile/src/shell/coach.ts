@@ -245,13 +245,28 @@ export class Coach {
 
   // ---------------------------------------------------------------- the ghost finger
 
-  /** Shows finger `i` at `p` (it only touches the field when `press` is used). */
+  /** True while the ghost finger only points at the screen (tapHint): no finger offset then. */
+  private pic = false;
+
+  /** Where finger `i` touches so that it acts at `p`: the sickle finger sits below its target by the player's
+   *  finger offset (Settings), as a real finger would, so the sickle lands on what the coach aims at. */
+  private aim(i: 0 | 1, p: Pt): Pt {
+    if (i !== 0 || this.pic) return p;
+    try {
+      return engine().fingerAt(p.x, p.y);
+    } catch {
+      return p;
+    }
+  }
+
+  /** Shows finger `i` aiming at `p` (it only touches the field when `press` is used). */
   showHand(i: 0 | 1, p: Pt): void {
     const h = this.hands[i];
     h.hidden = false;
     this.handAt[i] = { ...p };
-    h.style.transform = `translate(${(p.x - TIP.x).toFixed(1)}px, ${(p.y - TIP.y).toFixed(1)}px)`;
-    if (this.down[i]) this.touch('pointermove', i, p);
+    const q = this.aim(i, p);
+    h.style.transform = `translate(${(q.x - TIP.x).toFixed(1)}px, ${(q.y - TIP.y).toFixed(1)}px)`;
+    if (this.down[i]) this.touch('pointermove', i, q);
   }
 
   hideHand(i: 0 | 1): void {
@@ -264,7 +279,7 @@ export class Coach {
     this.hands[i].classList.add('down');
     if (real && !this.down[i]) {
       this.down[i] = true;
-      this.touch('pointerdown', i, this.handAt[i]);
+      this.touch('pointerdown', i, this.aim(i, this.handAt[i]));
     }
   }
 
@@ -272,7 +287,7 @@ export class Coach {
     this.hands[i]?.classList.remove('down');
     if (this.down[i]) {
       this.down[i] = false;
-      this.touch('pointerup', i, this.handAt[i]);
+      this.touch('pointerup', i, this.aim(i, this.handAt[i]));
     }
   }
 
@@ -290,13 +305,18 @@ export class Coach {
   async tapHint(el: Element, times = 2): Promise<void> {
     const r = el.getBoundingClientRect();
     const p = { x: r.left + r.width * 0.6, y: r.top + r.height * 0.6 };
-    this.showHand(0, { x: p.x + 40, y: p.y + 60 });
-    await this.glide(0, p, 420);
-    for (let k = 0; k < times; k++) {
-      this.press(0, false);
-      await this.wait(220);
-      this.lift(0);
-      await this.wait(380);
+    this.pic = true;
+    try {
+      this.showHand(0, { x: p.x + 40, y: p.y + 60 });
+      await this.glide(0, p, 420);
+      for (let k = 0; k < times; k++) {
+        this.press(0, false);
+        await this.wait(220);
+        this.lift(0);
+        await this.wait(380);
+      }
+    } finally {
+      this.pic = false;
     }
   }
 

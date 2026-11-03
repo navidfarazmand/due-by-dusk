@@ -521,7 +521,63 @@ test('a farm pays out once: a replay keeps its cash for the bills and banks only
   expect(errors).toEqual([]);
 });
 
-test('touch: the sickle sits under the finger, and a second finger charges the cleave', async ({ page }) => {
+test('touch: the sickle sits above the finger by the finger offset (0 = under it)', async ({ page }) => {
+  const errors = await boot(page);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  const box = (await page.locator('#field').boundingBox())!;
+  const fire = (type: string, x: number, y: number) =>
+    page.evaluate(([type, x, y]) => {
+      const cv = document.getElementById('field')!;
+      cv.dispatchEvent(new PointerEvent(type as string, { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: x as number, clientY: y as number, bubbles: true }));
+    }, [type, x, y]);
+  const sickle = () => page.evaluate(() => { const e = (window as any).__DBD_ENGINE.peek(); return { x: e.pointer.x * e.scale, y: e.pointer.y * e.scale }; });
+  const x = box.x + box.width * 0.5, y = box.y + box.height * 0.5;
+  // the default offset: 40 px above the finger in the middle of the field
+  await fire('pointerdown', x, y);
+  await fire('pointermove', x + 4, y);
+  let s = await sickle();
+  expect(Math.abs(s.x - (x + 4 - box.x))).toBeLessThan(2);
+  expect(Math.abs(s.y - (y - box.y - 40))).toBeLessThan(2);
+  // the ghost finger's inverse lands the sickle where it aims, even in the fade near the bottom edge
+  for (const fy of [0.5, 0.85, 0.95]) {
+    const ty = box.y + box.height * fy;
+    const f = await page.evaluate(([x, y]) => (window as any).__DBD_ENGINE.fingerAt(x, y), [x, ty]);
+    await fire('pointermove', f.x, f.y);
+    s = await sickle();
+    expect(Math.abs(s.y - (ty - box.y))).toBeLessThan(1.5);
+  }
+  await fire('pointerup', x, y);
+  // Settings → Finger offset at Off: exactly under the finger again
+  await page.evaluate(() => (window as any).__DBD_ENGINE.setTouchLift(0));
+  await fire('pointerdown', x, y);
+  await fire('pointermove', x, y + 2);
+  s = await sickle();
+  expect(Math.abs(s.y - (y + 2 - box.y))).toBeLessThan(2);
+  await fire('pointerup', x, y);
+  expect(errors).toEqual([]);
+});
+
+test('settings: the finger offset slider reaches the field and is kept after a reload', async ({ page }) => {
+  const errors = await boot(page);
+  await act(page, 'settings');
+  const slider = page.locator('.scr-modal input[data-vol="lift"]');
+  await expect(slider).toHaveValue('40');
+  await slider.fill('0');
+  await expect(page.locator('.scr-modal .lift-v')).toHaveText('Off');
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.settings.touchLift)).toBe(0);
+  await slider.fill('60');
+  await expect(page.locator('.scr-modal .lift-v')).toHaveText('');
+  await page.evaluate(() => (window as any).__DBD_APP.saveNow());
+  await page.reload();
+  await page.waitForFunction(() => !!(window as any).__DBD_APP);
+  await act(page, 'settings');
+  await expect(page.locator('.scr-modal input[data-vol="lift"]')).toHaveValue('60');
+  expect(errors).toEqual([]);
+});
+
+test('touch: a second finger charges the cleave and does not move the sickle', async ({ page }) => {
   const errors = await boot(page);
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
   await act(page, 'start');
@@ -535,10 +591,7 @@ test('touch: the sickle sits under the finger, and a second finger charges the c
   const x = box.x + box.width * 0.5, y = box.y + box.height * 0.92;
   await fire('pointerdown', 1, x, y);
   await fire('pointermove', 1, x + 4, y);
-  const p1 = await page.evaluate(() => { const e = (window as any).__DBD_ENGINE.peek(); return { ...e.pointer, scale: e.scale }; });
-  // no lift above the finger, even at the bottom of the screen
-  expect(Math.abs(p1.y * p1.scale - (y - box.y))).toBeLessThan(2);
-  expect(Math.abs(p1.x * p1.scale - (x + 4 - box.x))).toBeLessThan(2);
+  const p1 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().pointer);
   // one finger held still does not charge
   await page.waitForTimeout(700);
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.peek().chargeT)).toBeLessThan(0.05);

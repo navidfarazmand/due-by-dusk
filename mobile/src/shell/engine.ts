@@ -160,6 +160,10 @@ export interface EngineApi {
   setSound(on: boolean): void;
   /** The effects volume (a gain, 0..1); `sample` plays a coin at the new level. */
   setSfxVolume(v: number, sample?: boolean): void;
+  /** Settings → Finger offset: how far above a finger the sickle sits, in CSS px (0 = under the finger). */
+  setTouchLift(px: number): void;
+  /** Where a finger has to touch (client px) to put the sickle at client point (x, y). */
+  fingerAt(x: number, y: number): { x: number; y: number };
   setPaused(v: boolean): void;
   setTool(t: unknown): void;
   statsWith(t: unknown): Record<string, number | string | boolean>;

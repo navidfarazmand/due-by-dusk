@@ -751,5 +751,9 @@ const dict: Record<string, string> = {
   "CHAIN ×{n}": "SEQUÊNCIA ×{n}",
   "BOUNTY {n}": "PRÊMIO {n}",
   "Harvest Rush! +50% income + faster crops for 4 seconds.": "Corrida da colheita! +50% de renda + legumes mais rápidos por 4 segundos.",
+  "Finger offset": "Distância do dedo",
+  "Off": "Desligado",
+  "How far above your finger the sickle cuts": "Quão acima do dedo a foice corta",
+  "It cuts here, above your finger": "Corta aqui, acima do seu dedo",
 };
 export default dict;

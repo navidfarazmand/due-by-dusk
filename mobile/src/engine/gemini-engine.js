@@ -23173,10 +23173,34 @@ export function startGeminiEngine() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && mode === 'day') setPaused(true);
   });
-  /** Field position under the pointer: the sickle cuts exactly where the finger is (Navid, 29 Oct). */
+  /* Finger offset (v0.11.1): on touch the sickle sits above the finger so the finger does not hide the crops
+     it aims at (tester feedback, 3 Nov). Settings → Finger offset sets it in CSS px (0 = exactly under the
+     finger, Navid's 29 Oct choice). Near the bottom edge the lift fades out so the bottom row stays reachable. */
+  let touchLiftPx = 40;
+  const liftFade = (lw) => Math.max(90, lw * 2.25);
+  /** World y of the sickle for a finger at world y `y0`. */
+  function liftedY(y0) {
+    const lw = touchLiftPx / (scale || 1);
+    if (!lw) return y0;
+    const k = Math.max(0, Math.min(1, (HW - 20 - y0) / liftFade(lw)));
+    return y0 - k * lw;
+  }
+  /** World y of the finger that puts the sickle at world y `s` (the inverse of liftedY). */
+  function fingerY(s) {
+    const lw = touchLiftPx / (scale || 1);
+    if (!lw) return s;
+    const F = liftFade(lw);
+    const full = s + lw;
+    if (HW - 20 - full >= F) return full;
+    const y0 = (s + (lw * (HW - 20)) / F) / (1 + lw / F);
+    return y0 >= HW - 20 ? s : y0;
+  }
+  /** Field position of the sickle for a pointer event: under the mouse, above a finger (by the finger offset). */
   function toWorld(e) {
     const r = canvas.getBoundingClientRect();
-    return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale];
+    const x = (e.clientX - r.left) / scale,
+      y0 = (e.clientY - r.top) / scale;
+    return [x, e.pointerType === 'mouse' ? y0 : liftedY(y0)];
   }
   // Touch: the first finger moves the sickle; a second finger held anywhere charges the Charge Cleave and lifting
   // it strikes at the sickle. Mouse: hold the button. Keyboard: hold Space.
@@ -23545,6 +23569,15 @@ export function startGeminiEngine() {
           if (meta.sound) Sound.init();
           save();
           renderAll();
+        },
+        /** Settings → Finger offset: how far above a finger the sickle sits, in CSS px (0 = under the finger). */
+        setTouchLift: (px) => {
+          touchLiftPx = Math.max(0, Math.min(120, Number(px) || 0));
+        },
+        /** Where a finger has to touch (client px) to put the sickle at client point (x, y); for the coach's ghost finger. */
+        fingerAt: (x, y) => {
+          const r = canvas.getBoundingClientRect();
+          return { x, y: r.top + fingerY((y - r.top) / scale) * scale };
         },
         /** The effects volume from Settings (a gain, 0..1); `sample` plays a coin so the player hears it. */
         setSfxVolume: (v, sample) => {

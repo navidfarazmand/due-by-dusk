@@ -65,7 +65,13 @@ export interface Settings {
   /** Volume sliders (v0.11), 0–100 %; unset means the default (80 %). */
   musicVol?: number;
   sfxVol?: number;
+  /** Finger offset (v0.11.1), CSS px the sickle sits above a finger; unset means the default (40). */
+  touchLift?: number;
 }
+
+/** Settings → Finger offset (v0.11.1): CSS px the sickle sits above a finger. 40 is about a fingertip. */
+export const DEFAULT_TOUCH_LIFT = 40;
+export const MAX_TOUCH_LIFT = 80;
 
 /** Economy version. 10: v0.10's longer farms and small-step workshop (older workshop levels are refunded). */
 export const ECONOMY = 10;
@@ -234,6 +240,8 @@ export function parseGame(raw: string | null): GameSave {
       const v = o.settings[k];
       if (typeof v === 'number' && Number.isFinite(v)) g.settings[k] = Math.max(0, Math.min(100, Math.round(v)));
     }
+    const tl = o.settings.touchLift;
+    if (typeof tl === 'number' && Number.isFinite(tl)) g.settings.touchLift = Math.max(0, Math.min(MAX_TOUCH_LIFT, Math.round(tl)));
   }
   if (o.seen && typeof o.seen === 'object') for (const k of Object.keys(o.seen)) g.seen[k] = !!o.seen[k];
   if (o.totals && typeof o.totals === 'object') {

@@ -5,7 +5,7 @@ import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, ro
 import { cropName, planFor, toughnessFor, type CityPlan } from '../game/plan';
 import { bestPower } from '../game/power';
 import {
-  GAME_SAVE_KEY, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, crownCount, newGame, nextCity, paidAfterRun,
+  DEFAULT_TOUCH_LIFT, GAME_SAVE_KEY, MAX_TOUCH_LIFT, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, crownCount, newGame, nextCity, paidAfterRun,
   parseGame, spendableFarmCash, starGate, starsFor, todayKey, toolLock, totalStars, type GameSave, type RunInfo,
 } from '../game/progress';
 import { diamondsLeft, learn, resetSkills, skillDef } from '../game/skills';
@@ -205,6 +205,7 @@ export class GameApp {
     const e = engine();
     this.wireEngine();
     e.setSfxVolume(volGain(this.volume('sound')));
+    e.setTouchLift(this.touchLift());
     // v0.10 rebuilt the workshop and the farms: old upgrades were refunded, and an old farm's cash is saved too
     if (this.g.migratedRefund != null) {
       let farmCash = 0;
@@ -850,6 +851,9 @@ export class GameApp {
     };
     const live = (pred: (c: FieldPeek['crops'][number]) => boolean) => () =>
       (peek()?.crops || []).filter(c => !c.dead && c.age > 0.4 && pred(c)).map(c => ({ x: c.x, y: c.y - c.r * c.ds * 0.55 }));
+    // the finger offset: the first time a finger drags on the field, the spotlight shows where it cuts
+    if (!seen.mLift && p.pointer.active && this.touchLift() > 0 && (touchy || (navigator.maxTouchPoints || 0) > 0)
+      && show('mLift', () => { const q = peek(); return q ? co.toScreen(q.pointer.x, q.pointer.y) : null; }, t('It cuts here, above your finger'), 56)) return;
     if (!seen.mBoss && show('mBoss', follow(live(c => c.boss)), t('Knock it out!'), 110)) return;
     if (!seen.mRadish && show('mRadish', follow(live(c => c.type === 'radish')), t('It runs!'))) return;
     if (!seen.mGolden && show('mGolden', follow(() => peek()?.lucky || []), t('Golden!'))) return;
@@ -1316,10 +1320,30 @@ export class GameApp {
     return typeof v === 'number' ? v : DEFAULT_VOLUME;
   }
 
+  /** Settings → Finger offset: CSS px the sickle sits above a finger. */
+  private touchLift(): number {
+    const v = this.g.settings.touchLift;
+    return typeof v === 'number' ? v : DEFAULT_TOUCH_LIFT;
+  }
+
   /** A volume slider moved (`done` on release). Moving one up also switches that sound back on. */
   private volumeInput(ev: Event, done: boolean): void {
     const el = ev.target as HTMLInputElement | null;
     if (!el || !el.matches || !el.matches('input[data-vol]')) return;
+    if (el.dataset.vol === 'lift') {
+      const px = Math.max(0, Math.min(MAX_TOUCH_LIFT, Math.round(Number(el.value) || 0)));
+      el.style.setProperty('--p', String(px / MAX_TOUCH_LIFT));
+      this.g.settings.touchLift = px;
+      const v = el.parentElement?.querySelector('.lift-v');
+      if (v) v.textContent = px ? '' : t('Off');
+      try {
+        engine().setTouchLift(px);
+      } catch {
+        /* engine not ready */
+      }
+      if (done) this.save();
+      return;
+    }
     const kind = el.dataset.vol === 'music' ? 'music' : 'sound';
     const pct = Math.max(0, Math.min(100, Math.round(Number(el.value) || 0)));
     el.style.setProperty('--p', String(pct / 100));
@@ -2115,6 +2139,11 @@ export class GameApp {
       const pct = this.volume(act);
       return `<div class="vol-row">${row(act, label, onv)}<input type="range" class="vol" data-vol="${act}" min="0" max="100" step="5" value="${pct}" style="--p:${pct / 100}" aria-label="${aria}"></div>`;
     };
+    // Finger offset (v0.11.1): how far above the finger the sickle sits, so the finger does not hide the crops
+    const lift = this.touchLift();
+    const liftRow = touchy || (navigator.maxTouchPoints || 0) > 0
+      ? `<div class="vol-row lift-row"><span class="vol-k">${t('Finger offset')} <i class="lift-v">${lift ? '' : t('Off')}</i></span><input type="range" class="vol" data-vol="lift" min="0" max="${MAX_TOUCH_LIFT}" step="5" value="${lift}" style="--p:${lift / MAX_TOUCH_LIFT}" aria-label="${t('How far above your finger the sickle cuts')}"></div>`
+      : '';
     const ft = trackById(this.music.picked('field')), mt = trackById(this.music.picked('menu'));
     const cur = LANGS.find(l => l.id === lang()) || LANGS[0];
     // the music's state only shows when something is wrong (it helped find a phone that stayed silent)
@@ -2125,6 +2154,7 @@ export class GameApp {
       <button type="button" class="music-row" data-act="music-picker"><span class="mr-k">${t('Tracks')}</span><span class="mr-v">${t('Field:')} <b>${esc(ft ? ft.title : '')}</b> ${t('· Menus:')} <b>${esc(mt ? mt.title : '')}</b></span>${ICON.next()}</button>
       ${musicTrouble ? `<p class="m-text mus-status">${t('Music now:')} <b>${esc(t(mst))}</b></p>` : ''}
       ${vol('sound', t('Sound effects'), sound, t('Sound effects volume'))}${row('haptics', t('Vibration'), s.haptics)}
+      ${liftRow}
       <div class="m-links"><a id="linkPrivacyPolicy" href="https://khoreh.com/due-by-dusk/privacy.html">${t('Privacy policy')}</a>
         <button type="button" class="linkish" id="btnPrivacyChoices" hidden>${t('Privacy choices')}</button>
         <button type="button" class="linkish" data-act="credits">${t('Credits')}</button>

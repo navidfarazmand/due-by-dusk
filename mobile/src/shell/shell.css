@@ -274,6 +274,8 @@
 .tg.on i { left: 20px; }
 .vol-row { display: flex; align-items: center; gap: 12px; }
 .vol-row .toggle-row { flex: none; width: 52%; }
+.vol-row .vol-k { flex: none; width: 52%; font: 900 15px var(--ui-body); color: var(--dbd-ink); }
+.vol-row .lift-v { font-style: normal; font-weight: 700; opacity: .7; }
 /* volume slider: a chunky track filled to the thumb (--p is 0..1), white thumb like the switches */
 .vol { flex: 1; min-width: 0; height: 28px; margin: 0; padding: 0; background: none; -webkit-appearance: none; appearance: none; cursor: pointer; --p: .8; }
 .vol:focus { outline: none; }
