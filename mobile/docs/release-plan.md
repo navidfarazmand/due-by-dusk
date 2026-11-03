@@ -59,3 +59,20 @@ The closed test's tester list is the Google Group `due-by-dusk-testers@googlegro
 1. GitHub **Actions > Play release bundle > Run workflow** (leave *production ads* off for closed testing).
 2. Download the `due-by-dusk-play-…` artifact from the finished run and unzip it to get `app-release.aab`.
 3. Play Console **Test and release > Testing > Closed testing**: create a release, upload the bundle, add testers, roll out. Each run uses versionCode 1000 + the run number, so later uploads are always accepted.
+
+### Sending bundles to Play Console automatically (v0.11.1)
+
+Once a service account can release for the game, the workflow uploads the bundle itself. One-time setup:
+
+1. **Google Cloud project.** At https://console.cloud.google.com create a project (for example `due-by-dusk-release`), then **APIs & Services > Library**, search **Google Play Android Developer API** and press **Enable**.
+2. **Service account.** **IAM & Admin > Service accounts > Create service account**, name it `play-upload`, skip the optional roles. Open it, **Keys > Add key > Create new key > JSON**: a `.json` file downloads. Keep it private, like the upload key.
+3. **Give it access in Play Console.** **Users and permissions > Invite new users**, paste the service account's email (`play-upload@…iam.gserviceaccount.com`). Under **App permissions** add Due by Dusk and tick **Release apps to testing tracks** (and **Release to production…** if production uploads should work too). Send the invite; a service account needs no acceptance. Permissions can take up to a day to start working.
+4. **GitHub secret.** Repository **Settings > Secrets and variables > Actions > New repository secret**: name `PLAY_SERVICE_ACCOUNT_JSON`, value: the whole contents of the `.json` file (in PowerShell: `Get-Content .\key.json -Raw | Set-Clipboard`).
+
+Then:
+
+- **Tag `play-v0.11.1`** (on the commit to release): builds with demo ads and rolls out to closed testing (the `alpha` track) for the testers.
+- **Tag `play-prod-v0.11.1`**: builds with real ads and puts the release in production as a **draft**: review it and press **Roll out** in Play Console yourself.
+- **Run workflow by hand**: choose in the *upload* box (no upload, closed testing rolled out or as a draft, production as a draft).
+
+Without the secret, everything works as before and the run says the bundle was not sent. Release notes and store-listing changes are still written in Play Console.

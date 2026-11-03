@@ -11,6 +11,11 @@ name: Play release bundle
 #   DBD_UPLOAD_KEY_ALIAS        the key alias (for example "upload")
 #   DBD_UPLOAD_KEY_PASSWORD     the key password
 # See mobile/docs/release-plan.md for how to create the key.
+#
+# Optional, to send the bundle to Play Console by itself: a fifth secret, PLAY_SERVICE_ACCOUNT_JSON (the JSON key of a
+# Google Cloud service account invited in Play Console with "Release apps to testing tracks"). With it, a play-v* tag
+# rolls the bundle out to closed testing (the "alpha" track); a play-prod-v* tag puts it in production as a draft to
+# review and roll out by hand; a manual run does what its "upload" box says. Without it, the bundle is only saved here.
 
 on:
   workflow_dispatch:
@@ -19,6 +24,11 @@ on:
         description: 'Request real AdMob ads. Leave off for closed testing (shows Google demo ads).'
         type: boolean
         default: false
+      upload:
+        description: 'Send the bundle to Play Console (needs the PLAY_SERVICE_ACCOUNT_JSON secret).'
+        type: choice
+        options: ['no', 'closed testing (roll out)', 'closed testing (draft)', 'production (draft)']
+        default: 'no'
   push:
     tags: ['play-v*', 'play-prod-v*']
 
@@ -117,6 +127,44 @@ jobs:
           path: mobile/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 30
+      - name: Decide where the bundle goes in Play Console
+        id: play
+        env:
+          HAS_KEY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+          CHOICE: ${{ inputs.upload || '' }}
+          REF: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        working-directory: .
+        run: |
+          track=""; status=""
+          if [ "$EVENT" = "push" ]; then
+            case "$REF" in
+              play-prod-v*) track=production; status=draft ;;
+              play-v*) track=alpha; status=completed ;;
+            esac
+          else
+            case "$CHOICE" in
+              'closed testing (roll out)') track=alpha; status=completed ;;
+              'closed testing (draft)') track=alpha; status=draft ;;
+              'production (draft)') track=production; status=draft ;;
+            esac
+          fi
+          if [ -n "$track" ] && [ "$HAS_KEY" != "true" ]; then
+            echo "::warning::Not sent to Play Console: add the PLAY_SERVICE_ACCOUNT_JSON secret first. The bundle is saved with this run."
+            track=""
+          fi
+          echo "track=$track" >> "$GITHUB_OUTPUT"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          [ -n "$track" ] && echo "Sending to Play Console: track $track, status $status" || echo "Not sending to Play Console."
+      - name: Send the bundle to Play Console
+        if: steps.play.outputs.track != ''
+        uses: r0adkll/upload-google-play@935ef9c68bb393a8e6116b1575626a7f5be3a7fb # v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.khoreh.duebydusk
+          releaseFiles: mobile/android/app/build/outputs/bundle/release/app-release.aab
+          track: ${{ steps.play.outputs.track }}
+          status: ${{ steps.play.outputs.status }}
       - name: Remove the upload key
         if: always()
         working-directory: .
