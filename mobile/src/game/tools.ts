@@ -30,6 +30,8 @@ export interface ToolStats {
   range: number;
   storm: boolean;
   frost: boolean;
+  /** Charge Cleave level from the Charge attachment (0: none). Hold still, then lift; each level charges 25% faster. */
+  charge: number;
 }
 
 export interface ModDef {
@@ -55,8 +57,14 @@ export interface ToolDef {
 }
 
 const BASE: Omit<ToolStats, 'style'> = {
-  dmg: 1, speed: 1, reach: 1, crit: 0, value: 1, gold: 0, burn: 0, targets: 1, range: 0, storm: false, frost: false,
+  dmg: 1, speed: 1, reach: 1, crit: 0, value: 1, gold: 0, burn: 0, targets: 1, range: 0, storm: false, frost: false, charge: 0,
 };
+
+/** The Charge Cleave as an attachment (v0.11.1, Navid 3 Nov: hold and release, as an upgrade, not a perk). */
+const chargeMod = (base: number): ModDef => ({
+  id: 'charge', name: 'Charge handle', line: 'Hold still, then lift: Charge Cleave. Each level charges faster.', max: 3, base, growth: 2.6,
+  apply: (s, l) => { s.charge = l; },
+});
 
 export const TOOLS: ToolDef[] = [
   {
@@ -64,6 +72,7 @@ export const TOOLS: ToolDef[] = [
     blurb: 'Quick swings around your finger. Good at everything, great at nothing.',
     base: { ...BASE },
     mods: [
+      chargeMod(300),
       { id: 'whetstone', name: 'Whetstone', line: '+12% damage', max: 3, base: 600, growth: 2.3, apply: (s, l) => { s.dmg *= 1 + 0.12 * l; } },
       { id: 'grip', name: 'Long grip', line: '+7% reach', max: 3, base: 650, growth: 2.3, apply: (s, l) => { s.reach *= 1 + 0.07 * l; } },
       { id: 'charm', name: 'Lucky charm', line: '+3% crit chance', max: 3, base: 750, growth: 2.3, apply: (s, l) => { s.crit += 0.03 * l; } },
@@ -75,6 +84,7 @@ export const TOOLS: ToolDef[] = [
     // a clear step up from a sickle with all its attachments (Gemini's 1.3 damage left it behind one)
     base: { ...BASE, dmg: 1.8, speed: 0.8, reach: 1.38 },
     mods: [
+      chargeMod(2500),
       { id: 'wide', name: 'Wide blade', line: '+8% reach', max: 3, base: 3000, growth: 2.3, apply: (s, l) => { s.reach *= 1 + 0.08 * l; } },
       { id: 'weight', name: 'Counterweight', line: '+10% swing speed', max: 3, base: 3300, growth: 2.3, apply: (s, l) => { s.speed *= 1 + 0.1 * l; } },
       {
@@ -182,5 +192,6 @@ export function toolSummary(s: ToolStats): string[] {
   if (s.crit > 0) out.push(t('+{x}% crit', { x: Math.round(s.crit * 100) }));
   if (s.value > 1) out.push(t('Prices {x}', { x: pct(s.value) }));
   if (s.storm) out.push(t('Lightning on crits'));
+  if (s.charge > 0) out.push(t('Charge Cleave Lv {n}', { n: s.charge }));
   return out;
 }

@@ -481,7 +481,8 @@ export class Coach {
     });
   }
 
-  /** The Charge Cleave: one finger on the crops, a second finger held anywhere, lift it. Then the player's turn. */
+  /** The Charge Cleave (v0.11.1, with the Charge handle): the field stops, the ghost finger holds still on the crops
+   *  until the ring is full, and lifts. Then the field waits for the player to try it. */
   async cleaveLesson(cleaved: () => number): Promise<boolean> {
     let learned = false;
     await this.run(async () => {
@@ -490,39 +491,28 @@ export class Coach {
       const spotC = densest(this);
       if (!spotC) return;
       const p1 = spotC;
-      const w = innerWidth,
-        h = innerHeight;
-      const p2 = { x: Math.min(w - 70, p1.x + 230), y: Math.min(h - 60, p1.y + 70) };
       this.spot(p1, 96);
+      this.showHand(0, { x: p1.x - 90, y: p1.y + 60 });
+      await this.glide(0, p1, 450);
+      this.say(touchy ? t('Hold still') : t('Hold the button'), { x: p1.x, y: p1.y - 96 }, 30);
       if (touchy) {
-        this.showHand(0, { x: p1.x - 90, y: p1.y + 60 });
-        await this.glide(0, p1, 450);
-        this.setTime(0.5);
         this.press(0);
-        await this.wait(350);
-        this.showHand(1, { x: p2.x + 60, y: p2.y + 60 });
-        await this.glide(1, p2, 380);
-        this.say(t('Hold a 2nd finger'), { x: p2.x, y: p2.y - 78 }, 28);
-        this.press(1);
-        await this.until(() => (peek()?.chargeT || 0) >= 0.98, 2500);
-        this.say(t('Lift!'), { x: p2.x, y: p2.y - 78 }, 40);
-        await this.wait(250);
+        // time runs slowly so the ring can fill while the finger stays put
+        this.setTime(0.6);
+        await this.until(() => (peek()?.chargeT || 0) >= 0.98, 3500);
+        this.setTime(0.0001);
+        this.say(t('Lift!'), { x: p1.x, y: p1.y - 96 }, 40);
+        await this.wait(500);
         const n = cleaved();
-        this.lift(1);
+        this.setTime(0.6);
+        this.lift(0);
         await this.until(() => cleaved() > n, 900);
         await this.wait(450);
-        this.lift(0);
-        this.hideHand(1);
         this.hideHand(0);
       } else {
-        // mouse: hold the button over the crops, let go
-        this.showHand(0, { x: p1.x - 90, y: p1.y + 60 });
-        await this.glide(0, p1, 450);
-        this.setTime(0.5);
-        this.say(t('Hold the button'), { x: p1.x, y: p1.y - 90 }, 28);
         this.hands[0].classList.add('down');
         await this.wait(1100);
-        this.say(t('Let go!'), { x: p1.x, y: p1.y - 90 }, 40);
+        this.say(t('Let go!'), { x: p1.x, y: p1.y - 96 }, 40);
         this.hands[0].classList.remove('down');
         await this.wait(700);
         this.hideHand(0);
@@ -534,8 +524,7 @@ export class Coach {
       this.say(t('Your turn'), { x: q.x, y: q.y - 90 });
       if (touchy) {
         this.showHand(0, q);
-        this.showHand(1, { x: Math.min(w - 70, q.x + 230), y: Math.min(h - 60, q.y + 70) });
-        for (const k of this.hands) k.classList.add('hint');
+        this.hands[0].classList.add('hint');
       }
       const touched = await this.until(() => !!peek()?.pointer.active, 15000);
       for (const k of this.hands) k.classList.remove('hint');

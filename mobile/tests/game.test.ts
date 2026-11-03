@@ -346,9 +346,11 @@ describe('tools', () => {
     expect(toolStats(t, 'sickle').dmg).toBeCloseTo(1.36, 5);
   });
 
-  it('gives every tool three attachments of two or three levels', () => {
+  it('gives every tool three attachments of two or three levels, plus a Charge handle on the sickle and the scythe', () => {
     for (const t of TOOLS) {
-      expect(t.mods).toHaveLength(3);
+      const charge = t.id === 'sickle' || t.id === 'scythe';
+      expect(t.mods).toHaveLength(charge ? 4 : 3);
+      expect(t.mods.some(m => m.id === 'charge')).toBe(charge);
       for (const m of t.mods) {
         expect(m.max).toBeGreaterThanOrEqual(2);
         expect(modCost(t.id, m.id, 0)!).toBeGreaterThan(0);
@@ -360,5 +362,14 @@ describe('tools', () => {
   it('ignores tools that are not owned when equipping from a save', () => {
     const t = parseTools({ owned: ['sickle'], equipped: 'flame' });
     expect(t.equipped).toBe('sickle');
+  });
+});
+
+describe('the Charge handle (v0.11.1)', () => {
+  it('is what turns the Charge Cleave on, one level at a time', () => {
+    expect(toolStats(newTools()).charge).toBe(0);
+    expect(toolStats({ owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 2 } }).charge).toBe(2);
+    expect(modCost('sickle', 'charge', 0)).toBe(300);
+    expect(parseTools({ owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 9 } }).mods['sickle.charge']).toBe(3);
   });
 });

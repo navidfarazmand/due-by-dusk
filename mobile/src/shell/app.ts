@@ -210,6 +210,15 @@ export class GameApp {
     e.setSfxVolume(volGain(this.volume('sound')));
     e.setTouchLift(this.touchLift());
     this.wirePauseCard();
+    // a tablet or foldable turned to portrait: the field pauses behind the "turn sideways" card
+    try {
+      const mq = window.matchMedia('(orientation: portrait) and (max-aspect-ratio: 1/1)');
+      mq.addEventListener('change', () => {
+        if (mq.matches && e.state().mode === 'day') e.setPaused(true);
+      });
+    } catch {
+      /* no matchMedia */
+    }
     // v0.10 rebuilt the workshop and the farms: old upgrades were refunded, and an old farm's cash is saved too
     if (this.g.migratedRefund != null) {
       let farmCash = 0;
@@ -526,19 +535,20 @@ export class GameApp {
       case 'crowns': this.openCrowns(); break;
       case 'info': this.openInfo(arg); break;
       case 'workshop': this.openWorkshopModal(); break;
-      case 'sound': this.muteAll(); break;
+      case 'sound': this.toggleEffects(); break;
       case 'music': this.g.settings.music = !this.g.settings.music; this.save(); this.music.setEnabled(this.g.settings.music); this.openSettings(); break;
       case 'haptics': this.g.settings.haptics = !this.g.settings.haptics; this.save(); this.openSettings(); window.dispatchEvent(new CustomEvent('dbd:haptics', { detail: this.g.settings.haptics })); break;
       case 'close': this.closeModal(); break;
       case 'reset': this.confirmReset(); break;
       case 'reset-yes': this.resetGame(); break;
       case 'leave-yes': this.leaveRunAndStart(arg); break;
-      case 'skills': this.backTo = this.scr === 'skills' || this.scr === 'barn' ? this.backTo : this.scr; this.skillSel = firstSkill(this.g); this.show('skills'); break;
+      case 'barn-menu': this.openBarnMenu(); break;
+      case 'skills': if (!this.modal.hidden) this.closeModal(); this.backTo = this.scr === 'skills' || this.scr === 'barn' ? this.backTo : this.scr; this.skillSel = firstSkill(this.g); this.show('skills'); break;
       case 'back': this.show(this.backTo); break;
       case 'skill': this.skillSel = arg; this.render('skills'); break;
       case 'skill-learn': this.learnSkill(arg); break;
       case 'skill-reset': this.resetAllSkills(); break;
-      case 'barn': this.backTo = this.scr === 'skills' || this.scr === 'barn' ? this.backTo : this.scr; this.barnSel = this.g.flair.equipped[this.barnTab]; this.show('barn'); break;
+      case 'barn': if (!this.modal.hidden) this.closeModal(); this.backTo = this.scr === 'skills' || this.scr === 'barn' ? this.backTo : this.scr; this.barnSel = this.g.flair.equipped[this.barnTab]; this.show('barn'); break;
       case 'barn-tab': this.barnTab = arg as FlairKind; this.barnSel = this.g.flair.equipped[this.barnTab]; this.render('barn'); break;
       case 'barn-pick': this.barnSel = arg; this.render('barn'); break;
       case 'barn-buy': this.barnBuy(arg); break;
@@ -685,7 +695,7 @@ export class GameApp {
     const cityId = 'ca_kelowna';
     const plan = planFor(cityId);
     const levels = { scythe: 16, swing: 6, hands: 10, days: 2, soil: 8, market: 2, clover: 6 };
-    const tool = toolStats({ owned: ['scythe'], equipped: 'scythe', mods: {} }, 'scythe');
+    const tool = toolStats({ owned: ['scythe'], equipped: 'scythe', mods: { 'scythe.charge': 1 } }, 'scythe');
     e.setSaving(false);
     e.setFieldSeed(20261030);
     e.setSkills([]);
@@ -732,16 +742,14 @@ export class GameApp {
           t => t,
         );
       await chase(1700);
-      // the finisher: a second finger charges a Charge Cleave and lets go
+      // the finisher: the finger holds still on the boss until the Charge Cleave is full, and lifts
       if (!it.down) {
         const q = at() || start;
-        const p2 = { x: Math.min(innerWidth - 80, q.x + 250), y: Math.min(innerHeight - 70, q.y + 80) };
-        co.showHand(1, { x: p2.x + 70, y: p2.y + 80 });
-        await co.glide(1, p2, 320);
-        co.press(1);
-        await chase(700);
-        co.lift(1);
-        co.hideHand(1);
+        co.showHand(0, q);
+        await co.until(() => (peek()?.chargeT || 0) >= 0.98 || it.down, 1800);
+        co.lift(0);
+        await co.wait(250);
+        if (!it.down) co.press(0);
       }
       const t1 = performance.now();
       while (!it.down && performance.now() - t1 < 5000) await chase(250);
@@ -806,7 +814,9 @@ export class GameApp {
       return true;
     }
     seen.cut = true;
-    if (!seen.cleave && (st.day >= 2 || this.g.totals.days >= 1)) {
+    // the Charge Cleave lesson comes with the first Charge handle on the tool in hand (v0.11.1)
+    void st;
+    if (!seen.cleave && toolStats(this.g.tools).charge > 0) {
       const tries = seen.cleave2 ? 3 : seen.cleave1 ? 2 : 1;
       if (tries === 1) seen.cleave1 = true;
       else if (tries === 2) seen.cleave2 = true;
@@ -1352,21 +1362,13 @@ export class GameApp {
     return sfx || this.g.settings.music;
   }
 
-  /** The menu's mute button: everything off, or everything back on (it used to switch only the effects). */
-  private muteAll(): void {
-    const on = !this.anySound();
-    this.g.settings.music = on;
-    this.music.setEnabled(on);
-    try {
-      const e = engine();
-      e.setSound(on);
-      this.hud.syncSound(on);
-    } catch {
-      /* engine not ready */
-    }
-    this.save();
+  /** Settings → Sound effects switch (the signpost menu has no mute button; sound lives in Settings). */
+  private toggleEffects(): void {
+    const e = engine();
+    e.setSound(!e.state().sound);
+    this.hud.syncSound(e.state().sound);
     this.syncSoundButtons();
-    this.toast(on ? t('Sound on') : t('Sound off'), 1200);
+    if (!this.modal.hidden && this.modal.dataset.kind === 'settings') this.openSettings();
   }
 
   /** The field's sound button: pause, with the music and effects switches on the pause card. */
@@ -1564,34 +1566,42 @@ export class GameApp {
   private menuHtml(): string {
     const next = cityById(nextCity(this.g))!;
     const n = routeIndex(next.id) + 1;
-    const cont = this.g.run
-      ? t('Continue · {farm} · Day {day}', { farm: esc(next.short), day: engine().state().day })
-      : t('Next · Farm {n} · {farm}', { n, farm: esc(next.short) });
     const dl = this.dailyState();
     const dailyMark = dl.medal ? `<i class="side-mark medal">${t(MEDAL_NAME[dl.medal]).charAt(0)}</i>` : dl.plays ? '' : `<i class="side-mark">${t('NEW')}</i>`;
     const gems = diamondsLeft(this.g);
+    const plank = this.g.run
+      ? t('{farm} · Day {day}', { farm: esc(next.short), day: engine().state().day })
+      : t('Farm {n} · {farm}', { n, farm: esc(next.short) });
+    // Design 4, the signpost (Navid picked it, 3 Nov): Play is the big board; the plank above it is the next farm and
+    // opens the world map; three arrow signs go to the daily farm, duels and the barn (skills and the Bling Barn).
+    // Language and sound live in Settings (the gear).
+    const shape = (d: string) =>
+      `<svg class="sp-shape" viewBox="0 0 100 50" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" vector-effect="non-scaling-stroke"/></svg>`;
+    const leftArrow = shape('M12 2 H98 V48 H12 L1 25 Z'), rightArrow = shape('M2 2 H86 L99 25 L86 48 H2 Z');
     return `<div class="bg cover"><img class="art" src="${ART.menu}" alt="">
         ${this.menuSprite('lavender', 96, 230, 70, 'bob2')}${this.menuSprite('pei_russet', 168, 268, 100, 'bob')}
-        ${this.menuSprite('carrot', 566, 238, 62, 'bob2')}${this.menuSprite('artichaut', 418, 270, 100, 'bob')}
-        ${this.menuSprite('golden', 640, 252, 72, 'bob2')}${this.menuSprite('pumpkin', 700, 222, 100, 'bob')}</div>
-      <div class="grp tc" style="width: 600px; height: 380px">
-        <div class="menu-title"><h1 class="ink-title">${t('Due by Dusk')}</h1><p class="pill-dark">${t('A little farm. A very big debt.')}</p></div>
-        <div class="menu-actions">
-          <div class="menu-row">
-            <button type="button" class="st-btn side-btn" data-act="daily">${calendarIcon(26)}<span>${t('Daily farm')}</span>${dailyMark}</button>
-            <button type="button" class="st-btn gold big-play" data-act="play">${ICON.play()}${t('Play')}</button>
-            <button type="button" class="st-btn side-btn" data-act="duel">${duelIcon(26)}<span>${t('Duel')}</span></button>
-          </div>
-          <button type="button" class="pill-cream" data-act="continue">${cont}</button>
-        </div>
+        ${this.menuSprite('carrot', 300, 236, 62, 'bob2')}${this.menuSprite('artichaut', 372, 272, 100, 'bob')}</div>
+      <div class="grp tl" style="width: 440px; height: 130px"><div class="menu-title sp-title"><h1 class="ink-title">${t('Due by Dusk')}</h1><p class="pill-dark">${t('A little farm. A very big debt.')}</p></div></div>
+      <div class="grp tr" style="width: 64px; height: 70px"><button type="button" class="st-btn sp-gear" data-act="settings" aria-label="${t('Settings')}">${ICON.gear()}</button></div>
+      <div class="grp mr" style="width: 340px; height: 350px"><div class="signpost">
+        <i class="sp-post" aria-hidden="true"></i><i class="sp-mound" aria-hidden="true"></i>
+        <button type="button" class="sp-plank" data-act="continue" aria-label="${t('World map')}">${ICON.pin(18)}<span>${plank}</span><span class="sp-map">${t('Map')}</span></button>
+        <button type="button" class="st-btn gold sp-play" data-act="play">${ICON.play()}<span>${t('Play')}</span><i class="nail a"></i><i class="nail b"></i><i class="nail c"></i><i class="nail d"></i></button>
+        <button type="button" class="sp-sign sp-l sp-daily" data-act="daily">${leftArrow}${calendarIcon(26)}<span>${t('Daily farm')}</span>${dailyMark}</button>
+        <button type="button" class="sp-sign sp-r sp-duel" data-act="duel">${rightArrow}${duelIcon(26)}<span>${t('Duel')}</span></button>
+        <button type="button" class="sp-sign sp-l sp-barn" data-act="barn-menu">${leftArrow}${ICON.diamond(20)}${ribbonIcon(22)}<span class="sp-two"><b>${t('Barn')}</b><small>${t('Skills · Bling Barn')}</small></span>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
+      </div></div>`;
+  }
+
+  /** The signpost's Barn sign: the skill map or the Bling Barn. */
+  private openBarnMenu(): void {
+    const gems = diamondsLeft(this.g);
+    this.openModal('barn-menu', `<h2 class="m-title">${t('Barn')}</h2>
+      <div class="m-row barn-pick">
+        <button type="button" class="st-btn bp-btn" data-act="skills">${ICON.diamond(34)}<b>${t('Skills')}</b><small>${t('Spend diamonds on skills that last')}</small>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
+        <button type="button" class="st-btn bp-btn" data-act="barn">${ribbonIcon(36)}<b>${t('Bling Barn')}</b><small>${t('Looks for your farm, bought with ribbons')}</small></button>
       </div>
-      <div class="grp bl" style="width: 200px; height: 64px"><div class="corner-row">
-        <button type="button" class="st-btn st-sq" data-act="settings" aria-label="${t('Settings')}">${ICON.gear()}</button>
-        <button type="button" class="st-btn st-sq lang-btn" data-act="languages" aria-label="${t('Language')}">${GLOBE}<span>${lang().toUpperCase()}</span></button>
-        <button type="button" class="st-btn st-sq" data-act="sound" aria-label="${t('Sound')}">${ICON.sound()}</button></div></div>
-      <div class="grp br" style="width: 300px; height: 80px"><div class="dock">
-        <button type="button" class="st-btn dock-btn" data-act="skills">${ICON.diamond(24)}<span>${t('Skills')}</span>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
-        <button type="button" class="st-btn dock-btn" data-act="barn">${ribbonIcon(26)}<span>${t('Bling Barn')}</span></button></div></div>`;
+      <button type="button" class="st-btn btn-md" data-act="close">${t('Back')}</button>`, 460);
   }
 
   /** The menu's farm at dusk, dimmed, behind the daily farm and duel cards. */
@@ -2232,6 +2242,7 @@ export class GameApp {
     set('#pauseOverlay .pause-card p', 'Your crops can wait. The daylight is paused until you return.');
     set('#btnResume', 'Back to the field');
     set('#btnQuitDay', 'Back to menu');
+    set('#dbdTurnT', 'Turn your device sideways to play.');
   }
 
   /** The language list: each language in its own name. */

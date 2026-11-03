@@ -6,6 +6,7 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
+import androidx.activity.EdgeToEdge;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -14,6 +15,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Play Console (v0.11.0): draw edge-to-edge on every Android version, as Android 15+ does for SDK 35 apps;
+        // the game already lays itself out with the safe-area insets Capacitor passes to CSS.
+        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
         lockTextSize();
         enterImmersiveMode();
@@ -53,10 +57,14 @@ public class MainActivity extends BridgeActivity {
         Window window = getWindow();
         View decor = window.getDecorView();
         WindowCompat.setDecorFitsSystemWindows(window, false);
+        // Into the camera cutout: ALWAYS from Android 11 (SHORT_EDGES is deprecated in Android 15), SHORT_EDGES before.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             WindowManager.LayoutParams attributes = window.getAttributes();
-            if (attributes.layoutInDisplayCutoutMode != WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES) {
-                attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            int mode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            if (attributes.layoutInDisplayCutoutMode != mode) {
+                attributes.layoutInDisplayCutoutMode = mode;
                 window.setAttributes(attributes);
             }
         }

@@ -46,10 +46,14 @@ export async function initializeMobilePlatform(options: MobilePlatformOptions = 
 
   if (Capacitor.isNativePlatform()) {
     document.documentElement.dataset.native = Capacitor.getPlatform();
-    try {
-      await ScreenOrientation.lock({ orientation: 'landscape' });
-    } catch (error) {
-      options.onError?.('This device could not lock landscape orientation.', error);
+    // Phones stay in landscape. Tablets, foldables and Chromebooks are free to rotate and resize (Play Console,
+    // v0.11.0: no orientation or resizability limits on large screens); in portrait the game asks to turn sideways.
+    if (Math.min(screen.width, screen.height) < 600) {
+      try {
+        await ScreenOrientation.lock({ orientation: 'landscape' });
+      } catch (error) {
+        options.onError?.('This device could not lock landscape orientation.', error);
+      }
     }
     try {
       listeners.push(await App.addListener('appStateChange', ({ isActive }) => setActive(isActive)));

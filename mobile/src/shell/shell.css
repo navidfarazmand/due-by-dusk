@@ -688,3 +688,40 @@
   font: italic 900 12px/1 Georgia, serif; color: var(--dbd-ink); flex: none; }
 .up-info { flex: none; align-self: center; padding: 4px; margin: 0 -4px; border: 0; background: none; cursor: pointer; }
 .up-info .info-i { width: 24px; height: 24px; font-size: 15px; box-shadow: 0 2px 0 var(--dbd-ink); }
+
+/* ===== the menu as a signpost (Design 4, Navid 3 Nov) ===== */
+.sp-title { left: 18px; right: auto; top: 14px; align-items: flex-start; }
+.sp-title h1 { font-size: 58px; }
+.sp-gear { position: absolute; right: 0; top: 14px; width: 52px; height: 52px; border-radius: 50%; padding: 0; }
+.sp-gear svg { width: 30px; height: 30px; }
+.signpost { position: absolute; inset: 0; }
+.sp-post { position: absolute; left: 157px; top: 24px; width: 26px; height: 316px; box-sizing: border-box; background: #A0683C; border: 3px solid var(--dbd-ink); border-radius: 6px;
+  background-image: repeating-linear-gradient(90deg, transparent 0 7px, rgba(0, 0, 0, .13) 7px 9px); }
+.sp-mound { position: absolute; left: 120px; top: 330px; width: 100px; height: 22px; border-radius: 50%; background: #5E381F; border: 3px solid var(--dbd-ink); box-sizing: border-box; }
+.sp-plank { position: absolute; left: 4px; top: 0; width: 262px; height: 42px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 7px;
+  background: #D9A066; border: 3px solid var(--dbd-ink); border-radius: 9px; box-shadow: 0 3px 0 var(--dbd-ink); font: 900 13px var(--ui-body); color: var(--dbd-ink); cursor: pointer; padding: 0 6px; white-space: nowrap; }
+.sp-plank > span:not(.sp-map) { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sp-map { flex: none; background: #CDEBA0; border: 2.5px solid var(--dbd-ink); border-radius: 999px; padding: 2px 9px; font-size: 13px; }
+.sp-play { position: absolute; left: 20px; top: 54px; width: 300px; height: 96px; border-radius: 14px; font-size: 54px; gap: 14px; box-shadow: 0 5px 0 var(--dbd-ink);
+  background-image: repeating-linear-gradient(0deg, transparent 0 30px, rgba(160, 104, 60, .2) 30px 33px); }
+.sp-play svg { width: 38px; height: 38px; }
+.sp-play .nail { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: #6B5A55; border: 2px solid var(--dbd-ink); }
+.sp-play .nail.a { left: 8px; top: 8px; } .sp-play .nail.b { right: 8px; top: 8px; } .sp-play .nail.c { left: 8px; bottom: 8px; } .sp-play .nail.d { right: 8px; bottom: 8px; }
+.sp-sign { position: absolute; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; background: none; padding: 0; cursor: pointer;
+  font: 900 18px var(--ui-body); color: var(--dbd-ink); white-space: nowrap; line-height: 1; filter: drop-shadow(0 3px 0 var(--dbd-ink)); }
+.sp-sign > *:not(.sp-shape) { position: relative; }
+.sp-shape { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.sp-shape path { fill: var(--dbd-cream, #FFF4DC); stroke: var(--dbd-ink); stroke-width: 3; stroke-linejoin: round; }
+.sp-sign:active { transform: translateY(2px); }
+.sp-l { padding-left: 18px; } .sp-r { padding-right: 16px; }
+.sp-daily { left: -6px; top: 166px; width: 210px; height: 50px; }
+.sp-duel { left: 164px; top: 226px; width: 176px; height: 50px; }
+.sp-barn { left: -10px; top: 286px; width: 228px; height: 52px; }
+.sp-sign .side-mark { position: absolute; right: auto; left: 6px; top: -12px; transform: rotate(-8deg); }
+.sp-sign .dock-badge { position: absolute; right: -6px; top: -10px; }
+.sp-two { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.sp-two small { font-size: 11px; font-weight: 800; color: var(--dbd-muted); }
+.barn-pick { gap: 12px; margin-bottom: 12px; }
+.st-btn.bp-btn { position: relative; flex: 1; flex-direction: column; height: auto; min-height: 128px; padding: 14px 10px; gap: 6px; border-radius: 18px; white-space: normal; text-align: center; }
+.bp-btn b { font-size: 20px; } .bp-btn small { font-size: 12px; font-weight: 800; color: var(--dbd-muted); line-height: 1.2; }
+.bp-btn .dock-badge { position: absolute; right: -6px; top: -8px; }

@@ -16491,7 +16491,8 @@ export function startGeminiEngine() {
       name: 'Cleaver mastery',
       line: 'Charge Cleave charges 50% faster and hits wider.',
       once: true,
-      req: () => !hasSkill('reap_cleave'),
+      // v0.11.1: the Charge Cleave is a tool attachment now, so this perk is no longer offered (old saves keep it)
+      req: () => false,
     },
     { id: 'spite3', tier: 3, icon: 'blade', name: 'Grudge', line: '+15% damage on this farm.' },
     { id: 'fever3', tier: 3, icon: 'coin', name: 'Fair day', line: 'Crops sell for 18% more.' },
@@ -16795,6 +16796,7 @@ export function startGeminiEngine() {
       treaty: count(P, 'treaty') > 0 || hasSkill('gold_treaty') || hasSkill('gold_herd'),
       storm: count(P, 'storm') > 0 || hasSkill('reap_exec'),
       cleaver: count(P, 'cleaver') > 0 || hasSkill('reap_cleave'),
+      chargeLv: (window.__DBD_TOOL && window.__DBD_TOOL.charge) || 0,
       style: 'sickle',
       burn: 0,
       targets: 1,
@@ -16868,6 +16870,8 @@ export function startGeminiEngine() {
       treaty: n('treaty') > 0 || hasSkill('gold_treaty') || hasSkill('gold_herd'),
       storm: n('storm') > 0 || hasSkill('reap_exec') || !!T.storm,
       cleaver: n('cleaver') > 0 || hasSkill('reap_cleave'),
+      // v0.11.1: the Charge Cleave comes with a tool attachment (Navid, 3 Nov: an upgrade, not a perk)
+      chargeLv: T.charge || 0,
       style: T.style || 'sickle',
       burn: T.burn || 0,
       targets: Math.max(1, Math.floor(T.targets || 1)),
@@ -17735,13 +17739,16 @@ export function startGeminiEngine() {
     const pl = plan();
     if (pl && pl.signatureEvent && farm.day % 2 === 1) {
       const sig = FarmScene_GAZETTE_EVENTS.find((e) => e.id === pl.signatureEvent);
-      if (sig) {
+      if (sig && !(sig.chargeFast && !(cur && cur.chargeLv > 0))) {
         dailyEvent = sig;
         return;
       }
     }
-    dailyEvent =
-      FarmScene_GAZETTE_EVENTS[(farm.day * 7 + farm.no * 3 + (meta.biome || 0)) % FarmScene_GAZETTE_EVENTS.length];
+    const L = FarmScene_GAZETTE_EVENTS.length;
+    let k = (farm.day * 7 + farm.no * 3 + (meta.biome || 0)) % L;
+    // a day that speeds up the Charge Cleave only comes to a tool that has one
+    for (let tries = 0; tries < L && FarmScene_GAZETTE_EVENTS[k].chargeFast && !(cur && cur.chargeLv > 0); tries++) k = (k + 1) % L;
+    dailyEvent = FarmScene_GAZETTE_EVENTS[k];
   }
   let combo = 0,
     comboTimer = 0,
@@ -19698,13 +19705,26 @@ export function startGeminiEngine() {
       }
       toolUpdate(dt);
       spawnAcc += dt; // Charge Cleave charging while holding pointer or Spacebar
-      if (((pointer.down && pointer.kind === 'mouse') || keys.has(' ') || pointer.charge2) && pointer.active) {
-        const cRate = (cur.cleaver ? 1.5 : 1.0) * (dailyEvent && dailyEvent.chargeFast ? dailyEvent.chargeFast : 1.0);
-        chargeT = Math.min(1, chargeT + dt * 1.9 * cRate);
-        if (chargeT >= 1 && !chargeReady) {
-          chargeReady = true;
-          Sound.tick();
+      // v0.11.1: no second finger. With the Charge attachment, a finger held still (or the mouse button, or Space)
+      // charges; lifting it strikes. Moving the finger after a full charge keeps it until the lift.
+      const still = pointer.kind !== 'mouse' && pointer.down && performance.now() - (pointer.mt || 0) > 220;
+      const holding =
+        cur.chargeLv > 0 && pointer.active && ((pointer.down && pointer.kind === 'mouse') || keys.has(' ') || still);
+      if (holding || (cur.chargeLv > 0 && chargeReady && pointer.down && pointer.kind !== 'mouse')) {
+        const cRate =
+          (cur.cleaver ? 1.5 : 1.0) *
+          (1 + 0.25 * Math.max(0, cur.chargeLv - 1)) *
+          (dailyEvent && dailyEvent.chargeFast ? dailyEvent.chargeFast : 1.0);
+        if (holding) {
+          chargeT = Math.min(1, chargeT + dt * 1.9 * cRate);
+          if (chargeT >= 1 && !chargeReady) {
+            chargeReady = true;
+            Sound.tick();
+          }
         }
+      } else if (chargeT > 0 && pointer.kind !== 'mouse' && pointer.down) {
+        // the finger moved before the charge was full: it fades, no strike
+        chargeT = Math.max(0, chargeT - dt * 3.5);
       } else if (chargeT > 0) {
         if (chargeT >= 0.72) unleashChargeCleave();
         else {
@@ -23230,16 +23250,8 @@ export function startGeminiEngine() {
   canvas.addEventListener('pointerdown', (e) => {
     if (e.pointerType !== 'mouse') {
       touchDown.add(e.pointerId);
-      if (primaryTouch !== null && primaryTouch !== e.pointerId && touchDown.has(primaryTouch)) {
-        chargeTouch = e.pointerId;
-        pointer.charge2 = true;
-        if (mode === 'day') {
-          try {
-            canvas.setPointerCapture(e.pointerId);
-          } catch (err) {}
-        }
-        return;
-      }
+      // v0.11.1: another finger while one is down does nothing (the charge is a still finger now)
+      if (primaryTouch !== null && primaryTouch !== e.pointerId && touchDown.has(primaryTouch)) return;
       primaryTouch = e.pointerId;
     }
     const [x, y] = toWorld(e);
@@ -23271,6 +23283,8 @@ export function startGeminiEngine() {
       primaryTouch = null;
       chargeTouch = null;
       pointer.charge2 = false;
+      // lifting a charged finger strikes where the sickle is
+      if (mode === 'day' && !paused && chargeT >= 0.72 && pointer.active) unleashChargeCleave();
     }
     pointer.down = false;
     if (e.pointerType !== 'mouse') pointer.active = false;

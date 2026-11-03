@@ -115,7 +115,8 @@ test('tools: buy the scythe, put it in hand and add an attachment', async ({ pag
   await expect(page.locator('.tool-detail .td-head')).toContainText('In your hands');
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.stats().style)).toBe('scythe');
   await act(page, 'buy-mod', 'scythe.wide');
-  await expect(page.locator('.mod-row').first().locator('.pips i.on')).toHaveCount(1);
+  // the Charge handle is the first row now (v0.11.1); the wide blade is the second
+  await expect(page.locator('.mod-row').nth(1).locator('.pips i.on')).toHaveCount(1);
   const g = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g.tools.owned).toContain('scythe');
   expect(g.tools.mods['scythe.wide']).toBe(1);
@@ -211,12 +212,12 @@ test('volume: music and sound effects each have a slider, kept after a reload', 
   await expect(page.locator('.scr-modal input[data-vol="sound"]')).toHaveValue('35');
 });
 
-test('languages: German from the menu, the whole game follows, kept after a reload', async ({ page }) => {
+test('languages: German from Settings, the whole game follows, kept after a reload', async ({ page }) => {
   const errors = await boot(page);
-  await page.locator('.scr-menu [data-act="languages"]').click();
+  // the signpost menu keeps the language in Settings (Navid picked Design 4, 3 Nov)
+  await act(page, 'settings');
+  await page.locator('.scr-modal [data-act="languages"]').click();
   await expect(page.locator('.scr-modal .lang-row')).toHaveCount(5);
-  // opened from the menu: Done only (Back would lead to Settings)
-  await expect(page.locator('.scr-modal [data-act="settings"]')).toHaveCount(0);
   await page.locator('.scr-modal [data-act="lang"][data-arg="de"]').click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'de');
   await expect(page.locator('.scr-modal [data-act="lang"][data-arg="de"]')).toHaveAttribute('aria-pressed', 'true');
@@ -260,7 +261,8 @@ const apart = (a: Box, c: Box) => a.r <= c.l + 1 || c.r <= a.l + 1 || a.b <= c.t
 
 test('skill map: learn a skill, the farm uses it, reset gives the diamonds back', async ({ page }) => {
   const errors = await boot(page, seeded(CA.slice(0, 3), 0));
-  await act(page, 'skills');
+  await act(page, 'barn-menu');
+  await page.locator('.scr-modal [data-act="skills"]').click();
   await expect(page.locator('.scr-skills .sk-card')).toContainText("Harvester's Awakening");
   await expect(page.locator('.scr-skills .sk-gems')).toContainText('3 to spend');
   const L = await boxes(page, ['.scr-skills .sk-node', '.scr-skills .sk-card', '.scr-skills .sk-gems', '.scr-skills .top-btn']);
@@ -283,7 +285,8 @@ test('skill map: learn a skill, the farm uses it, reset gives the diamonds back'
 
 test('Bling Barn: buy a bird with ribbons and the field uses its colours', async ({ page }) => {
   const errors = await boot(page, seeded(CA.slice(0, 2), 0, { ribbons: 10 }));
-  await act(page, 'barn');
+  await act(page, 'barn-menu');
+  await page.locator('.scr-modal [data-act="barn"]').click();
   await act(page, 'barn-tab', 'bird');
   await act(page, 'barn-pick', 'bird_jay');
   await expect(page.locator('.scr-barn .bb-panel h3')).toHaveText('Blue jay');
@@ -583,8 +586,9 @@ test('settings: the finger offset slider reaches the field and is kept after a r
   expect(errors).toEqual([]);
 });
 
-test('touch: a second finger charges the cleave and does not move the sickle', async ({ page }) => {
-  const errors = await boot(page);
+test('touch: with a Charge handle a still finger charges and lifting strikes; a second finger does nothing', async ({ page }) => {
+  const charged = seeded([], 0, { tools: { owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 1 } } });
+  const errors = await boot(page, charged);
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
@@ -594,23 +598,42 @@ test('touch: a second finger charges the cleave and does not move the sickle', a
       const cv = document.getElementById('field')!;
       cv.dispatchEvent(new PointerEvent(type as string, { pointerId: id as number, pointerType: 'touch', isPrimary: id === 1, clientX: x as number, clientY: y as number, bubbles: true }));
     }, [type, id, x, y]);
-  const x = box.x + box.width * 0.5, y = box.y + box.height * 0.92;
+  const chargeT = () => page.evaluate(() => (window as any).__DBD_ENGINE.peek().chargeT as number);
+  const x = box.x + box.width * 0.5, y = box.y + box.height * 0.6;
   await fire('pointerdown', 1, x, y);
-  await fire('pointermove', 1, x + 4, y);
   const p1 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().pointer);
-  // one finger held still does not charge
-  await page.waitForTimeout(700);
-  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.peek().chargeT)).toBeLessThan(0.05);
-  // a second finger anywhere charges; lifting it lets the cleave go
+  // a second finger neither charges nor moves the sickle
   await fire('pointerdown', 2, box.x + box.width * 0.2, box.y + box.height * 0.5);
-  await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().chargeT >= 0.9, null, { timeout: 4000 });
-  // moving the second finger does not move the sickle
   await fire('pointermove', 2, box.x + 20, box.y + 20);
   const p2 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().pointer);
   expect(Math.abs(p2.x - p1.x)).toBeLessThan(1);
   await fire('pointerup', 2, box.x + 20, box.y + 20);
-  await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().chargeT === 0, null, { timeout: 2000 });
-  await fire('pointerup', 1, x + 4, y);
+  // the first finger held still charges; lifting it strikes
+  await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().chargeT >= 0.9, null, { timeout: 4000 });
+  await fire('pointerup', 1, x, y);
+  expect(await chargeT()).toBe(0);
+  // a finger that keeps moving does not charge
+  await fire('pointerdown', 1, x, y);
+  for (let k = 0; k < 12; k++) {
+    await fire('pointermove', 1, x + (k % 2 ? 40 : -40), y);
+    await page.waitForTimeout(80);
+  }
+  expect(await chargeT()).toBeLessThan(0.3);
+  await fire('pointerup', 1, x, y);
+  expect(errors).toEqual([]);
+});
+
+test('touch: without a Charge handle a still finger only cuts', async ({ page }) => {
+  const errors = await boot(page);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  const box = (await page.locator('#field').boundingBox())!;
+  await page.evaluate(([x, y]) => {
+    document.getElementById('field')!.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y, bubbles: true }));
+  }, [box.x + box.width * 0.5, box.y + box.height * 0.6]);
+  await page.waitForTimeout(900);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.peek().chargeT)).toBe(0);
   expect(errors).toEqual([]);
 });
 
@@ -649,14 +672,16 @@ test('the day\'s event badge holds the field until the next tap', async ({ page 
   expect(errors).toEqual([]);
 });
 
-test('menu: the mute button silences music and effects together', async ({ page }) => {
-  const errors = await boot(page, seeded([], 0, { settings: { music: true, haptics: true } }));
-  await page.locator('.scr-menu [data-act="sound"]').click();
-  expect(await page.evaluate(() => (window as any).__DBD_APP.g.settings.music)).toBe(false);
-  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().sound)).toBe(false);
-  await page.locator('.scr-menu [data-act="sound"]').click();
-  expect(await page.evaluate(() => (window as any).__DBD_APP.g.settings.music)).toBe(true);
-  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().sound)).toBe(true);
+test('menu: the signpost (Design 4), Barn opens skills or the Bling Barn, the plank opens the map', async ({ page }) => {
+  const errors = await boot(page);
+  await expect(page.locator('.scr-menu .sp-play')).toBeVisible();
+  await expect(page.locator('.scr-menu [data-act="crowns"]')).toHaveCount(0);
+  await act(page, 'barn-menu');
+  await page.locator('.scr-modal [data-act="skills"]').click();
+  await expect(page.locator('.scr-skills')).toBeVisible();
+  await page.evaluate(() => (window as any).__DBD_APP.show('menu'));
+  await act(page, 'continue');
+  await expect(page.locator('.scr-world')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
