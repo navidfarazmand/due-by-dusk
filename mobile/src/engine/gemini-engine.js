@@ -17924,6 +17924,7 @@ export function startGeminiEngine() {
     dayCheckpoint = JSON.parse(JSON.stringify(farm));
     Sound.init();
     held = false;
+    clockStopped = false;
     updatePad();
     cur = stats();
     dayLen = cur.day;
@@ -17981,6 +17982,7 @@ export function startGeminiEngine() {
     if (window.__odDayEnded) window.__odDayEnded(Object.assign({}, today));
     dayCheckpoint = null;
     held = false;
+    clockStopped = false;
     if (bossCrop && !bossCrop.dead && farm.boss) farm.boss.hp = Math.max(1, bossCrop.hp);
     seeds = [];
     mode = 'dusk';
@@ -19675,7 +19677,7 @@ export function startGeminiEngine() {
       }
     }
     if (mode === 'day') {
-      time -= dt;
+      if (!clockStopped) time -= dt;
       if (keys.size) {
         let vx = 0,
           vy = 0;
@@ -23328,6 +23330,8 @@ export function startGeminiEngine() {
   /* A quiet hold (v0.11.1): the field stops while the shell shows a card (the day's event, something new), with
      no pause overlay. The shell lets go when the card is closed. */
   let held = false;
+  /* The practice farm (v0.11.1): crops grow and the sickle cuts, but the sun waits until the shell starts it. */
+  let clockStopped = false;
   /* loop */ let last = 0;
   function FarmScene_frame(now) {
     const elapsed = last ? Math.max(0, (now - last) / 1000) : 0;
@@ -23620,6 +23624,17 @@ export function startGeminiEngine() {
           }
           return held;
         },
+        /** The practice farm: false stops the daylight clock (the field still plays), true starts it again. */
+        setClock: (run) => {
+          clockStopped = !run && mode === 'day';
+          return !clockStopped;
+        },
+        /** Seconds of daylight left today (the practice farm ends its day with it). */
+        setDayLeft: (sec) => {
+          if (mode !== 'day') return false;
+          time = Math.max(0.5, Math.min(dayLen, Number(sec) || 0));
+          return true;
+        },
         /** Pause → Back to menu (v0.11.1): leaves the day; the farm goes back to how it was at dawn, as when the
          *  app is closed mid-day, so the day can be played again. Returns what the day had earned so far. */
         abandonDay: () => {
@@ -23630,6 +23645,7 @@ export function startGeminiEngine() {
           mode = 'idle';
           paused = false;
           held = false;
+          clockStopped = false;
           rushTimer = 0;
           rushCharge = 0;
           comboTimer = 0;
@@ -23695,6 +23711,8 @@ export function startGeminiEngine() {
         endDayNow: () => {
           if (!savingOff || mode !== 'day') return false;
           time = Math.min(time, 0.05);
+          clockStopped = false;
+          held = false;
           return true;
         },
         /** Side farms don't save: their days must not overwrite the real farm. */

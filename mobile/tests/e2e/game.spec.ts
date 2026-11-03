@@ -371,37 +371,87 @@ test('music: pick a field track and a menu track in Settings', async ({ page }) 
   expect(errors).toEqual([]);
 });
 
-test('a new player: Play runs the intro (the boss falls), then the first farm points at Start', async ({ page }) => {
+/** A real finger that chases the nearest ripe crop (the practice farm's steps wait for real cuts). */
+async function harvest(page: Page, ms: number): Promise<void> {
+  await page.evaluate(() => {
+    const cv = document.getElementById('field')!, r = cv.getBoundingClientRect();
+    cv.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height * 0.6, bubbles: true }));
+  });
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    await page.evaluate(() => {
+      const e = (window as any).__DBD_ENGINE, k = e.peek(), cv = document.getElementById('field')!, r = cv.getBoundingClientRect();
+      const live = k.crops.filter((c: any) => !c.dead && c.age > 0.4);
+      if (!live.length) return;
+      live.sort((a: any, b: any) => Math.hypot(a.x - k.pointer.x, a.y - k.pointer.y) - Math.hypot(b.x - k.pointer.x, b.y - k.pointer.y));
+      const c = live[0];
+      const f = e.fingerAt(r.left + c.x * k.scale, r.top + (c.y - c.r * c.ds * 0.5) * k.scale);
+      cv.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: f.x + (Math.random() - 0.5) * 20, clientY: f.y, bubbles: true }));
+    });
+    await page.waitForTimeout(60);
+  }
+  await page.evaluate(() => {
+    document.getElementById('field')!.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, pointerType: 'touch', isPrimary: true, bubbles: true }));
+  });
+}
+
+test('a new player: Play opens the practice farm; each step waits for the player; then the first farm', async ({ page }) => {
   const errors = await boot(page, undefined, true);
   await act(page, 'play');
-  await expect(page.locator('#dbdCoach.cinema')).toBeVisible();
-  await expect(page.locator('#dbdHud')).toBeVisible();
-  // the finale plays itself: the boss is knocked out and the bank stamps the deed
-  await expect(page.locator('#dbdCoach .co-stamp')).toBeVisible({ timeout: 15_000 });
-  await expect(page.locator('.scr-farmhouse')).toBeVisible({ timeout: 15_000 });
+  const step = page.locator('#dbdCoach .co-step .cs-t');
+  await expect(step).toContainText(/drag over a carrot|mouse over a carrot/);
+  // the sun waits: the daylight clock does not run while the player learns
+  const t0 = await page.evaluate(() => (window as any).__DBD_ENGINE.state().time);
+  await page.waitForTimeout(1500);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().time)).toBe(t0);
+  await expect(page.locator('#dbdCoach.cinema')).toHaveCount(0);
+  await harvest(page, 3500);
+  await expect(step).toHaveText(/Coins go to your jar|Make a chain|The sun is your clock/, { timeout: 8000 });
+  await page.waitForTimeout(3500);
+  await harvest(page, 8000);
+  await expect(step).toHaveText('The sun is your clock', { timeout: 10_000 });
+  await expect(page.locator('.scr-farmhouse')).toBeVisible({ timeout: 20_000 });
   const st = await page.evaluate(() => ({ run: (window as any).__DBD_APP.g.run?.cityId, seen: (window as any).__DBD_APP.g.seen, cash: (window as any).__DBD_ENGINE.state().cash }));
   expect(st.run).toBe('ca_charlottetown');
-  expect(st.seen.intro).toBe(true);
+  expect(st.seen.practice).toBe(true);
   expect(st.cash).toBe(0);
   await expect(page.locator('#dbdCoach .co-hole')).toBeVisible();
-  await act(page, 'start');
-  await expect(page.locator('#dbdHud')).toBeVisible();
-  // day 1: the ghost cuts a carrot, then the field waits for the player
-  await expect(page.locator('#dbdCoach .co-cap')).toHaveText(/Your turn/, { timeout: 12_000 });
-  const t = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().time);
-  await page.waitForTimeout(1500);
-  const t2 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().time);
-  expect(Math.abs(t2 - t)).toBeLessThan(0.05);
   expect(errors).toEqual([]);
 });
 
-test('Skip ends the intro at once', async ({ page }) => {
+test('Skip practice lands on the first farm; the intro plays from Settings and Skip ends it', async ({ page }) => {
   const errors = await boot(page, undefined, true);
   await act(page, 'play');
   await expect(page.locator('#dbdCoach .co-skip')).toBeVisible();
   await page.locator('#dbdCoach .co-skip').click();
   await expect(page.locator('.scr-farmhouse')).toBeVisible({ timeout: 8000 });
-  await expect(page.locator('#dbdCoach.cinema')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.run?.cityId)).toBe('ca_charlottetown');
+  // the intro film, from Settings, ends back on the menu with the farm as it was
+  await page.evaluate(() => (window as any).__DBD_APP.show('menu'));
+  await act(page, 'settings');
+  await page.locator('.scr-modal [data-act="replay-intro"]').click();
+  await expect(page.locator('#dbdCoach.cinema')).toBeVisible();
+  await page.locator('#dbdCoach .co-skip').click();
+  await expect(page.locator('.scr-menu')).toBeVisible({ timeout: 8000 });
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.run?.cityId)).toBe('ca_charlottetown');
+  expect(errors).toEqual([]);
+});
+
+test('something new on a real farm holds the field with a card until a tap', async ({ page }) => {
+  const errors = await boot(page, seeded([], 0), true);
+  await page.evaluate(() => { const g = (window as any).__DBD_APP.g; g.seen = { intro: true, practice: true, cut: true, start: true, cleave: true, mBoss: true, mRadish: true, mGolden: true, mGoat: true, mGoatPet: true, mCrow: true, mProp: true, mBolt: true, mRival: true, mRush: true }; });
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  // the chain bonus is the one left to see: cut until it shows
+  await harvest(page, 9000);
+  await expect(page.locator('#dbdBanner.new-thing')).toBeVisible({ timeout: 6000 });
+  await expect(page.locator('#dbdCoach .co-veil.on')).toHaveCount(0);
+  const t1 = await page.evaluate(() => (window as any).__DBD_ENGINE.state().time);
+  await page.waitForTimeout(700);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().time)).toBe(t1);
+  await page.mouse.click(300, 300);
+  await expect(page.locator('#dbdBanner.new-thing')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

@@ -62,6 +62,7 @@ const COACH_HTML = `<div id="dbdCoach" hidden>
   <div class="co-hand" data-i="0" hidden><span class="co-press"></span>${HAND}</div>
   <div class="co-hand" data-i="1" hidden><span class="co-press"></span>${HAND}</div>
   <div class="co-boom" hidden></div>
+  <div class="co-step" hidden><b class="cs-t"></b><span class="cs-d"></span><span class="cs-p" hidden></span></div>
   <button type="button" class="st-btn co-skip" hidden>Skip<svg width="14" height="16" viewBox="0 0 16 18" aria-hidden="true"><path d="M5 3l6 6-6 6" fill="none" stroke="${INK}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
 </div>`;
 
@@ -76,6 +77,7 @@ export class Coach {
   private hands: HTMLElement[];
   private boom: HTMLElement;
   private skip: HTMLButtonElement;
+  private step: HTMLElement;
   private token = 0;
   private handAt: Pt[] = [{ x: -99, y: -99 }, { x: -99, y: -99 }];
   private down = [false, false];
@@ -93,6 +95,7 @@ export class Coach {
     this.hands = Array.from(this.root.querySelectorAll<HTMLElement>('.co-hand'));
     this.boom = q('.co-boom');
     this.skip = q('.co-skip') as HTMLButtonElement;
+    this.step = q('.co-step');
     this.skip.firstChild && (this.skip.firstChild.textContent = t('Skip'));
     this.skip.addEventListener('click', () => {
       const f = this.onSkip;
@@ -145,6 +148,31 @@ export class Coach {
     this.boom.hidden = true;
     this.skip.hidden = true;
     this.onSkip = null;
+    this.step.hidden = true;
+  }
+
+  /** The practice farm's step card at the top of the field: what to do now, and how far along (no dimming). */
+  stepCard(title: string, line: string, progress?: string): void {
+    const s = this.step;
+    (s.querySelector('.cs-t') as HTMLElement).textContent = title;
+    (s.querySelector('.cs-d') as HTMLElement).textContent = line;
+    const p = s.querySelector('.cs-p') as HTMLElement;
+    p.hidden = !progress;
+    p.textContent = progress || '';
+    if (s.hidden) {
+      s.hidden = false;
+      s.classList.remove('pop');
+      void s.offsetWidth;
+      s.classList.add('pop');
+    }
+  }
+
+  /** A Skip button without the cinema bars (the practice farm). */
+  showSkip(label: string, onSkip: () => void): void {
+    if (this.skip.firstChild) this.skip.firstChild.textContent = label;
+    this.skip.hidden = false;
+    this.skip.classList.add('low');
+    this.onSkip = onSkip;
   }
 
   wait(ms: number): Promise<void> {
@@ -377,6 +405,7 @@ export class Coach {
     this.root.classList.toggle('cinema', on);
     this.root.classList.toggle('blocking', on);
     this.skip.hidden = !on;
+    this.skip.classList.remove('low');
     this.onSkip = on ? onSkip || null : null;
   }
 
@@ -481,6 +510,65 @@ export class Coach {
     });
   }
 
+  /** Level 0, the practice farm (v0.11.1, Navid 3 Nov: "make a level 0 where people can train, and it should wait until
+   *  the player actually does it"). The daylight clock is stopped (the shell's job) while the player learns to cut and
+   *  chain; each step waits for the player. Resolves when the player has done them all. */
+  async practice(o: { jar: () => Element | null; combo: () => number; onSun: () => void; onSkip: () => void }): Promise<void> {
+    await this.run(async () => {
+      this.showSkip(t('Skip practice'), o.onSkip);
+      const count = () => peek()?.today.count || 0;
+      await this.until(() => (peek()?.crops || []).filter(c => !c.dead && c.age > 0.35).length >= 2, 3000);
+      // 1. touch and drag: the ghost finger shows it (a picture only) until the player touches the field
+      this.stepCard(
+        touchy ? t('Touch the field and drag over a carrot') : t('Move the mouse over a carrot'),
+        touchy ? t('Keep your finger down and slide it. The sickle cuts just above your fingertip.') : t('The sickle follows the mouse and cuts what it touches.'),
+      );
+      const demo = async () => {
+        const c = nearestCrop(this, { x: innerWidth * 0.5, y: innerHeight * 0.6 });
+        if (!c) return;
+        const p = this.cropAt(c);
+        this.showHand(0, { x: p.x - 110, y: p.y + 30 });
+        this.press(0, false);
+        await this.glide(0, { x: p.x + 60, y: p.y - 10 }, 900);
+        this.lift(0);
+        await this.wait(500);
+      };
+      const t0 = performance.now();
+      while (!peek()?.pointer.active && count() === 0) {
+        await demo();
+        if (performance.now() - t0 > 60000) break;
+      }
+      this.hideHand(0);
+      // 2. cut six carrots
+      const goal = 6;
+      while (count() < goal) {
+        this.stepCard(t('Cut carrots'), t('Each carrot pays a few coins.'), `${Math.min(count(), goal)} / ${goal}`);
+        await this.until(() => count() >= goal, 400);
+      }
+      this.stepCard(t('Cut carrots'), t('Each carrot pays a few coins.'), `${goal} / ${goal}`);
+      await this.wait(500);
+      // 3. coins go to the jar, and the jar pays the bills
+      const jar = o.jar();
+      this.stepCard(t('Coins go to your jar'), t('At dusk, the jar pays the bills from Grumble & Sons. Miss one and the bank takes the farm.'));
+      jar?.classList.add('co-pulse');
+      await this.wait(3200);
+      jar?.classList.remove('co-pulse');
+      // 4. a chain: cut quickly, one after another
+      const chainGoal = 6;
+      while (o.combo() < chainGoal) {
+        this.stepCard(t('Make a chain'), t('Cut crops quickly, one after another. A longer chain pays more for every crop.'), `${t('Chain')} ${Math.min(o.combo(), chainGoal)} / ${chainGoal}`);
+        await this.until(() => o.combo() >= chainGoal, 300);
+      }
+      this.say(t('Nice!'), undefined, 40);
+      await this.wait(900);
+      this.hush();
+      // 5. the sun: the shell starts the clock; the day ends at dusk
+      this.stepCard(t('The sun is your clock'), t('When it sets, the day is over. Cut as much as you can before dusk!'));
+      o.onSun();
+      await this.until(() => peek()?.mode !== 'day', 30000);
+    });
+  }
+
   /** The Charge Cleave (v0.11.1, with the Charge handle): the field stops, the ghost finger holds still on the crops
    *  until the ring is full, and lifts. Then the field waits for the player to try it. */
   async cleaveLesson(cleaved: () => number): Promise<boolean> {
@@ -491,7 +579,7 @@ export class Coach {
       const spotC = densest(this);
       if (!spotC) return;
       const p1 = spotC;
-      this.spot(p1, 96);
+      // no dimming (Navid, 3 Nov): the field just stops while the finger shows it
       this.showHand(0, { x: p1.x - 90, y: p1.y + 60 });
       await this.glide(0, p1, 450);
       this.say(touchy ? t('Hold still') : t('Hold the button'), { x: p1.x, y: p1.y - 96 }, 30);

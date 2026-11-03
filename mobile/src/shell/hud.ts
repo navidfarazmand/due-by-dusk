@@ -281,19 +281,50 @@ export class FarmHud {
   /** The event card on demand: the field holds still until the player taps anywhere. */
   private showInfo(): void {
     if (!this.ev) return;
+    this.holdCard(() => this.showBanner(false, true));
+  }
+
+  /** Something new on the field (v0.11.1, in place of the dimmed spotlight): the field holds still and a card says
+   *  what it is, until the player taps. Resolves when the card is closed. */
+  showCard(icon: string, title: string, desc: string): Promise<void> {
+    return new Promise(resolve => {
+      this.holdCard(() => {
+        const E = this.E;
+        clearTimeout(this.bannerT);
+        E.BannerIc.innerHTML = icon;
+        E.BannerT.textContent = title;
+        E.BannerD.textContent = desc;
+        E.BannerH.textContent = t('Tap to continue');
+        E.Banner.getAnimations().forEach(a => a.cancel());
+        E.Banner.hidden = false;
+        E.Banner.classList.add('held', 'new-thing');
+        E.Banner.animate([{ opacity: 0, transform: 'translateY(12px) scale(.92)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }], { duration: 220, easing: 'ease-out' });
+      }, () => {
+        this.E.Banner.classList.remove('new-thing');
+        this.E.Banner.hidden = true;
+        // the day's own icon goes back in the banner for the badge
+        if (this.ev) this.E.BannerIc.textContent = eventIcon(this.ev.id);
+        resolve();
+      });
+    });
+  }
+
+  /** Holds the field, shows a card, and lets go on the next tap anywhere. */
+  private holdCard(show: () => void, closed?: () => void): void {
     let held = false;
     try {
       held = engine().hold(true);
     } catch {
       /* engine not ready */
     }
-    this.showBanner(false, true);
+    show();
     const done = (e: Event) => {
       e.preventDefault();
       e.stopPropagation();
       window.removeEventListener('pointerdown', done, true);
       this.E.Banner.classList.remove('held');
-      this.shrink();
+      if (closed) closed();
+      else this.shrink();
       if (held) {
         try {
           engine().hold(false);

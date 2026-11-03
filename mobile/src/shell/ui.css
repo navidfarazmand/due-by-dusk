@@ -213,3 +213,4 @@ body.dbd-onscr #stage .toast { display: none !important; }
 }
 @keyframes dbdTurn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(90deg); } }
 @media (prefers-reduced-motion: reduce) { .turn-card svg { animation: none; } }
+.hb-banner .bic img { width: 34px; height: 34px; object-fit: contain; }

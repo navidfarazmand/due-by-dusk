@@ -176,6 +176,10 @@ export interface EngineApi {
   hold(on: boolean): boolean;
   /** Pause → Back to menu: leaves the day; the farm goes back to dawn. Returns what the day had earned (-1: no day). */
   abandonDay(): number;
+  /** The practice farm: false stops the daylight clock (the field still plays); true starts it again. */
+  setClock(run: boolean): boolean;
+  /** Seconds of daylight left today. */
+  setDayLeft(sec: number): boolean;
   /** Side farms don't save, so their day can't overwrite the real farm. */
   setSaving(on: boolean): void;
   /** Seeded field: the n-th crop, prop, crow and goat are the same for everyone on that seed (0 = random). */
