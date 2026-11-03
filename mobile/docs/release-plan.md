@@ -58,7 +58,7 @@ The closed test's tester list is the Google Group `due-by-dusk-testers@googlegro
 
 1. GitHub **Actions > Play release bundle > Run workflow** (leave *production ads* off for closed testing).
 2. Download the `due-by-dusk-play-…` artifact from the finished run and unzip it to get `app-release.aab`.
-3. Play Console **Test and release > Testing > Closed testing**: create a release, upload the bundle, add testers, roll out. Each run uses versionCode 1000 + the run number, so later uploads are always accepted.
+3. Play Console **Test and release > Testing > Closed testing**: create a release, upload the bundle, add testers, roll out. Each run uses versionCode 1100 + the run number (above the 1001 uploaded by hand), so later uploads are always accepted.
 
 ### Sending bundles to Play Console automatically (v0.11.1)
 

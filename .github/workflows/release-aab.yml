@@ -112,8 +112,9 @@ jobs:
           DBD_UPLOAD_KEY_ALIAS: ${{ secrets.DBD_UPLOAD_KEY_ALIAS }}
           DBD_UPLOAD_KEY_PASSWORD: ${{ secrets.DBD_UPLOAD_KEY_PASSWORD }}
         run: |
-          # Play needs a higher versionCode on every upload; run numbers only go up.
-          export DBD_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
+          # Play needs a higher versionCode on every upload; run numbers only go up. 1001 (0.11.0) was uploaded by
+          # hand, so this workflow's codes start above it.
+          export DBD_VERSION_CODE=$((1100 + GITHUB_RUN_NUMBER))
           echo "versionCode $DBD_VERSION_CODE, production ads: ${{ inputs.production_ads || startsWith(github.ref_name, 'play-prod-v') }}"
           bash android/gradlew -p android --no-daemon bundleRelease
       - name: Check the bundle is signed
