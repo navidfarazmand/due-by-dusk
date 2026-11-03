@@ -1,6 +1,7 @@
-# Next version (0.11.2) checklist
+# Version checklist
 
-Navid's list for the next Play release. Claude ticks items as they land and says when it is enough for a version;
+Navid's list for the next Play release. 0.11.2 went to closed testing on 3 Nov 2026 with everything ticked below; the
+open items carry over to 0.11.3. Claude ticks items as they land and says when it is enough for a version;
 then it bumps the version and runs the Play release (closed testing).
 
 - [x] New rooster crow: "Cartoon Rooster Sounds" by DRAGON-STUDIO (Pixabay Content License, free for commercial use),
