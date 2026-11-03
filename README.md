@@ -61,3 +61,7 @@ Each game is a single HTML file: CSS in one `<style>` block and all game code in
 - Phones in landscape: make the header compact so the 3D stage fills a sideways screen. In the store app, lock the game to landscape.
 - Replace the code-built 3D models with the packs in `models/`.
 - Wrap the game for Android and iPhone (for example with Capacitor) once it is ready.
+
+## Copyright
+
+Copyright (c) 2026 Navid Farazmand. All rights reserved. No use, copying or modification without written permission; see [LICENSE](LICENSE). Credited third-party music, fonts and packages keep their own licences.

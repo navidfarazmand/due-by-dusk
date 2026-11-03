@@ -28,3 +28,7 @@ For a computer, `npm run build:pc` and `node scripts/inline-html.mjs dist-pc Due
 Android test APKs are development builds from GitHub prereleases and CI artifacts, not Play Store releases. iOS requires a Mac and signing. Test builds show Google demo ads. No purchases, accounts or analytics. The Play app ID is `com.khoreh.duebydusk`; see the [release plan](docs/release-plan.md#google-play-and-admob-v072). Music and sound credits are in `licenses/README.md` and in the game under Settings → Credits.
 
 Editable supplied character sources live in art/source. The original asset pipeline is archived in art/tools and references raw generated images that were not included in the supplied archive. Old bitmap textures are archived in art/legacy-textures; current game art is drawn in code.
+
+## Copyright
+
+Copyright (c) 2026 Navid Farazmand. All rights reserved. No use, copying or modification without written permission; see [LICENSE](../LICENSE). Credited third-party music, fonts and packages keep their own licences.
