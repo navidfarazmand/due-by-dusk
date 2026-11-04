@@ -843,5 +843,6 @@ const dict: Record<string, string> = {
   "Your email app opens with the game's details. Write what happened there and send it.": "Deine E-Mail-App öffnet sich mit den Details des Spiels. Schreib dort, was passiert ist, und sende sie ab.",
   "Open email": "E-Mail öffnen",
   "What happened?": "Was ist passiert?",
+  "Crown! You beat {rival}'s record.": "Krone! Du hast den Rekord von {rival} geschlagen.",
 };
 export default dict;

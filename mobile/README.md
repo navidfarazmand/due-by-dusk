@@ -1,4 +1,4 @@
-# Due by Dusk — mobile development v0.11.2
+# Due by Dusk — mobile development v0.11.3
 
 Landscape farm game: Gemini's farm engine for the harvest days, Claude's game around it, packaged with Vite and Capacitor 8. Use Node 22.12+ (Node 24 recommended).
 

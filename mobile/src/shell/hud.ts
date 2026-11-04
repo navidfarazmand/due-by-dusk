@@ -127,7 +127,8 @@ export class FarmHud {
     this.goal = g;
   }
 
-  /** The city's rival rides on the HUD at the record; passing it knocks the face off (null hides the chip). */
+  /** The city's record: watched during the day so passing it can be celebrated. Its chip is no longer shown on the field
+   *  (v0.11.3, Navid: a second row under the top-right buttons that blocks the view); the record is on the day card. */
   private rival: { record: number; beaten: boolean } | null = null;
   /** Called once when today's harvest passes the rival's record. */
   onRivalBeaten: (() => void) | null = null;
@@ -135,7 +136,7 @@ export class FarmHud {
   setRival(r: { name: string; record: number } | null): void {
     const E = this.E;
     this.rival = r ? { record: Math.max(1, r.record), beaten: false } : null;
-    E.Rival.hidden = !r;
+    E.Rival.hidden = true;
     E.Rival.classList.remove('beaten', 'gone');
     if (!r) return;
     E.RivalFace.innerHTML = rivalFace(r.name, 30);

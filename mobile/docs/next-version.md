@@ -34,6 +34,9 @@ Done since 0.11.1 went to Play: LICENSE (all rights reserved); Play uploads from
       (was +½), so level 9 gives about 7 more crops instead of 5.
 - [x] Smoothness: the field picks a lighter drawing resolution by itself when a phone can't keep up; snow drawn in a few
       batched shapes, same look.
+- [x] The record bar (rival and best day) is off the field: it made a second row under the top-right buttons. The record
+      stays on the day card; passing it shows a short "Crown!" message.
+- [x] Sundown shows the bill's whole name (it was cut to "The ..."); a long name wraps.
 - [x] Release notes go up with the Play upload (mobile/release-notes/whatsnew-en-US).
 
 Still open: the other six countries' weather (after Navid has played Canada's snow).

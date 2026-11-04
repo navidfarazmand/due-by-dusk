@@ -196,7 +196,9 @@ export class GameApp {
       } catch {
         /* no vibration */
       }
-      if (!this.coach.busy && this.coachOn) void this.coach.momentEl(() => document.getElementById('dbdRival'), t('Crown!'), 1300, 0.35);
+      // a short message, no spotlight (the record chip is off the field since v0.11.3)
+      const rv = this.rivalToday();
+      this.toast(rv ? t('Crown! You beat {rival}\'s record.', { rival: rv.name }) : t('Crown!'), 2200);
     };
     this.root.addEventListener('click', e => this.click(e));
     // Settings → the two volume sliders: heard while dragging, saved on release
@@ -2117,7 +2119,7 @@ export class GameApp {
       <div class="sd-head"><h2>${t('Sundown!')}</h2><span class="eyebrow">${esc(ct.short.toUpperCase())} · ${t('DAY {day}', { day: d.day })}</span>
         <button type="button" class="up-info" data-act="info" data-arg="day" aria-label="${t('About today')}"><i class="info-i">i</i></button></div>
       <div class="sd-hero"><span class="sd-big money">+${money(earned)}</span>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('earned today')}</span></div>
-      <div class="sd-bill">${ICON.notice(26)}<span class="sb-name">${esc(t(b.name))}</span><b class="sb-amt">${money(b.amt)}</b><span class="sb-due">${dueLine}</span>${stamp}</div>
+      <div class="sd-bill">${ICON.notice(26)}<span class="sb-what"><span class="sb-name">${esc(t(b.name))}</span><span class="sb-due">${dueLine}</span></span><b class="sb-amt">${money(b.amt)}</b>${stamp}</div>
       ${crownNow}${bossLine}
       <div class="sd-actions">${dbl}<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button></div>
     </div></div>`;
