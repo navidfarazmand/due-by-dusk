@@ -843,7 +843,7 @@ const dict: Record<string, string> = {
   "Open email": "E-Mail öffnen",
   "What happened?": "Was ist passiert?",
   "Crown! You beat {rival}'s record.": "Krone! Du hast den Rekord von {rival} geschlagen.",
-  // v0.12 (Navid, 4 Nov): perks confirm, tonight's-bill card, Sundown's next day
+  // v0.11.4 (Navid, 4 Nov): perks confirm, tonight's-bill card, Sundown's next day
   "Take it": "Nehmen",
   "Tonight's bill": "Die Rechnung heute Abend",
   "That leaves {left}, and tonight's bill is {amt}.": "Dann bleiben dir {left}, und heute Abend sind {amt} fällig.",

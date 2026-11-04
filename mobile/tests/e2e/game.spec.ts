@@ -38,7 +38,7 @@ async function act(page: Page, a: string, arg?: string): Promise<void> {
   await page.locator(`#dbdScreens [data-act="${a}"]${arg ? `[data-arg="${arg}"]` : ''}`).first().click();
 }
 
-/** Perks ask to confirm (v0.12, Navid 4 Nov): the first tap picks the card out and shows "Take it", the second takes it. */
+/** Perks ask to confirm (v0.11.4, Navid 4 Nov): the first tap picks the card out and shows "Take it", the second takes it. */
 async function takePerk(card: Locator): Promise<void> {
   await card.click();
   await expect(card).toHaveClass(/\bsel\b/);
@@ -832,7 +832,7 @@ test('cards keep their text inside on a short phone screen', async ({ page }) =>
   expect(errors).toEqual([]);
 });
 
-test('Sundown goes straight to the next day, and the field music plays on (v0.12)', async ({ page }) => {
+test('Sundown goes straight to the next day, and the field music plays on (v0.11.4)', async ({ page }) => {
   const errors = await boot(page);
   await act(page, 'play');
   await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Day 1');
@@ -866,7 +866,7 @@ test('Sundown goes straight to the next day, and the field music plays on (v0.12
   expect(errors).toEqual([]);
 });
 
-test("a purchase that leaves too little for tonight's bill asks on a card over a dimmed screen (v0.12)", async ({ page }) => {
+test("a purchase that leaves too little for tonight's bill asks on a card over a dimmed screen (v0.11.4)", async ({ page }) => {
   const errors = await boot(page, seeded(CA.slice(0, 2), 0));
   await act(page, 'play');
   await expect(page.locator('.scr-farmhouse .dc-day')).toBeVisible();

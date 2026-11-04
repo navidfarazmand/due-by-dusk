@@ -19764,7 +19764,7 @@ export function startGeminiEngine() {
   function drawSnowGround() {
     if (countryWx() !== 'snow') return;
     const prog = mode === 'day' ? FarmScene_clamp(1 - time / Math.max(1, dayLen), 0, 1) : mode === 'dusk' ? 1 : 0.35;
-    // v0.12 (Navid, 4 Nov: "the farm look is white, like the Canadian winter"): the field itself lies under snow that
+    // v0.11.4 (Navid, 4 Nov: "the farm look is white, like the Canadian winter"): the field itself lies under snow that
     // deepens through the day; the furrows show through as soft blue lines with a bright edge
     ctx.globalAlpha = 0.85 + 0.1 * prog;
     ctx.fillStyle = '#f2f7fa';

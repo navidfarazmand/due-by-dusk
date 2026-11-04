@@ -2060,7 +2060,7 @@ export class GameApp {
     layout(this.root);
   }
 
-  /** v0.12 (Navid, 4 Nov): the tool's art and text took a third of the panel and pushed its attachments out of sight,
+  /** v0.11.4 (Navid, 4 Nov): the tool's art and text took a third of the panel and pushed its attachments out of sight,
    *  and the attachment lines were cut off. The blurb shows only for a tool you don't own; the lines wrap. */
   private toolsTab(): string {
     const T = this.g.tools;
