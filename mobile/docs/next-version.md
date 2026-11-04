@@ -43,7 +43,8 @@ Still open: the other six countries' weather (after Navid has played Canada's sn
 
 ## 0.11.4 and 0.12 (Navid's test of 0.11.3, 4 Nov 2026)
 
-Clear fixes, released as 0.11.4:
+Clear fixes, released as 0.11.4 (versionCode 1106, rolled out to closed testing on 4 Nov 2026 by the Play release
+workflow, run 6):
 - [x] Reports go to bugs@khoreh.com: one address for every app, the subject names the game (website too).
 - [x] Sound from the first second: music and effects play when the game opens, without a tap first (it still waits
       for a button).
