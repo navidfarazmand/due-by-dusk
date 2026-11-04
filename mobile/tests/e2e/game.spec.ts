@@ -747,12 +747,16 @@ test('a newer version on Play: one pop-up on a menu screen', async ({ page }) =>
   expect(errors).toEqual([]);
 });
 
-test('Report a problem: from Settings and by one strong shake, with the game version and where you were', async ({ page }) => {
+test('Report a problem: from Settings and by one strong shake; no typing in the game, the email app gets the details', async ({ page }) => {
   const errors = await boot(page);
   await act(page, 'settings');
   await page.locator('.scr-modal [data-act="report"]').click();
   await expect(page.locator('.scr-modal h2')).toHaveText('Report a problem');
-  await expect(page.locator('.scr-modal .report-det pre')).toContainText('Due by Dusk 0.11');
+  // nothing to type here: no keyboard over the landscape screen
+  await expect(page.locator('.scr-modal textarea, .scr-modal input[type="text"]')).toHaveCount(0);
+  await expect(page.locator('.scr-modal [data-act="report-send"]')).toHaveText('Open email');
+  const details = await page.evaluate(() => (window as any).__DBD_APP.reportText());
+  expect(details).toContain('Due by Dusk 0.11');
   await act(page, 'close');
   // a gentle movement does nothing; one strong shake opens it (and pauses a day)
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
@@ -764,7 +768,7 @@ test('Report a problem: from Settings and by one strong shake, with the game ver
   await shake(34);
   await expect(page.locator('.scr-modal h2')).toHaveText('Report a problem');
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().paused)).toBe(true);
-  await expect(page.locator('.scr-modal .report-det pre')).toContainText('Charlottetown');
+  expect(await page.evaluate(() => (window as any).__DBD_APP.reportText())).toContain('Charlottetown');
   expect(errors).toEqual([]);
 });
 

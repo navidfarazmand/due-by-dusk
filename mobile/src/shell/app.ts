@@ -224,15 +224,6 @@ export class GameApp {
     // Report a problem: one strong shake anywhere, or Settings → Report a problem
     watchErrors();
     watchShake(() => this.openReport(), () => this.g.settings.shakeReport !== false && this.modal.hidden);
-    // a tablet or foldable turned to portrait: the field pauses behind the "turn sideways" card
-    try {
-      const mq = window.matchMedia('(orientation: portrait) and (max-aspect-ratio: 1/1)');
-      mq.addEventListener('change', () => {
-        if (mq.matches && e.state().mode === 'day') e.setPaused(true);
-      });
-    } catch {
-      /* no matchMedia */
-    }
     // v0.10 rebuilt the workshop and the farms: old upgrades were refunded, and an old farm's cash is saved too
     if (this.g.migratedRefund != null) {
       let farmCash = 0;
@@ -2304,7 +2295,6 @@ export class GameApp {
     set('#pauseOverlay .pause-card p', 'Your crops can wait. The daylight is paused until you return.');
     set('#btnResume', 'Back to the field');
     set('#btnQuitDay', 'Back to menu');
-    set('#dbdTurnT', 'Turn your device sideways to play.');
   }
 
   /** The language list: each language in its own name. */
@@ -2421,7 +2411,9 @@ export class GameApp {
       <div class="m-row"><button type="button" class="st-btn" data-act="settings">${t('Back')}</button><button type="button" class="st-btn gold" data-act="close">${t('Done')}</button></div>`, 420);
   }
 
-  /** Report a problem (v0.11.2): what happened, in the player's words, plus the game's details; a day pauses. */
+  /** Report a problem: a small card, then the phone's email app (outside the game) with the game's details; the
+   *  player writes what happened there. No typing inside the game: the keyboard covered half the landscape screen
+   *  (Navid, 4 Nov). A running day pauses. */
   private openReport(): void {
     try {
       if (engine().state().mode === 'day') engine().setPaused(true);
@@ -2437,20 +2429,20 @@ export class GameApp {
       /* engine not ready */
     }
     this.reportPlace = { screen: this.scr, farm: ct?.short, day, lang: lang() };
-    const details = reportDetails(this.reportPlace);
     this.openModal('report', `<h2 class="m-title">${t('Report a problem')}</h2>
-      <p class="m-text">${t('What happened? A sentence or two helps a lot.')}</p>
-      <textarea id="reportText" class="report-text" rows="4" maxlength="1500" placeholder="${t('For example: the Start button did nothing on day 3.')}"></textarea>
-      <details class="report-det"><summary>${t('Sent with it')}</summary><pre>${esc(details)}</pre></details>
-      <div class="m-row"><button type="button" class="st-btn" data-act="close">${t('Cancel')}</button><button type="button" class="st-btn gold" data-act="report-send">${REPORT_EMAIL ? t('Send') : t('Copy report')}</button></div>`, 440);
-    setTimeout(() => (document.getElementById('reportText') as HTMLTextAreaElement | null)?.focus(), 50);
+      <p class="m-text">${t('Your email app opens with the game\'s details. Write what happened there and send it.')}</p>
+      <div class="m-row"><button type="button" class="st-btn" data-act="close">${t('Cancel')}</button><button type="button" class="st-btn gold" data-act="report-send">${REPORT_EMAIL ? t('Open email') : t('Copy report')}</button></div>`, 400);
+  }
+
+  /** What the report email carries under the player's words (also for the tests). */
+  reportText(): string {
+    return reportDetails(this.reportPlace || { screen: this.scr, lang: lang() });
   }
 
   private async submitReport(): Promise<void> {
-    const words = (document.getElementById('reportText') as HTMLTextAreaElement | null)?.value || '';
-    const how = await sendReport(words, reportDetails(this.reportPlace || { screen: this.scr, lang: lang() }));
+    const how = await sendReport(t('What happened?'), reportDetails(this.reportPlace || { screen: this.scr, lang: lang() }));
     this.closeModal();
-    this.toast(how === 'email' ? t('Thanks! Your email app has the report ready to send.') : how === 'copied' ? t('Report copied. Paste it in a message to the developer.') : t("Couldn't send the report. Please try again."), 3200);
+    if (how !== 'email') this.toast(how === 'copied' ? t('Report copied. Paste it in a message to the developer.') : t("Couldn't send the report. Please try again."), 3200);
   }
 
   /** Google Play has a newer version: a pop-up on a menu screen (not during a day), at most once per launch. */

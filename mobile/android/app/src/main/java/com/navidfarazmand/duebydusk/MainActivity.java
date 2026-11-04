@@ -6,7 +6,6 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
-import androidx.activity.EdgeToEdge;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -15,9 +14,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Play Console (v0.11.0): draw edge-to-edge on every Android version, as Android 15+ does for SDK 35 apps;
-        // the game already lays itself out with the safe-area insets Capacitor passes to CSS.
-        EdgeToEdge.enable(this);
+        // No EdgeToEdge.enable() here (v0.11.3): called before super.onCreate it set up the window before the
+        // no-title theme applied, and Android drew a title bar ("Due by Dusk") across the top of the game. The game
+        // already draws under the system bars on every version (setDecorFitsSystemWindows(false) + immersive below).
         super.onCreate(savedInstanceState);
         lockTextSize();
         enterImmersiveMode();

@@ -20,6 +20,7 @@
         <item name="android:background">@drawable/splash</item>
         <!-- Android 12+ draws its own splash: the game's icon on a dusk sky -->
         <item name="windowSplashScreenBackground">#9B4A86</item>
+        <item name="android:windowFullscreen">true</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>

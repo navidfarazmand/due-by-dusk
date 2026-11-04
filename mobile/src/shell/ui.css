@@ -202,15 +202,4 @@ body.dbd-onscr #stage .toast { display: none !important; }
 .hb-boss.angry { animation: dbdBossShake .5s ease-in-out infinite alternate; }
 @keyframes dbdBossShake { from { transform: translateX(-1px); } to { transform: translateX(1px); } }
 
-/* Large screens may rotate (Play Console, v0.11.0): in portrait the game asks to be turned sideways */
-.turn-veil { display: none; }
-@media (orientation: portrait) and (max-aspect-ratio: 1/1) {
-  .turn-veil { display: grid; place-items: center; position: fixed; inset: 0; z-index: 1000; background: #3E2868; padding: 24px; }
-  .turn-card { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 320px; text-align: center; color: #FFF4DC;
-    font: 900 20px/1.3 var(--ui-body, sans-serif); }
-  .turn-card svg { animation: dbdTurn 2.4s ease-in-out infinite; }
-  .turn-card p { margin: 0; }
-}
-@keyframes dbdTurn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(90deg); } }
-@media (prefers-reduced-motion: reduce) { .turn-card svg { animation: none; } }
 .hb-banner .bic img { width: 34px; height: 34px; object-fit: contain; }

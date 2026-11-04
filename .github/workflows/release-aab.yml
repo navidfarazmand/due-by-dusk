@@ -179,6 +179,8 @@ jobs:
           releaseFiles: mobile/android/app/build/outputs/bundle/release/app-release.aab
           track: ${{ steps.play.outputs.track }}
           status: ${{ steps.play.outputs.status }}
+          # Play's "What's new" text (mobile/release-notes/whatsnew-<language>)
+          whatsNewDirectory: mobile/release-notes
       - name: Remove the upload key
         if: always()
         working-directory: .

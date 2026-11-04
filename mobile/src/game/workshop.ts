@@ -15,8 +15,9 @@ export const SHED_FX = {
   speed: 0.02,
   /** Seconds of daylight per Days level. */
   day: 0.5,
-  /** Crops on the field per Soil level, and how much faster they sprout. */
-  crops: 0.5,
+  /** Crops on the field per Soil level, and how much faster they sprout. ¾ a level since v0.11.3 (Navid: a bit more,
+   *  "a level 9 upgrade gives 7 more crops instead of 5"). */
+  crops: 0.75,
   spawn: 0.04,
   /** Crop prices + this per Market level. */
   price: 0.03,
@@ -47,7 +48,7 @@ const DEFS: Array<Omit<UpgradeDef, 'effect'>> = [
   { id: 'swing', name: 'Longer handle', line: '+2% reach', max: 30, base: 60, growth: 1.17, unit: 'reach', value: l => `${Math.round(100 + 100 * SHED_FX.reach * l)}%` },
   { id: 'hands', name: 'Quicker hands', line: '+2% swing speed', max: 30, base: 60, growth: 1.17, unit: 'swings/s', value: l => (3.2 * (1 + SHED_FX.speed * l)).toFixed(2) },
   { id: 'days', name: 'Longer days', line: '+0.5 s of daylight', max: 20, base: 75, growth: 1.18, unit: 'daylight', value: l => `+${trim(SHED_FX.day * l)} s` },
-  { id: 'soil', name: 'Richer soil', line: '+½ crop on the field', max: 24, base: 75, growth: 1.18, unit: 'crops', value: l => `+${trim(SHED_FX.crops * l)}` },
+  { id: 'soil', name: 'Richer soil', line: '+¾ crop on the field', max: 24, base: 75, growth: 1.18, unit: 'crops', value: l => `+${trim(SHED_FX.crops * l)}` },
   { id: 'market', name: 'Market stall', line: '+3% crop prices', max: 60, base: 80, growth: 1.17, unit: 'prices', value: l => `×${(1 + SHED_FX.price * l).toFixed(2)}` },
   { id: 'clover', name: 'Lucky clover', line: '+0.8% crit chance', max: 30, base: 60, growth: 1.17, unit: 'crit', value: l => `${trim(4 + 100 * SHED_FX.crit * l)}%` },
 ];

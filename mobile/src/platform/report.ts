@@ -1,6 +1,7 @@
-// Report a problem (v0.11.2, Navid 3 Nov): one strong shake (one, not two), or Settings → Report a problem, opens a
-// short report. The player writes what happened; the game adds its version, the device, the screen, where they were
-// and the last errors it caught, and hands it to the phone's email app (or copies it when there is none).
+// Report a problem (v0.11.2, Navid 3 Nov): one strong shake (one, not two), or Settings → Report a problem. Since
+// v0.11.3 nothing is typed inside the game (the keyboard covered half the landscape screen): the phone's email app
+// opens with the game's version, the device, the screen, where the player was and the last errors it caught, and the
+// player writes what happened there.
 
 import { version } from '../../package.json';
 
@@ -40,9 +41,10 @@ export function reportDetails(place: ReportPlace): string {
   return lines.join('\n');
 }
 
-/** Sends the report: the email app when there is an address, otherwise the clipboard. Resolves how it went. */
-export async function sendReport(words: string, details: string): Promise<'email' | 'copied' | 'failed'> {
-  const body = `${words.trim() || '(no description)'}\n\n----\n${details}`;
+/** Opens the report in the phone's email app (the clipboard when there is no address). `prompt` heads the email so
+ *  the player writes there. Resolves how it went. */
+export async function sendReport(prompt: string, details: string): Promise<'email' | 'copied' | 'failed'> {
+  const body = `${prompt}\n\n\n\n----\n${details}`;
   if (REPORT_EMAIL) {
     const url = `mailto:${REPORT_EMAIL}?subject=${encodeURIComponent(`Due by Dusk ${version}: problem report`)}&body=${encodeURIComponent(body)}`;
     try {

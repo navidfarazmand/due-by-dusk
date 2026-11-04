@@ -95,4 +95,6 @@ Then:
 - **Tag `play-prod-v0.11.1`**: builds with real ads and puts the release in production as a **draft**: review it and press **Roll out** in Play Console yourself.
 - **Run workflow by hand**: choose in the *upload* box (no upload, closed testing rolled out or as a draft, production as a draft).
 
+Release notes: `mobile/release-notes/whatsnew-en-US` goes up with every upload as Play's "What's new" (500 characters at most; update it before each release). Other languages can be added as `whatsnew-fr-FR`, `whatsnew-es-ES`, `whatsnew-pt-BR`, `whatsnew-de-DE` once the store listing has those languages: Play rejects notes for a language the listing doesn't have, and then the whole upload fails.
+
 Without either, everything works as before and the run says the bundle was not sent. Release notes and store-listing changes are still written in Play Console.

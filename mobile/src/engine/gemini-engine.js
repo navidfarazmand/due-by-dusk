@@ -16810,7 +16810,7 @@ export function startGeminiEngine() {
   function planStats(shed, pl, P) {
     const T = window.__DBD_TOOL || {};
     const FX = Object.assign(
-      { dmg: 1.04, reach: 0.02, speed: 0.02, day: 0.5, crops: 0.5, spawn: 0.04, price: 0.03, crit: 0.008, gold: 0.0008 },
+      { dmg: 1.04, reach: 0.02, speed: 0.02, day: 0.5, crops: 0.75, spawn: 0.04, price: 0.03, crit: 0.008, gold: 0.0008 },
       window.__DBD_SHED_FX || {},
     );
     const n = (id) => count(P, id);
@@ -16910,12 +16910,10 @@ export function startGeminiEngine() {
     return p ? p.val || 1 : 1;
   }
   /** A crop's base value and toughness on this farm: the ladder's numbers when the plan has them. */
-  /* A fuller field (v0.11.1, Navid 3 Nov: "the vegetables are too small and too few; the fun is many ready to cut at
-     once"): crops are drawn bigger, the field holds more of them, a bunch pops up together every few seconds so one
-     swipe cuts several, and each crop pays less so a day still pays about what the bills expect (plan.ts fieldPay, measured
-     with a bot that chases the nearest crop all day, old field against new). Tests and tuning can override it with
-     window.__DBD_FIELD before the game loads. */
-  const FIELD = Object.assign({ size: 1.25, count: 2, spawn: 1.7, pay: 1, chain: 1.8, wave: 3.2, waveMin: 3, waveMax: 5 }, window.__DBD_FIELD || {});
+  /* The field (v0.11.3): crops drawn 25% bigger than in v0.11.0 (Navid: "I like their size"), as many as the upgrades
+     allow (count 1; v0.11.1-0.11.2 doubled it and added bunches, which was too many and slowed phones down), spawning
+     one at a time. Kept as knobs for tuning; tests can override them with window.__DBD_FIELD before the game loads. */
+  const FIELD = Object.assign({ size: 1.25, count: 1, spawn: 1, pay: 1, chain: 1 }, window.__DBD_FIELD || {});
   function cropBaseVal(type) {
     const p = plan();
     return (p && p.cropVal && p.cropVal[type] != null ? p.cropVal[type] : CROP[type].val) * FIELD.pay;
@@ -17676,13 +17674,46 @@ export function startGeminiEngine() {
     if (!scale || !worldW) return;
     PAD = Math.round(Math.max(30 + worldW * 0.035, (sideInset() + 10) / scale + 26));
   }
+  /* Smoothness first (v0.11.3, Navid: "the animations pause, it isn't smooth"): almost all of a frame is filling the
+     canvas's pixels, so the field starts at up to 2 canvas pixels per screen point and steps down (to 1.25 at the
+     least) when a phone can't keep up; see watchFrames. Tests can pin it with window.__DBD_DPR_CAP. */
+  let dprCap = Number(window.__DBD_DPR_CAP) || 2;
+  try {
+    // a phone that needed a lower setting before starts there (no stutter while it finds it again)
+    const saved = Number(localStorage.getItem('dbd-dpr-cap'));
+    if (!window.__DBD_DPR_CAP && saved >= 1.25 && saved < dprCap) dprCap = saved;
+  } catch (e) {}
+  const frameGaps = [];
+  /** During a day: when the middle frame of the last 60 took longer than 21 ms (under ~48 frames a second), fewer
+   *  canvas pixels per point, in proportion (pixels cost about the square of it; 0.25 steps, 1.25 at the least).
+   *  Never back up in a session. */
+  function watchFrames(ms) {
+    if (mode !== 'day' || paused || held || document.hidden || dprCap <= 1.25 || window.__DBD_DPR_CAP) {
+      frameGaps.length = 0;
+      return;
+    }
+    if (!(ms > 0) || ms > 250) return;
+    frameGaps.push(ms);
+    if (frameGaps.length < 60) return;
+    const sorted = frameGaps.slice().sort((a, b) => a - b);
+    frameGaps.length = 0;
+    const median = sorted[30];
+    const now = Math.min(dprCap, window.devicePixelRatio || 1);
+    if (median <= 21 || now <= 1.25) return;
+    const want = now * Math.sqrt(16.7 / median);
+    dprCap = Math.max(1.25, Math.min(now - 0.25, Math.floor(want * 4) / 4));
+    try {
+      localStorage.setItem('dbd-dpr-cap', String(dprCap));
+    } catch (e) {}
+    resize();
+  }
   function resize() {
     const rect = stage.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const oldW = worldW;
     cssW = rect.width;
     cssH = rect.height;
-    dpr = Math.min(2, window.devicePixelRatio || 1);
+    dpr = Math.min(dprCap, window.devicePixelRatio || 1);
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
     scale = cssH / HW;
@@ -17723,7 +17754,6 @@ export function startGeminiEngine() {
     goatTimer = Infinity;
   let tickAcc = 0,
     spawnAcc = 0,
-    waveT = 2,
     sweepT = 0,
     sweepA = 0,
     shakeA = 0,
@@ -17946,7 +17976,6 @@ export function startGeminiEngine() {
     crows = [];
     bolts = [];
     spawnAcc = 0;
-    waveT = 1.6;
     tickAcc = 0;
     combo = 0;
     comboTimer = 0;
@@ -19657,22 +19686,32 @@ export function startGeminiEngine() {
      flakes that land settle on the soil and pile up, every crop sits in a ring of ice, and a cut throws up a puff of
      snow. Other countries keep the clear sky until their weather is drawn. ===== */
   function countryWx() {
+    if (window.__DBD_NO_WEATHER) return ''; // performance tests compare with a clear sky
     return meta && meta.country === 'CA' ? 'snow' : '';
   }
+  /* The snow is drawn cheaply (v0.11.3, Navid: "I really liked the snow; same result with less work for the phone"):
+     the settled flakes, the falling flakes, the puffs and the ice rings are each drawn as one batched shape (a few
+     fills a frame instead of about a thousand). A copied full-screen layer for the settled snow measured no faster. */
   let flakes = [],
-    settled = [],
+    fresh = [],
+    baked = [],
     puffs = [],
     snowKey = '';
   function updateWeather(dt) {
     if (countryWx() !== 'snow') {
-      if (flakes.length || settled.length) flakes = settled = [];
+      if (flakes.length || fresh.length || baked.length) {
+        flakes = [];
+        fresh = [];
+        baked = [];
+      }
       return;
     }
     // the snow on the ground starts over each morning
     const key = (meta.cityId || '') + ':' + (farm ? farm.day : 0);
     if (key !== snowKey) {
       snowKey = key;
-      settled = [];
+      fresh = [];
+      baked = [];
     }
     const want = reduceMotion ? 30 : 110;
     while (flakes.length < want) {
@@ -19686,11 +19725,19 @@ export function startGeminiEngine() {
       f.y += f.vy * dt;
       if (f.y >= f.land) {
         // it settles on the soil (only while the field is in play: a day's snow piles up)
-        if (mode === 'day' && settled.length < 700) settled.push({ x: f.x, y: f.y, r: f.r * (1.6 + Math.random() * 1.2), a: 0 });
+        if (mode === 'day' && fresh.length + baked.length < 700) fresh.push({ x: f.x, y: f.y, r: f.r * (1.6 + Math.random() * 1.2), a: 0 });
         flakes.splice(i, 1);
       }
     }
-    for (const s of settled) if (s.a < 1) s.a = Math.min(1, s.a + dt * 1.5);
+    // a settled flake fades in, then joins the others (drawn together)
+    for (let i = fresh.length - 1; i >= 0; i--) {
+      const s = fresh[i];
+      s.a = Math.min(1, s.a + dt * 1.5);
+      if (s.a >= 1) {
+        baked.push(s);
+        fresh.splice(i, 1);
+      }
+    }
     for (let i = puffs.length - 1; i >= 0; i--) {
       const p = puffs[i];
       p.life -= dt;
@@ -19711,54 +19758,87 @@ export function startGeminiEngine() {
       puffs.push({ x: x + (Math.random() - 0.5) * size, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 2.5 + Math.random() * 3.5, life: 0.5 + Math.random() * 0.35, max: 0.85 });
     }
   }
-  /** Under the crops: the snow that has settled today, and a ring of ice around each crop. */
+  /** Under the crops: a frost that thickens through the day, the snow that has settled, a ring of ice around each crop. */
   function drawSnowGround() {
     if (countryWx() !== 'snow') return;
-    // a frost over the whole field that thickens as the day goes on (light at dawn, white-ish at dusk)
     const prog = mode === 'day' ? FarmScene_clamp(1 - time / Math.max(1, dayLen), 0, 1) : mode === 'dusk' ? 1 : 0.35;
     ctx.globalAlpha = 0.1 + 0.22 * prog;
     ctx.fillStyle = '#eef5fa';
     ctx.fillRect(0, FIELD_TOP - 4, worldW, HW - FIELD_TOP + 4);
     ctx.globalAlpha = 1;
-    // the flakes that landed today, as little drifts on the soil
+    if (baked.length) {
+      // all the settled flakes as one shape, one fill
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = '#f7fbfd';
+      ctx.beginPath();
+      for (const s of baked) {
+        ctx.moveTo(s.x + s.r * 1.7, s.y);
+        ctx.ellipse(s.x, s.y, s.r * 1.7, s.r * 0.8, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     ctx.fillStyle = '#f7fbfd';
-    for (const s of settled) {
+    for (const s of fresh) {
       ctx.globalAlpha = 0.92 * s.a;
       ell(ctx, s.x, s.y, s.r * 1.7, s.r * 0.8);
     }
     ctx.globalAlpha = 1;
-    // a ring of ice around every crop
-    for (const c of crops) {
-      if (c.dead || c.boss) continue;
-      const rx = c.r * c.ds * 1.05, ry = rx * 0.36;
-      ctx.fillStyle = 'rgba(190,228,250,.85)';
-      ell(ctx, c.x, c.y + 3, rx, ry);
-      ctx.strokeStyle = 'rgba(90,150,190,.75)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(c.x, c.y + 3, rx, ry, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,.95)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(c.x, c.y + 3, rx * 0.8, ry * 0.7, 0, Math.PI * 1.08, Math.PI * 1.7);
-      ctx.stroke();
+    // the ice rings: one fill, one outline and one shine for all crops together
+    const rings = [];
+    for (const c of crops) if (!c.dead && !c.boss) rings.push([c.x, c.y + 3, c.r * c.ds * 1.05]);
+    if (!rings.length) return;
+    ctx.beginPath();
+    for (const [x, y, rx] of rings) {
+      ctx.moveTo(x + rx, y);
+      ctx.ellipse(x, y, rx, rx * 0.36, 0, 0, Math.PI * 2);
     }
+    ctx.fillStyle = 'rgba(190,228,250,.85)';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(90,150,190,.75)';
+    ctx.stroke();
+    ctx.beginPath();
+    for (const [x, y, rx] of rings) {
+      const a0 = Math.PI * 1.08;
+      ctx.moveTo(x + rx * 0.8 * Math.cos(a0), y + rx * 0.36 * 0.7 * Math.sin(a0));
+      ctx.ellipse(x, y, rx * 0.8, rx * 0.36 * 0.7, 0, a0, Math.PI * 1.7);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,.95)';
+    ctx.stroke();
   }
-  /** Over everything on the field: falling flakes and the puffs from cuts. */
+  /** Over everything on the field: falling flakes and the puffs from cuts, batched. */
   function drawSnowFront() {
     if (countryWx() !== 'snow') return;
+    ctx.globalAlpha = 0.95;
+    ctx.beginPath();
     for (const f of flakes) {
-      ctx.globalAlpha = 0.95;
-      ctx.fillStyle = 'rgba(120,160,190,.55)';
-      circ(ctx, f.x + 0.6, f.y + 0.8, f.r);
-      ctx.fillStyle = '#ffffff';
-      circ(ctx, f.x, f.y, f.r);
+      ctx.moveTo(f.x + 0.6 + f.r, f.y + 0.8);
+      ctx.arc(f.x + 0.6, f.y + 0.8, f.r, 0, Math.PI * 2);
+    }
+    ctx.fillStyle = 'rgba(120,160,190,.55)';
+    ctx.fill();
+    ctx.beginPath();
+    for (const f of flakes) {
+      ctx.moveTo(f.x + f.r, f.y);
+      ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
     }
     ctx.fillStyle = '#ffffff';
-    for (const p of puffs) {
-      ctx.globalAlpha = Math.max(0, p.life / p.max) * 0.95;
-      circ(ctx, p.x, p.y, p.r);
+    ctx.fill();
+    // puffs in four steps of fading
+    for (let b = 1; b <= 4; b++) {
+      let any = false;
+      ctx.beginPath();
+      for (const p of puffs) {
+        const a = Math.max(0, p.life / p.max);
+        if (Math.min(4, Math.ceil(a * 4)) !== b) continue;
+        any = true;
+        ctx.moveTo(p.x + p.r, p.y);
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      }
+      if (!any) continue;
+      ctx.globalAlpha = (b / 4) * 0.95;
+      ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
@@ -19826,18 +19906,7 @@ export function startGeminiEngine() {
         swing();
       }
       toolUpdate(dt);
-      spawnAcc += dt;
-      // a bunch of crops pops up together every few seconds, so they ripen at once and one swipe cuts several
-      waveT -= dt;
-      if (waveT <= 0) {
-        const R = fieldRng('crop');
-        waveT = FIELD.wave * (0.85 + R() * 0.3);
-        const n = Math.min(cur.max - crops.length, Math.round(FIELD.waveMin + R() * (FIELD.waveMax - FIELD.waveMin)));
-        if (n > 0) {
-          const at = { x: PAD + 60 + R() * Math.max(1, worldW - PAD * 2 - 120), y: FIELD_TOP + 70 + R() * (HW - FIELD_TOP - 130), d: 62 };
-          for (let i = 0; i < n; i++) spawnCrop(i * 0.03, at);
-        }
-      } // Charge Cleave charging while holding pointer or Spacebar
+      spawnAcc += dt; // Charge Cleave charging while holding pointer or Spacebar
       // v0.11.1: no second finger. With the Charge attachment, a finger held still (or the mouse button, or Space)
       // charges; lifting it strikes. Moving the finger after a full charge keeps it until the lift.
       const still = pointer.kind !== 'mouse' && pointer.down && performance.now() - (pointer.mt || 0) > 220;
@@ -19878,6 +19947,8 @@ export function startGeminiEngine() {
       }
       const spawnInterval =
         cur.spawn / ((rushTimer > 0 ? 1.35 : 1) * (dailyEvent && dailyEvent.spawnFast ? dailyEvent.spawnFast : 1));
+      // one crop at a time, up to what the field's upgrades allow (v0.11.3: the doubled field and the bunches of
+      // v0.11.1-0.11.2 are gone; Navid: the number of crops should come from the upgrades)
       let spawned = 0;
       while (spawnAcc >= spawnInterval && spawned < 4) {
         if (crops.length >= cur.max) {
@@ -24129,6 +24200,7 @@ export function startGeminiEngine() {
       if (window.__DBD_DEV_HOOKS) window.__DBD_TEST = dbdTestApi;
     }
     update(_timeMs, deltaMs) {
+      watchFrames(deltaMs);
       const elapsed = Math.min(deltaMs / 1000, 0.75);
       let remaining = held ? 0 : elapsed * (window.__DBD_TIMESCALE || 1);
       while (remaining > 0) {

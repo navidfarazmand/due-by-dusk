@@ -21,3 +21,20 @@ then it bumps the version and runs the Play release (closed testing).
       France autumn leaves, Morocco heat and sand, China drizzle, Japan cherry blossom).
 
 Done since 0.11.1 went to Play: LICENSE (all rights reserved); Play uploads from GitHub (release-aab.yml).
+
+## 0.11.3 (4 Nov 2026, Navid's test of 0.11.2 on his phone)
+
+- [x] The bar across the top ("Due by Dusk" title strip): EdgeToEdge.enable() before super.onCreate made Android add a
+      title bar. Removed; the Android setup is back to 0.11.0's (strictly landscape in the manifest and at runtime,
+      fullscreen theme), keeping only the camera-cutout mode fix.
+- [x] No "turn your device sideways" screen at all; the game only ever runs in landscape.
+- [x] Report a problem: no typing inside the game (the keyboard covered half the screen). A small card, then the phone's
+      email app opens with the details and the player writes there.
+- [x] Crops: as many as the upgrades allow again (0.11.2 doubled them); size kept 25% bigger; Richer soil +¾ a level
+      (was +½), so level 9 gives about 7 more crops instead of 5.
+- [x] Smoothness: the field picks a lighter drawing resolution by itself when a phone can't keep up; snow drawn in a few
+      batched shapes, same look.
+- [x] Release notes go up with the Play upload (mobile/release-notes/whatsnew-en-US).
+
+Still open: the other six countries' weather (after Navid has played Canada's snow).
+
