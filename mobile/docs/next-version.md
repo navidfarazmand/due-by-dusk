@@ -12,7 +12,7 @@ then it bumps the version and runs the Play release (closed testing).
 - [x] Report a problem: one strong shake (one jolt above ~26 m/s², then quiet for 4 s) or Settings → Report a problem
       opens a short report (the player's words plus version, device, screen, where they were, recent errors); a day
       pauses. Settings → "Shake to report a problem" turns the shake off.
-      - [x] Reports go to info@khoreh.com (the phone's email app opens with the report filled in).
+      - [x] Reports go to info@khoreh.com (the phone's email app opens with the report filled in); from 0.12 to bugs@khoreh.com.
 - [x] New app icon and splash: concept A kept simple (Navid's pick): the carrot's face only, no hands, no sickle, no
       extra tooth, no sparkle. Android (legacy, round, adaptive foreground), iOS icon, all splash screens. Sources in
       art/source/app-icon.svg and app-icon-foreground.svg. The Play Store listing icon is uploaded by hand:
@@ -41,3 +41,38 @@ Done since 0.11.1 went to Play: LICENSE (all rights reserved); Play uploads from
 
 Still open: the other six countries' weather (after Navid has played Canada's snow).
 
+## 0.12 (Navid's test of 0.11.3, 4 Nov 2026)
+
+Clear fixes:
+- [x] Reports go to bugs@khoreh.com: one address for every app, the subject names the game (website too).
+- [ ] Sound from the first second: music and effects play when the game opens, without a tap first (it still waits
+      for a button).
+- [ ] Perks: picking a perk asks to confirm before it is taken.
+- [ ] Upgrades: the "not enough cash" message was hidden under something; show it as a clear card over a dimmed screen.
+- [ ] "One more day" ad button in blue like every other ad button (it is yellow like Start).
+- [ ] Tools: the sickle's picture and text take a third of the screen and push the upgrades out of sight; the tool
+      descriptions are hidden under other things. Compact the tool, upgrades visible without scrolling.
+- [ ] Sundown: a button straight to the next day ("Pay the bill · next day" on a bill night). The field music keeps
+      playing with no break and the rooster crows as the day starts; the menu music only comes in if the player
+      opens the farmhouse. (Today the fast music cuts to the mellow menu music at once.)
+- [ ] Canada's snow: the field itself snow white, crops push snow (with a little soil) when they come up.
+- [x] Crop size and count are right now (keep them).
+
+Needs Navid's decision (proposals page):
+- [ ] Difficulty: far too easy (Kelowna, day 6: every day pays much more than the bill). Target: poor play can't pay
+      even with an ad; average play pays with an ad; very strong play (bot-level) pays without one.
+- [ ] Bills: a bill every other day is samey; first bills short (2 days) so the new crops come in, later bills longer
+      (4–6 days) and bigger.
+- [ ] Crops: when each crop joins (each bill now; each day instead, all in by day 5–6?) and whether a crop found on one
+      farm carries to the next.
+- [ ] Days feel too long before upgrades and perks: shorter early days that grow with upgrades.
+- [ ] Boss: should do something that hurts (eat crops, plant a bomb, ...) and be much harder (beaten on day 2).
+- [ ] Charge handle: still can't trigger it on purpose. Options: a meter by the day timer that fills as you cut and
+      lets you release the charge; or each tool's own special fires when you reach a multiplier.
+- [ ] Skills: much deeper (more branches, real choices); how upgrades, perks and skills fit together.
+- [ ] Cities: each city its own look and weather (Gatineau: autumn leaves falling instead of snow, ...) and its landmark
+      in the background (Toronto: the CN Tower, ...). Today every Canadian farm looks the same.
+- [ ] Arthur (Grumble & Sons' banker) in the background, reacting to the day: sulking when you do well, happier as you
+      fall short on a bill night, angry when you pay. 10 designs for Navid to pick from first.
+
+Replaces the open "six countries' weather" item above: looks per city, not only per country.

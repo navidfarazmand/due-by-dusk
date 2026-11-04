@@ -6,7 +6,7 @@
 import { version } from '../../package.json';
 
 /** Where reports go. Empty: the report is copied for the player to paste anywhere. */
-export const REPORT_EMAIL = 'info@khoreh.com';
+export const REPORT_EMAIL = 'bugs@khoreh.com';
 
 const errors: string[] = [];
 /** The last few errors the game caught, for the report. */
