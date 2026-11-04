@@ -1,7 +1,9 @@
-New in 0.11.3:
-• Fixed the bar across the top of the screen; landscape only again
-• The record bar is off the field, and Sundown shows the whole bill name
-• Report a problem (shake once, or Settings) opens your email app
-• Normal number of crops again; Richer soil adds a bit more per level
-• Smoother on slower phones, and lighter snow in Canada with the same look
-Recently: practice farm, signpost menu, new icon, pause menu with Back to menu, Charge handle
+New in 0.11.4:
+• Sundown has a Next day button: pay the bill and keep playing, music and all
+• Perks ask you to confirm before you take one
+• A clear warning card when an upgrade would leave too little for tonight's bill
+• Sound plays as soon as the game opens
+• Canada's fields are snowy white; crops push up snow
+• Tools screen: every attachment fits, with its full description
+• One more day is a blue ad button like the others
+• Problem reports now go to bugs@khoreh.com

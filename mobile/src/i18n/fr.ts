@@ -755,7 +755,6 @@ const dict: Record<string, string> = {
   "Off": "Désactivé",
   "How far above your finger the sickle cuts": "À quelle hauteur au-dessus du doigt la faucille coupe",
   "It cuts here, above your finger": "Ça coupe ici, au-dessus de ton doigt",
-  "That leaves too little for tonight's bill of {amt}. Tap again to buy anyway.": "Il restera trop peu pour la facture de ce soir ({amt}). Touche encore pour acheter quand même.",
   "The ad isn't ready yet. Try again in a moment.": "La pub n'est pas encore prête. Réessaie dans un instant.",
   "The day ends now with what you have earned.": "La journée s'arrête maintenant avec ce que tu as gagné.",
   "This day starts over next time.": "Cette journée recommencera la prochaine fois.",
@@ -844,5 +843,12 @@ const dict: Record<string, string> = {
   "Open email": "Ouvrir l'e-mail",
   "What happened?": "Que s'est-il passé ?",
   "Crown! You beat {rival}'s record.": "Couronne ! Tu as battu le record de {rival}.",
+  // v0.12 (Navid, 4 Nov): perks confirm, tonight's-bill card, Sundown's next day
+  "Take it": "Prendre",
+  "Tonight's bill": "La facture de ce soir",
+  "That leaves {left}, and tonight's bill is {amt}.": "Il te restera {left}, et la facture de ce soir est de {amt}.",
+  "Keep my cash": "Garder mon argent",
+  "Buy anyway": "Acheter quand même",
+  "Next day": "Jour suivant",
 };
 export default dict;

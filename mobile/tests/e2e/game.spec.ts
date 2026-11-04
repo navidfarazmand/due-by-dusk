@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 type Save = Record<string, unknown>;
 
@@ -36,6 +36,14 @@ async function boot(page: Page, save?: Save, coach = false): Promise<string[]> {
 
 async function act(page: Page, a: string, arg?: string): Promise<void> {
   await page.locator(`#dbdScreens [data-act="${a}"]${arg ? `[data-arg="${arg}"]` : ''}`).first().click();
+}
+
+/** Perks ask to confirm (v0.12, Navid 4 Nov): the first tap picks the card out and shows "Take it", the second takes it. */
+async function takePerk(card: Locator): Promise<void> {
+  await card.click();
+  await expect(card).toHaveClass(/\bsel\b/);
+  await expect(card.locator('.pk-ok')).toBeVisible();
+  await card.click();
 }
 
 /** Speeds the field up for tests (the engine multiplies its time step). */
@@ -135,7 +143,7 @@ test('boss farm: the deed waits until the boss is knocked out', async ({ page })
       (window as any).__DBD_APP.payBill();
     });
     await page.locator('.scr-modal [data-act="chest-open"]').click();
-    await page.locator('.scr-modal [data-act="perk"]').first().click();
+    await takePerk(page.locator('.scr-modal [data-act="perk"]').first());
     await expect(page.locator('.scr-modal')).toBeHidden();
   }
   const bill = await page.evaluate(() => (window as any).__DBD_ENGINE.bill());
@@ -478,10 +486,10 @@ test('an ad upgrades a closed chest; a diamond chest gives two of four gold perk
   await expect(page.locator('.scr-modal .perk-card.pk-t3')).toHaveCount(4);
   const L = await boxes(page, ['.scr-modal .modal-card', '.scr-modal .perk-card']);
   for (const c of [...L.b['.scr-modal .modal-card'], ...L.b['.scr-modal .perk-card']]) expect(inside(c, L.vw, L.vh)).toBe(true);
-  await page.locator('.scr-modal [data-act="perk"]').nth(0).click();
+  await takePerk(page.locator('.scr-modal [data-act="perk"]').nth(0));
   await expect(page.locator('.scr-modal .chest-box.one-left')).toBeVisible();
   await expect(page.locator('.scr-modal')).toBeVisible();
-  await page.locator('.scr-modal [data-act="perk"]:not(.taken)').first().click();
+  await takePerk(page.locator('.scr-modal [data-act="perk"]:not(.taken)').first());
   await expect(page.locator('.scr-modal')).toBeHidden();
   const st = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
   expect(st.perks).toHaveLength(2);
@@ -527,6 +535,10 @@ test('the first farm: carrots only, a bill paid on its evening opens a chest, an
   await expect(page.locator('.scr-modal .perk-card.pk-t1').first()).toBeVisible();
   const L = await boxes(page, ['.scr-modal .modal-card', '.scr-modal .perk-card']);
   for (const c of [...L.b['.scr-modal .modal-card'], ...L.b['.scr-modal .perk-card']]) expect(inside(c, L.vw, L.vh)).toBe(true);
+  // one tap only picks the card out: nothing is taken yet
+  await page.locator('.scr-modal [data-act="perk"]').first().click();
+  await expect(page.locator('.scr-modal')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().perks)).toHaveLength(0);
   await page.locator('.scr-modal [data-act="perk"]').first().click();
   await expect(page.locator('.scr-modal')).toBeHidden();
   const st = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
@@ -819,3 +831,72 @@ test('cards keep their text inside on a short phone screen', async ({ page }) =>
   expect(await spills()).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+test('Sundown goes straight to the next day, and the field music plays on (v0.12)', async ({ page }) => {
+  const errors = await boot(page);
+  await act(page, 'play');
+  await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Day 1');
+  await fast(page);
+  await act(page, 'start');
+  await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
+  // no bill tonight: Next day is the big button, the farmhouse a small one; the music stays the field's
+  await expect(page.locator('.scr-sundown [data-act="next-day"]')).toBeVisible();
+  await expect(page.locator('.scr-sundown [data-act="farmhouse"]')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__DBD_APP.music.mood)).toBe('field');
+  await act(page, 'next-day');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().day)).toBe(2);
+  // day 2 is the first bill night: with the cash for it, the button pays and the chest opens over Sundown
+  await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(5000));
+  await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.scr-sundown [data-act="next-day"]')).toContainText("Next day");
+  await act(page, 'next-day');
+  await expect(page.locator('.scr-sundown')).toBeVisible();
+  await page.locator('.scr-modal [data-act="chest-open"]').click();
+  await takePerk(page.locator('.scr-modal [data-act="perk"]').first());
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  const st = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
+  expect(st.day).toBe(3);
+  expect(st.billsPaid).toBe(1);
+  expect(await page.evaluate(() => (window as any).__DBD_APP.music.mood)).toBe('field');
+  // the farmhouse brings the menu music
+  await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
+  await act(page, 'farmhouse');
+  expect(await page.evaluate(() => (window as any).__DBD_APP.music.mood)).toBe('menu');
+  expect(errors).toEqual([]);
+});
+
+test("a purchase that leaves too little for tonight's bill asks on a card over a dimmed screen (v0.12)", async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 2), 0));
+  await act(page, 'play');
+  await expect(page.locator('.scr-farmhouse .dc-day')).toBeVisible();
+  // tonight's bill and no cash: the extra-day ad is blue like every ad (it was yellow like Start)
+  await page.evaluate(() => {
+    (window as any).__DBD_ENGINE.devDue();
+    (window as any).__DBD_APP.show('farmhouse');
+  });
+  await expect(page.locator('.scr-farmhouse [data-act="ad-extra"]')).toHaveClass(/\bblue\b/);
+  // just a little more cash than the bill asks
+  await page.evaluate(() => {
+    const e = (window as any).__DBD_ENGINE;
+    e.addCash(e.bill().amt + 20);
+    (window as any).__DBD_APP.show('farmhouse');
+  });
+  await page.locator('#dbdScreens [data-act="panel"][data-arg="workshop"], #dbdScreens [data-act="workshop"]').first().click();
+  const buy = page.locator('.scr-modal [data-act="buy"]:not([disabled])').first();
+  await expect(buy).toBeVisible();
+  const before = await page.evaluate(() => JSON.stringify((window as any).__DBD_APP.g.workshop.levels));
+  await buy.click();
+  const veil = page.locator('.dbd-veil');
+  await expect(veil).toBeVisible();
+  await expect(veil).toContainText("Tonight's bill");
+  await veil.locator('[data-veil="no"]').click();
+  await expect(veil).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.stringify((window as any).__DBD_APP.g.workshop.levels))).toBe(before);
+  await buy.click();
+  await veil.locator('[data-veil="yes"]').click();
+  await expect(veil).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.stringify((window as any).__DBD_APP.g.workshop.levels))).not.toBe(before);
+  expect(errors).toEqual([]);
+});
+

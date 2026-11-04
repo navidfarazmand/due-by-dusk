@@ -766,3 +766,37 @@
 
 /* Report a problem (v0.11.2) */
 .report-btn { align-self: flex-start; margin-top: 4px; }
+
+/* 0.12 (Navid, 4 Nov) */
+/* a perk card picked out waits for a second tap */
+.perk-card.sel { transform: scale(1.05); box-shadow: 0 0 0 4px var(--dbd-gold), 0 4px 0 var(--dbd-ink); }
+.chest-box.has-sel .perk-card:not(.sel):not(.taken) { opacity: .5; }
+.perk-card .pk-ok { margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 5px; background: var(--dbd-gold); color: var(--dbd-ink); border: 2px solid var(--dbd-ink); border-radius: 10px; padding: 5px 6px 4px; font: 400 15px/1 var(--ui-display); }
+.perk-card .pk-ok span { font: inherit; color: inherit; }
+/* a question over a dimmed screen (tonight's bill before a purchase) */
+.dbd-veil { position: fixed; inset: 0; z-index: 400; background: rgba(20, 10, 2, .6); display: grid; place-items: center; padding: 16px; }
+.veil-card { width: min(420px, 92vw); padding: 16px 18px 18px; display: grid; gap: 10px; text-align: left; }
+.veil-card h3 { margin: 0; font: 400 25px/1.1 var(--ui-display); color: var(--dbd-ink); }
+.veil-card p { margin: 0; font: 800 16px/1.35 var(--ui-body); color: var(--dbd-muted); }
+/* Sundown: a small farmhouse button beside the big next-day one */
+.sd-actions .sd-house { flex: none; width: 54px; padding: 0; }
+.sd-actions > * { min-width: 0; }
+.sd-actions .sd-next { font-size: 18px; white-space: nowrap; }
+.sd-next .sn-two { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1; min-width: 0; }
+.sd-next .sn-two small { font: 800 11px/1 var(--ui-body); opacity: .85; }
+/* Tools: every attachment visible and its whole line readable */
+.tool-detail { gap: 3px; }
+.td-head svg { width: 26px; height: 26px; }
+.td-name { font-size: 19px; }
+.mod-list { gap: 3px; }
+.mod-row { min-height: 40px; padding-block: 3px; }
+.mod-txt span { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.15; }
+
+/* the name and its line share a row when they fit, so four attachments fit without scrolling */
+.mod-txt { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 7px; row-gap: 0; }
+.mod-row { min-height: 34px; padding-block: 2px; }
+/* three buttons in a row (Double it, the farmhouse, the next day): a little tighter so long words fit */
+.sd-actions.three { gap: 8px; }
+.sd-actions.three .btn-md { font-size: 17px; padding: 0 11px; }
+.sd-actions.three .sd-house { width: 48px; padding: 0; }
+

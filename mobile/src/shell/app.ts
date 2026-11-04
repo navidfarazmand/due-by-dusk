@@ -1,6 +1,7 @@
 // The game around the field: menu, world and country maps, the farmhouse between days, sundown,
 // won and lost screens, the workshop, settings. Gemini's engine runs the days; this file runs the game.
 
+import { Capacitor } from '@capacitor/core';
 import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from '../game/world';
 import { cropName, planFor, toughnessFor, type CityPlan } from '../game/plan';
 import { bestPower } from '../game/power';
@@ -116,7 +117,14 @@ export class GameApp {
   /** The language list was opened from Settings (it then offers Back as well as Done). */
   private langFromSettings = false;
   /** When a purchase last warned about tonight's bill (a second tap within 5 s buys anyway). */
-  private billWarnAt = 0;
+  /** The tap that asked to spend: tonight's-bill check repeats it after "Buy anyway" (found again by its act, as the
+   *  panel may have been drawn again meanwhile). */
+  private lastAct = { act: '', arg: '' };
+  private billOk = false;
+  /** The perk card picked out, waiting for a second tap (Navid, 4 Nov: confirm before taking a perk). */
+  private perkSel = '';
+  /** 'day' when the chest opened from Sundown's next-day button: picking the perk starts the day. */
+  private afterChest = '';
   /** When the effects slider last played its sample coin. */
   private lastVolSample = 0;
   private day: DayResult | null = null;
@@ -271,6 +279,15 @@ export class GameApp {
     requestAnimationFrame(loop);
     this.hud.syncSound(e.state().sound);
     this.show('menu');
+    if (Capacitor.isNativePlatform()) {
+      // Navid, 4 Nov: still no sound until a button was tapped. The app's WebView now plays without a gesture.
+      this.music.unlock();
+      try {
+        engine().initAudio();
+      } catch {
+        /* the engine starts its sound on the first tap */
+      }
+    }
   }
 
   hapticsOn(): boolean {
@@ -381,6 +398,7 @@ export class GameApp {
   }
 
   private cityWon(d: { days: number; harvested: number; earned: number; paidTotal: number; cash: number }): void {
+    this.afterChest = '';
     const run = this.g.run;
     if (!run) return;
     const plan = planFor(run.cityId);
@@ -434,7 +452,7 @@ export class GameApp {
     this.root.style.display = s === 'farm' ? 'none' : '';
     document.body.classList.toggle('dbd-onscr', s !== 'farm');
     this.hud.show(s === 'farm');
-    this.music.setMood(s === 'farm' ? 'field' : 'menu');
+    this.music.setMood(s === 'farm' || s === 'sundown' ? 'field' : 'menu');
     if (s !== 'farm') this.render(s);
     layout(this.root);
     if (s === 'farmhouse' && this.g.run) {
@@ -496,6 +514,7 @@ export class GameApp {
     const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
     if (!t || t.hasAttribute('disabled')) return;
     const act = t.dataset.act || '', arg = t.dataset.arg || '';
+    this.lastAct = { act, arg };
     this.music.unlock();
     try {
       engine().initAudio();
@@ -525,7 +544,8 @@ export class GameApp {
       case 'track-play': this.music.setPreview(this.music.previewing() === arg ? null : arg); this.openMusicPicker(); break;
       case 'track-field': this.pickTrack('field', arg); break;
       case 'track-menu': this.pickTrack('menu', arg); break;
-      case 'perk': this.pickPerk(arg, t); break;
+      case 'perk': this.tapPerk(arg, t); break;
+      case 'next-day': this.nextDay(); break;
       case 'chest-open': this.openChest(); break;
       case 'ad-chest': void this.adChest(); break;
       case 'ad-double': void this.adDouble(); break;
@@ -657,6 +677,27 @@ export class GameApp {
     this.fhTab = 'workshop';
     this.saveNow();
     this.show('farmhouse');
+  }
+
+  /** Sundown → the next day at once (Navid, 4 Nov). On a bill night the bill is paid first; its chest opens over
+   *  Sundown and picking the perk starts the day. The field music plays on; the rooster crows at dawn. */
+  private nextDay(): void {
+    if (!this.g.run) return;
+    const e = engine();
+    const b = e.bill();
+    if (b.tonight) {
+      if (!b.canPay || b.bossBlock) return void this.show('farmhouse');
+      this.afterChest = 'day';
+      e.payBill();
+      this.save();
+      if (!this.g.run || this.scr === 'won' || this.scr === 'lost') {
+        this.afterChest = '';
+        return;
+      }
+      if (e.state().pendingPerks) return;
+      this.afterChest = '';
+    }
+    this.startDay();
   }
 
   private startDay(): void {
@@ -971,6 +1012,54 @@ export class GameApp {
     engine().foreclose();
   }
 
+  /** A question on a card over a dimmed screen. */
+  private confirmVeil(title: string, body: string, no: string, yes: string, onYes: () => void): void {
+    document.querySelector('.dbd-veil')?.remove();
+    const v = document.createElement('div');
+    v.className = 'dbd-veil';
+    v.setAttribute('role', 'alertdialog');
+    v.setAttribute('aria-modal', 'true');
+    v.innerHTML = `<div class="st-chip veil-card"><h3>${esc(title)}</h3><p>${esc(body)}</p>
+      <div class="m-row"><button type="button" class="st-btn btn-md flex1" data-veil="no">${esc(no)}</button><button type="button" class="st-btn gold btn-md flex1" data-veil="yes">${esc(yes)}</button></div></div>`;
+    v.addEventListener('click', e => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-veil]');
+      if (b?.dataset.veil === 'yes') {
+        v.remove();
+        onYes();
+      } else if (b || e.target === v) v.remove();
+    });
+    document.body.append(v);
+    v.querySelector<HTMLElement>('[data-veil="yes"]')?.focus();
+  }
+
+  /** A perk card: the first tap picks it out and asks to confirm, a second tap on it takes it (Navid, 4 Nov). */
+  private tapPerk(id: string, btn?: HTMLElement): void {
+    if (this.picking || btn?.classList.contains('taken')) return;
+    if (this.perkSel === id) {
+      this.perkSel = '';
+      return this.pickPerk(id, btn);
+    }
+    this.perkSel = id;
+    const box = this.modal.querySelector<HTMLElement>('.chest-box');
+    box?.classList.add('has-sel');
+    box?.querySelectorAll<HTMLElement>('.perk-card').forEach(c => {
+      const on = c.dataset.arg === id;
+      c.classList.toggle('sel', on);
+      c.querySelector('.pk-ok')?.remove();
+      if (on) c.insertAdjacentHTML('beforeend', `<span class="pk-ok">${ICON.check(16)}<span>${t('Take it')}</span></span>`);
+    });
+  }
+
+  private clearPerkSel(): void {
+    this.perkSel = '';
+    const box = this.modal.querySelector<HTMLElement>('.chest-box');
+    box?.classList.remove('has-sel');
+    box?.querySelectorAll('.perk-card').forEach(c => {
+      c.classList.remove('sel');
+      c.querySelector('.pk-ok')?.remove();
+    });
+  }
+
   private picking = false;
   private pickPerk(id: string, btn?: HTMLElement): void {
     if (this.picking || btn?.classList.contains('taken')) return;
@@ -986,6 +1075,7 @@ export class GameApp {
         if (!box || !before || !after || (after.picks || 1) >= (before.picks || 1)) return;
         box.classList.remove('picked');
         box.classList.add('one-left');
+        this.clearPerkSel();
         btn?.classList.add('taken');
         btn?.setAttribute('aria-disabled', 'true');
         const sub = box.querySelector('.chest-sub');
@@ -993,8 +1083,12 @@ export class GameApp {
         return;
       }
       this.closeModal();
-      this.render('farmhouse');
       if (info) this.toast(`${t(info.name)}: ${t(deviceText(info.line))}`);
+      if (this.afterChest === 'day') {
+        this.afterChest = '';
+        return this.startDay();
+      }
+      this.render('farmhouse');
     };
     if (box && btn && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       this.picking = true;
@@ -1012,18 +1106,32 @@ export class GameApp {
     if (rest > 0) {
       const run = this.g.run;
       if (!run || rest > spendableFarmCash(run, this.farmCash())) return false;
-      // tonight's bill: a purchase that would leave too little for it asks for a second tap (Navid, 3 Nov)
+      // tonight's bill: a purchase that would leave too little for it asks first, on a card over a dimmed screen
+      // (Navid, 3 Nov; 4 Nov: the toast was hidden under the panels)
       try {
-        const b = engine().bill(), cash = this.farmCash(), now = Date.now();
-        if (b.tonight && cash >= b.amt && cash - rest < b.amt && now - this.billWarnAt > 5000) {
-          this.billWarnAt = now;
-          this.toast(t("That leaves too little for tonight's bill of {amt}. Tap again to buy anyway.", { amt: money(b.amt) }), 3200);
+        const b = engine().bill(), cash = this.farmCash();
+        if (b.tonight && cash >= b.amt && cash - rest < b.amt && !this.billOk) {
+          const { act, arg } = this.lastAct;
+          this.confirmVeil(
+            t("Tonight's bill"),
+            t("That leaves {left}, and tonight's bill is {amt}.", { left: money(cash - rest), amt: money(b.amt) }),
+            t('Keep my cash'),
+            t('Buy anyway'),
+            () => {
+              this.billOk = true;
+              try {
+                const sel = `[data-act="${CSS.escape(act)}"]${arg ? `[data-arg="${CSS.escape(arg)}"]` : ''}`;
+                this.root.querySelector<HTMLElement>(sel)?.click();
+              } finally {
+                this.billOk = false;
+              }
+            },
+          );
           return false;
         }
       } catch {
         /* engine not ready */
       }
-      this.billWarnAt = 0;
       if (!engine().spendCash(rest)) return false;
       run.spent += rest;
     }
@@ -1830,7 +1938,7 @@ export class GameApp {
     // short on the bill: one more day (an ad, once a farm) is the big choice; the bank is the small one (Navid, 3 Nov)
     const short = b.tonight && !b.canPay, extraLeft = short && !st.extraDayUsed;
     if (extraLeft)
-      main = `<button type="button" class="st-btn gold dc-go dc-more" data-act="ad-extra">${ICON.play()}<span>${t('One more day')}</span></button>`;
+      main = `<button type="button" class="st-btn blue dc-go dc-more ad-btn" data-act="ad-extra">${ICON.play()}<span>${t('One more day')}</span></button>`;
     else if (short) main = `<button type="button" class="st-btn red dc-go" data-act="bank">${t('Face the bank')}</button>`;
     else if (b.tonight) main = `<button type="button" class="st-btn gold dc-go" data-act="pay">${ICON.coin(30)}<span>${t('Pay {amt}', { amt: money(b.amt) })}</span></button>`;
     else
@@ -1952,6 +2060,8 @@ export class GameApp {
     layout(this.root);
   }
 
+  /** v0.12 (Navid, 4 Nov): the tool's art and text took a third of the panel and pushed its attachments out of sight,
+   *  and the attachment lines were cut off. The blurb shows only for a tool you don't own; the lines wrap. */
   private toolsTab(): string {
     const T = this.g.tools;
     const cash = this.wallet();
@@ -1986,7 +2096,7 @@ export class GameApp {
       .join('');
     return `<div class="tools-tab"><div class="tool-list">${list}</div><div class="tool-detail">
         <div class="td-head">${TOOL_ICON[sel.id](30)}<span class="td-name">${esc(t(sel.name))}</span>${head}</div>
-        <p class="td-blurb">${esc(t(sel.blurb))}</p><p class="td-stats">${esc(toolSummary(toolStats(T, sel.id)).join(' · '))}</p>
+        ${owned ? '' : `<p class="td-blurb">${esc(t(sel.blurb))}</p>`}<p class="td-stats">${esc(toolSummary(toolStats(T, sel.id)).join(' · '))}</p>
         <div class="mod-list">${mods}</div></div></div>`;
   }
 
@@ -2114,6 +2224,10 @@ export class GameApp {
     void dots;
     void crownLine;
     void pct;
+    // straight to the next day (Navid, 4 Nov); on a bill night only when the bill can be paid now
+    const nextBtn = !b.tonight || (b.canPay && !b.bossBlock)
+      ? `<button type="button" class="st-btn gold btn-md flex1 sd-next" data-act="next-day">${b.tonight ? `<span class="sn-two"><span>${t('Pay {amt}', { amt: money(b.amt) })}</span><small>${t('Next day')}</small></span>` : t('Next day')}${ICON.next()}</button>`
+      : '';
     const crownNow = d.crownToday ? `<div class="sd-crown">👑 ${t('New city crown! You beat {rival}.', { rival: esc(ct.rival) })}</div>` : '';
     return `<div class="grp mc" style="width: 430px; height: 300px"><div class="st-chip sundown-card slim">
       <div class="sd-head"><h2>${t('Sundown!')}</h2><span class="eyebrow">${esc(ct.short.toUpperCase())} · ${t('DAY {day}', { day: d.day })}</span>
@@ -2121,7 +2235,7 @@ export class GameApp {
       <div class="sd-hero"><span class="sd-big money">+${money(earned)}</span>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('earned today')}</span></div>
       <div class="sd-bill">${ICON.notice(26)}<span class="sb-what"><span class="sb-name">${esc(t(b.name))}</span><span class="sb-due">${dueLine}</span></span><b class="sb-amt">${money(b.amt)}</b>${stamp}</div>
       ${crownNow}${bossLine}
-      <div class="sd-actions">${dbl}<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button></div>
+      <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house" data-act="farmhouse" aria-label="${t('Farmhouse')}">${ICON.house()}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
     </div></div>`;
   }
 
@@ -2193,7 +2307,8 @@ export class GameApp {
    * opened, a rewarded ad can upgrade it once. */
   private showChest(c: ChestInfo, again = false): void {
     if (!c || !c.perks || !c.perks.length) return;
-    if (this.scr !== 'farmhouse') this.show('farmhouse');
+    if (this.scr !== 'farmhouse' && !(this.scr === 'sundown' && this.afterChest === 'day')) this.show('farmhouse');
+    this.perkSel = '';
     if (!again && this.modal.dataset.kind === 'perks' && !this.modal.hidden) return;
     const st = engine().state();
     const picks = Math.max(1, c.picks || 1);

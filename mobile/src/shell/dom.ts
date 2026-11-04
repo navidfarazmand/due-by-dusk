@@ -70,6 +70,8 @@ export const ICON = {
   sunrise: (w = 40) =>
     `<svg width="${w}" height="${Math.round((w * 28) / 40)}" viewBox="0 0 40 28" aria-hidden="true"><path d="M8 23a12 12 0 0 1 24 0Z" fill="#FFF4DC" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><path d="M20 3.5v4.5M7 9l3 3M33 9l-3 3M2.5 23h35" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round"/></svg>`,
   /** A green check (a bill that is covered). */
+  house: (size = 26) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 26 26" aria-hidden="true"><path d="M3 12.5 13 4l10 8.5" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M6 11v11h14V11" fill="#C9473A" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"></path><path d="M11 22v-6h4v6" fill="#FFF4DC" stroke="${INK}" stroke-width="2" stroke-linejoin="round"></path></svg>`,
   check: (size = 24) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#6DBE45" stroke="${INK}" stroke-width="2.4"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   /** Settings: a gear with eight teeth (the old drawing read as a sun, Navid 3 Nov). */

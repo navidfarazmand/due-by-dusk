@@ -41,24 +41,24 @@ Done since 0.11.1 went to Play: LICENSE (all rights reserved); Play uploads from
 
 Still open: the other six countries' weather (after Navid has played Canada's snow).
 
-## 0.12 (Navid's test of 0.11.3, 4 Nov 2026)
+## 0.11.4 and 0.12 (Navid's test of 0.11.3, 4 Nov 2026)
 
-Clear fixes:
+Clear fixes, released as 0.11.4:
 - [x] Reports go to bugs@khoreh.com: one address for every app, the subject names the game (website too).
-- [ ] Sound from the first second: music and effects play when the game opens, without a tap first (it still waits
+- [x] Sound from the first second: music and effects play when the game opens, without a tap first (it still waits
       for a button).
-- [ ] Perks: picking a perk asks to confirm before it is taken.
-- [ ] Upgrades: the "not enough cash" message was hidden under something; show it as a clear card over a dimmed screen.
-- [ ] "One more day" ad button in blue like every other ad button (it is yellow like Start).
-- [ ] Tools: the sickle's picture and text take a third of the screen and push the upgrades out of sight; the tool
+- [x] Perks: picking a perk asks to confirm before it is taken.
+- [x] Upgrades: the "not enough cash" message was hidden under something; show it as a clear card over a dimmed screen.
+- [x] "One more day" ad button in blue like every other ad button (it is yellow like Start).
+- [x] Tools: the sickle's picture and text take a third of the screen and push the upgrades out of sight; the tool
       descriptions are hidden under other things. Compact the tool, upgrades visible without scrolling.
-- [ ] Sundown: a button straight to the next day ("Pay the bill · next day" on a bill night). The field music keeps
+- [x] Sundown: a button straight to the next day ("Pay the bill · next day" on a bill night). The field music keeps
       playing with no break and the rooster crows as the day starts; the menu music only comes in if the player
       opens the farmhouse. (Today the fast music cuts to the mellow menu music at once.)
-- [ ] Canada's snow: the field itself snow white, crops push snow (with a little soil) when they come up.
+- [x] Canada's snow: the field itself snow white, crops push snow (with a little soil) when they come up.
 - [x] Crop size and count are right now (keep them).
 
-Needs Navid's decision (proposals page):
+Needs Navid's decision, for 0.12 (proposals page: https://claude.ai/artifact/U3PTtWms8LHpEti34e7QVH):
 - [ ] Difficulty: far too easy (Kelowna, day 6: every day pays much more than the bill). Target: poor play can't pay
       even with an ad; average play pays with an ad; very strong play (bot-level) pays without one.
 - [ ] Bills: a bill every other day is samey; first bills short (2 days) so the new crops come in, later bills longer

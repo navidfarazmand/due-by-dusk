@@ -47,6 +47,9 @@ public class MainActivity extends BridgeActivity {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setTextZoom(100);
             settings.setSupportZoom(false);
+            // v0.12 (Navid, 4 Nov): the music and sounds start with the game, not at the first tap. Without this the
+            // WebView holds all media until a gesture.
+            settings.setMediaPlaybackRequiresUserGesture(false);
         } catch (Exception ignored) {
             // the game still runs with the system text size
         }

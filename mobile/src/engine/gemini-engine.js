@@ -19364,7 +19364,8 @@ export function startGeminiEngine() {
   }
   function debris(c, n) {
     if (!canAdd()) return;
-    const def = CROP[c.type];
+    const def = CROP[c.type],
+      snowy = countryWx() === 'snow';
     const sz = (c.r / 24) * c.ds;
     for (let i = 0; i < n; i++) {
       // Bouncing soil clods on hit
@@ -19379,7 +19380,7 @@ export function startGeminiEngine() {
         r: (2.2 + Math.random() * 2.8) * Math.sqrt(sz),
         rot: Math.random() * 6.28,
         vr: (Math.random() - 0.5) * 13,
-        c: Math.random() < 0.5 ? '#4a3222' : '#6b4830',
+        c: snowy ? (Math.random() < 0.7 ? (Math.random() < 0.5 ? '#f7fbfd' : '#d4e3ee') : '#6b4830') : Math.random() < 0.5 ? '#4a3222' : '#6b4830',
         life: 0.55 + Math.random() * 0.25,
         max: 0.8,
       });
@@ -19630,6 +19631,7 @@ export function startGeminiEngine() {
       c.stretchVel = 5.8;
       c.wobbleVel = (Math.random() < 0.5 ? -1 : 1) * 4.0;
       debris(c, 2);
+      snowPuff(c.x, c.y, c.r * c.ds * 0.8);
     } // Stage 2 -> Stage 3 (Full Ripeness Pop!)
     if (c.stage < 3 && prevAge < STAGE3_AGE && c.age >= STAGE3_AGE) {
       c.stage = 3;
@@ -19762,10 +19764,18 @@ export function startGeminiEngine() {
   function drawSnowGround() {
     if (countryWx() !== 'snow') return;
     const prog = mode === 'day' ? FarmScene_clamp(1 - time / Math.max(1, dayLen), 0, 1) : mode === 'dusk' ? 1 : 0.35;
-    ctx.globalAlpha = 0.1 + 0.22 * prog;
-    ctx.fillStyle = '#eef5fa';
+    // v0.12 (Navid, 4 Nov: "the farm look is white, like the Canadian winter"): the field itself lies under snow that
+    // deepens through the day; the furrows show through as soft blue lines with a bright edge
+    ctx.globalAlpha = 0.85 + 0.1 * prog;
+    ctx.fillStyle = '#f2f7fa';
     ctx.fillRect(0, FIELD_TOP - 4, worldW, HW - FIELD_TOP + 4);
     ctx.globalAlpha = 1;
+    const rows = 7,
+      rh = (HW - FIELD_TOP) / rows;
+    ctx.fillStyle = 'rgba(132, 162, 190, .3)';
+    for (let i = 1; i < rows; i++) ctx.fillRect(0, FIELD_TOP + i * rh - 2, worldW, 3);
+    ctx.fillStyle = 'rgba(255, 255, 255, .75)';
+    for (let i = 1; i < rows; i++) ctx.fillRect(0, FIELD_TOP + i * rh + 1, worldW, 2);
     if (baked.length) {
       // all the settled flakes as one shape, one fill
       ctx.globalAlpha = 0.92;
@@ -20164,14 +20174,16 @@ export function startGeminiEngine() {
     return [c.ds * base * sx, c.ds * base * sy];
   }
   function drawDirtMound(c) {
-    const r = c.r * c.ds;
+    const r = c.r * c.ds,
+      snow = countryWx() === 'snow';
     ctx.save();
     ctx.translate(c.x, c.y);
-    ctx.fillStyle = '#3e2718';
+    // in the snow the crop has pushed up snow with a little soil (Navid, 4 Nov)
+    ctx.fillStyle = snow ? '#7a5a44' : '#3e2718';
     ell(ctx, 0, 2.5, r * 0.82, r * 0.26);
     if (c.moundClumps) {
       for (const cl of c.moundClumps) {
-        ctx.fillStyle = cl.shade;
+        ctx.fillStyle = snow ? (cl.shade === '#4a3222' ? '#f7fbfd' : '#d4e3ee') : cl.shade;
         circ(ctx, cl.ox * c.ds, (cl.oy + 2) * c.ds, cl.r * c.ds);
       }
     }
