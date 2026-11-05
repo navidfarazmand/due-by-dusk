@@ -98,7 +98,7 @@ workflow, run 6):
 - [x] Docs (README, ARCHITECTURE), release notes, version 0.12.0: rolled out to closed testing on 5 Nov 2026
       (versionCode 1107, Play release workflow run 7).
 
-## 0.12.1 (Navid's test of 0.12, 5 Nov 2026)
+## 0.12.1 (Navid's test of 0.12, 5 Nov 2026; rolled out to closed testing, versionCode 1108)
 
 - [x] Sundown: the money in the jar is the big number, today's harvest beside it; no city and day line.
 - [x] Sundown: the small button in the row opens Upgrades (over Sundown); the farmhouse is a circle on the card's top.
