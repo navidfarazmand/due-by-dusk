@@ -33,8 +33,8 @@ export const SKILLS: SkillDef[] = [
   { id: 'reap_root', branch: 'reap', name: 'Honed Temper', effect: '+25% damage.', cost: 2, reqs: ['core_awakening'], x: 218, y: 228 },
   { id: 'reap_swift', branch: 'reap', name: 'Mercurial Wrist', effect: '+18% swing speed.', cost: 3, reqs: ['reap_root'], x: 165, y: 168 },
   { id: 'reap_dash', branch: 'reap', name: 'Gale Dash', effect: '+12% reach.', cost: 3, reqs: ['reap_swift'], x: 105, y: 132 },
-  { id: 'reap_cleave', branch: 'reap', name: 'Sundering Cleave', effect: 'Charge Cleave charges 50% faster and hits a wider circle.', cost: 3, reqs: ['reap_root'], x: 165, y: 290 },
-  { id: 'reap_vortex', branch: 'reap', name: 'Whirlwind Echo', effect: 'A Charge Cleave leaves a spinning vortex that keeps chopping for 1.8 s.', cost: 3, reqs: ['reap_cleave'], x: 105, y: 322 },
+  { id: 'reap_cleave', branch: 'reap', name: 'Sundering Cleave', effect: 'Your power meter fills 50% faster and your power hits a wider circle.', cost: 3, reqs: ['reap_root'], x: 165, y: 290 },
+  { id: 'reap_vortex', branch: 'reap', name: 'Whirlwind Echo', effect: 'Your power leaves a spinning vortex that keeps chopping for 1.8 s.', cost: 3, reqs: ['reap_cleave'], x: 105, y: 322 },
   { id: 'reap_exec', branch: 'reap', name: "Reaper's Verdict", effect: 'Crops under 25% health are cut at once (not bosses), and crits throw lightning.', cost: 4, reqs: ['reap_dash', 'reap_vortex'], reqMode: 'any', x: 62, y: 228 },
 
   { id: 'soil_root', branch: 'soil', name: 'Living Humus', effect: '+2 crops on the field and 12% faster sprouting.', cost: 2, reqs: ['core_awakening'], x: 340, y: 162 },

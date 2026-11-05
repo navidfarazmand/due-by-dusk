@@ -2358,7 +2358,7 @@ export function startGeminiEngine() {
     {
       id: 'gale',
       title: 'AUTUMN GALE WINDS',
-      desc: 'Blowing leaves! Hold click/Space: Charge Cleave 2× faster.',
+      desc: 'Blowing leaves! Your power meter fills 2× faster.',
       weather: 'wind',
       chargeFast: 2.0,
     },
@@ -2642,8 +2642,8 @@ export function startGeminiEngine() {
     },
     {
       id: 'cleaver',
-      name: 'Cleaver mastery',
-      line: 'Charge Cleave charges 50% faster and hits wider.',
+      name: 'Power mastery',
+      line: 'Your power meter fills 50% faster and your power hits wider.',
       once: true,
     },
   ];
@@ -16336,7 +16336,7 @@ export function startGeminiEngine() {
     {
       id: 'gale',
       title: 'AUTUMN GALE WINDS',
-      desc: 'Blowing leaves! Hold click/Space: Charge Cleave 2× faster.',
+      desc: 'Blowing leaves! Your power meter fills 2× faster.',
       weather: 'wind',
       chargeFast: 2.0,
     },
@@ -16490,8 +16490,8 @@ export function startGeminiEngine() {
       id: 'cleaver',
       tier: 3,
       icon: 'cleave',
-      name: 'Cleaver mastery',
-      line: 'Charge Cleave charges 50% faster and hits wider.',
+      name: 'Power mastery',
+      line: 'Your power meter fills 50% faster and your power hits wider.',
       once: true,
       // v0.11.1: the Charge Cleave is a tool attachment now, so this perk is no longer offered (old saves keep it)
       req: () => false,
@@ -17781,15 +17781,13 @@ export function startGeminiEngine() {
     const pl = plan();
     if (pl && pl.signatureEvent && farm.day % 2 === 1) {
       const sig = FarmScene_GAZETTE_EVENTS.find((e) => e.id === pl.signatureEvent);
-      if (sig && !(sig.chargeFast && !(cur && cur.chargeLv > 0))) {
+      if (sig) {
         dailyEvent = sig;
         return;
       }
     }
     const L = FarmScene_GAZETTE_EVENTS.length;
     let k = (farm.day * 7 + farm.no * 3 + (meta.biome || 0)) % L;
-    // a day that speeds up the Charge Cleave only comes to a tool that has one
-    for (let tries = 0; tries < L && FarmScene_GAZETTE_EVENTS[k].chargeFast && !(cur && cur.chargeLv > 0); tries++) k = (k + 1) % L;
     dailyEvent = FarmScene_GAZETTE_EVENTS[k];
   }
   let combo = 0,
@@ -18015,6 +18013,7 @@ export function startGeminiEngine() {
     for (let i = 0; i < initCount; i++) spawnCrop(0.08 + i * 0.04);
     seeds = [];
     dbdVortexes = [];
+    dbdWaves = [];
     bossCrop = null;
     initBoss();
     spawnBoss();
@@ -18123,31 +18122,83 @@ export function startGeminiEngine() {
     rushCharge = 0;
     today.rushes++;
     addText('HARVEST RUSH!', worldW / 2, FIELD_TOP + 65, '#ffe08a', 36, -20, 1.1);
-    toast('Harvest Rush! +50% income + faster crops for 4 seconds.', 2600);
     Sound.fanfare();
   }
-  function unleashChargeCleave() {
-    if (mode !== 'day' || !pointer.active) {
-      chargeT = 0;
-      chargeReady = false;
-      return;
+  /* The power meter (v0.12, Navid 5 Nov): one meter beside the timer, in place of the Charge handle's hold-still
+     cleave and the old rush counter. Each cut crop adds its chain multiplier, so a long chain fills it faster. The
+     Power booster attachment (the old Charge handle) adds 25% a level, Power mastery (the perk or the skill) 50%,
+     and the windy day doubles it. When it's full, the tool in hand fires its own power where the finger is (on the
+     thickest patch of crops if no finger is down), and the Harvest Rush starts: +50% pay, a faster field, 4 s. */
+  function powerGain() {
+    return (
+      chainMultiplier() *
+      (1 + 0.25 * (cur.chargeLv || 0)) *
+      (cur.cleaver ? 1.5 : 1) *
+      (dailyEvent && dailyEvent.chargeFast ? dailyEvent.chargeFast : 1)
+    );
+  }
+  /** Where a power lands: at the finger, or on the thickest patch of crops when no finger is down. */
+  function powerSpot() {
+    if (pointer.active && pointer.placed) return { x: pointer.x, y: pointer.y };
+    const R2 = cur.R * 2;
+    let best = null,
+      bn = -1;
+    for (const c of crops) {
+      if (c.dead || c.boss || c.age < 0.04) continue;
+      let n = 0;
+      for (const d of crops) if (!d.dead && Math.abs(c.x - d.x) < R2 && Math.abs(c.y - d.y) < R2) n++;
+      if (n > bn) {
+        bn = n;
+        best = c;
+      }
     }
-    const cleaveR = cur.R * (cur.cleaver ? 2.5 : 2.15);
-    const cleaveDmg = cur.dmg * 2.6;
-    chargeT = 0;
-    chargeReady = false;
+    return best ? { x: best.x, y: best.y - best.r * best.ds * 0.55 } : { x: worldW / 2, y: (FIELD_TOP + HW) / 2 };
+  }
+  function firePower() {
+    if (mode !== 'day') return;
+    triggerRush();
+    const at = powerSpot(),
+      lv = cur.chargeLv || 0,
+      style = cur.style || 'sickle';
+    today.powers = (today.powers || 0) + 1;
     sweepT = 0.22;
     hitStopTimer = 0.04;
     shake(8);
     Sound.hit(true);
-    parts.push({ k: 'ring', x: pointer.x, y: pointer.y, r: cleaveR, life: 0.42, max: 0.42, c: '#38bdf8' });
-    parts.push({ k: 'ring', x: pointer.x, y: pointer.y, r: cleaveR * 0.72, life: 0.32, max: 0.32, c: '#fde047' });
-    addText('CLEAVE!', pointer.x, pointer.y - cleaveR * 0.6, '#fde047', 28, -45, 0.85);
+    if (style === 'scythe') powerWhirl(at.x, at.y, lv);
+    else if (style === 'flame') powerFireWave(at.x, at.y, lv);
+    else if (style === 'blaster') powerSeedStorm(at.x, at.y, lv);
+    else powerCleave(at.x, at.y, lv);
+    // Whirlwind Echo: a golden vortex keeps chopping where the power landed (the scythe's power already is one)
+    if (hasSkill('reap_vortex') && style !== 'scythe')
+      dbdVortexes.push({ x: at.x, y: at.y, r: cur.R * 1.2, t: 1.8, acc: 0, a: 0 });
+    checkPropsAndCrows(cur.R * 2.2, at.x, at.y);
+    dbdEvent('power', { style, x: at.x, y: at.y });
+  }
+  /** A power that lands on the angry goat calms it (the Charge Cleave's old job). */
+  function powerCalmsGoat(x, y, r) {
+    if (!(goat && goat.bumped && Math.hypot(goat.x - x, goat.y - y) <= r + 35)) return;
+    goat.bumped = false;
+    goat.speed = 65;
+    goat.hop = 1.0;
+    farm.cash += 5;
+    farm.earned += 5;
+    today.earned += 5;
+    addText('GOAT CALMED +$5', goat.x, goat.y - 45, '#86efac', 24, -40, 1.0);
+    Sound.coin();
+  }
+  /** Sickle: the Cleave, one big cut all around. */
+  function powerCleave(x, y, lv) {
+    const cleaveR = cur.R * (cur.cleaver ? 2.5 : 2.15) * (1 + 0.08 * lv);
+    const cleaveDmg = cur.dmg * 2.6 * (1 + 0.2 * lv);
+    parts.push({ k: 'ring', x, y, r: cleaveR, life: 0.42, max: 0.42, c: '#38bdf8' });
+    parts.push({ k: 'ring', x, y, r: cleaveR * 0.72, life: 0.32, max: 0.32, c: '#fde047' });
+    addText('CLEAVE!', x, y - cleaveR * 0.6, '#fde047', 28, -45, 0.85);
     let killed = 0;
     for (const c of crops) {
       if (c.dead || c.age < 0.04) continue;
       const cy = c.y - c.r * c.ds * 0.55;
-      if (Math.hypot(c.x - pointer.x, cy - pointer.y) > cleaveR + c.r * c.ds * 0.6) continue;
+      if (Math.hypot(c.x - x, cy - y) > cleaveR + c.r * c.ds * 0.6) continue;
       if (c.frosted) {
         c.frosted = false;
         farm.cash += 2;
@@ -18178,22 +18229,116 @@ export function startGeminiEngine() {
         killed++;
       }
     }
-    // Whirlwind Echo: a golden vortex keeps chopping where the cleave landed
-    if (hasSkill('reap_vortex'))
-      dbdVortexes.push({ x: pointer.x, y: pointer.y, r: cleaveR * 0.55, t: 1.8, acc: 0, a: 0 });
-    if (killed) crops = crops.filter((c) => !c.dead); // Calm angry goat if caught in Charge Cleave!
-    if (goat && goat.bumped && Math.hypot(goat.x - pointer.x, goat.y - pointer.y) <= cleaveR + 35) {
-      goat.bumped = false;
-      goat.speed = 65;
-      goat.hop = 1.0;
-      farm.cash += 5;
-      farm.earned += 5;
-      today.earned += 5;
-      addText('GOAT CALMED +$5', goat.x, goat.y - 45, '#86efac', 24, -40, 1.0);
-      Sound.coin();
+    if (killed) crops = crops.filter((c) => !c.dead);
+    powerCalmsGoat(x, y, cleaveR);
+    dbdEvent('cleave', { killed, x, y });
+  }
+  /** Scythe: a whirlwind that follows the finger for a couple of seconds, chopping all the way. */
+  function powerWhirl(x, y, lv) {
+    const r = cur.R * 1.45 * (1 + 0.08 * lv);
+    dbdVortexes.push({ x, y, r, t: 2.4 + 0.3 * lv, acc: 0, a: 0, follow: true, dmg: 0.75 * (1 + 0.2 * lv) });
+    parts.push({ k: 'ring', x, y, r: r * 1.3, life: 0.4, max: 0.4, c: '#fde047' });
+    addText('WHIRLWIND!', x, y - r, '#fde047', 28, -45, 0.9);
+    powerCalmsGoat(x, y, r);
+  }
+  /** Flame weeder: a ring of fire rolls out from the flame and sets every crop it passes alight. */
+  let dbdWaves = [];
+  function powerFireWave(x, y, lv) {
+    const R = cur.R * 3.2 * (1 + 0.08 * lv);
+    dbdWaves.push({ x, y, R, t: 0, dur: 0.55, lv, hit: new Set() });
+    parts.push({ k: 'ring', x, y, r: cur.R, life: 0.3, max: 0.3, c: '#fdba74' });
+    addText('FIRE WAVE!', x, y - 40, '#fdba74', 28, -45, 0.9);
+    powerCalmsGoat(x, y, R);
+  }
+  function updateWaves(dt) {
+    if (!dbdWaves.length) return;
+    for (const w of dbdWaves) {
+      w.t += dt;
+      const rr = w.R * Math.min(1, w.t / w.dur);
+      for (const c of crops) {
+        if (c.dead || c.age < 0.04 || w.hit.has(c)) continue;
+        const cy = c.y - c.r * c.ds * 0.55;
+        if (Math.hypot(c.x - w.x, cy - w.y) > rr + c.r * c.ds * 0.5) continue;
+        w.hit.add(c);
+        if (c.encase) {
+          hitEncased(c, cy);
+          continue;
+        }
+        if (bossArmoured(c)) {
+          clink(c, cy);
+          continue;
+        }
+        c.burnT = Math.max(c.burnT || 0, (cur.burn || 1.4) + 1.2);
+        c.burnD = Math.max(c.burnD || 0, cur.dmg * 2.6 * (1 + 0.2 * w.lv));
+        c.flash = 1;
+        c.hpShow = 1.6;
+      }
+      if (!reduceMotion && w.t < w.dur) {
+        for (let i = 0; i < 6 && canAdd(); i++) {
+          const a = Math.random() * Math.PI * 2,
+            life = 0.3 + Math.random() * 0.2;
+          parts.push({
+            k: 'flame',
+            x: w.x + Math.cos(a) * rr,
+            y: w.y + Math.sin(a) * rr * 0.62,
+            vx: Math.cos(a) * 30,
+            vy: -40 - Math.random() * 40,
+            g: -30,
+            s: 4 + Math.random() * 4,
+            life,
+            max: life,
+          });
+        }
+      }
     }
-    checkPropsAndCrows(cleaveR);
-    dbdEvent('cleave', { killed, x: pointer.x, y: pointer.y });
+    dbdWaves = dbdWaves.filter((w) => w.t < w.dur + 0.3);
+  }
+  function drawWaves() {
+    for (const w of dbdWaves) {
+      const k = Math.min(1, w.t / w.dur),
+        fade = w.t < w.dur ? 1 : Math.max(0, 1 - (w.t - w.dur) / 0.3);
+      ctx.save();
+      ctx.globalAlpha = 0.85 * fade;
+      ctx.strokeStyle = '#fb923c';
+      ctx.lineWidth = 7 * (1 - 0.5 * k) + 2;
+      ctx.beginPath();
+      ctx.ellipse(w.x, w.y, Math.max(1, w.R * k), Math.max(1, w.R * k * 0.62), 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  /** Seed blaster: a storm of golden seeds, one to each of the nearest crops anywhere on the field, all crits. */
+  function powerSeedStorm(x, y, lv) {
+    const list = [];
+    for (const c of crops) {
+      if (c.dead || c.age < 0.04) continue;
+      const cy = c.y - c.r * c.ds * 0.55;
+      list.push({ c, cy, d: Math.hypot(c.x - x, cy - y) });
+    }
+    list.sort((p, q) => p.d - q.d);
+    const n = Math.min(list.length, 12 + 2 * lv);
+    for (let i = 0; i < n; i++) {
+      const tg = list[i];
+      seeds.push({
+        x,
+        y: y - 8,
+        sx: x,
+        sy: y - 8,
+        c: tg.c,
+        t: -i * 0.05,
+        dur: FarmScene_clamp(tg.d / 900, 0.08, 0.4),
+        crit: true,
+        pw: 1 + 0.2 * lv,
+        wob: Math.random() * 6,
+      });
+    }
+    parts.push({ k: 'ring', x, y, r: cur.R * 1.6, life: 0.4, max: 0.4, c: '#bef264' });
+    addText('SEED STORM!', x, y - 40, '#bef264', 28, -45, 0.9);
+    Sound.seed();
+    powerCalmsGoat(x, y, cur.R * 2);
   }
   function spawnFieldProp() {
     if (fieldProps.length >= 2) return;
@@ -18245,11 +18390,13 @@ export function startGeminiEngine() {
     Sound.pop(6);
     dbdEvent('crowSteal', { amt: cr.loot });
   }
-  function checkPropsAndCrows(rad) {
+  function checkPropsAndCrows(rad, atX, atY) {
     const R = rad || cur.R;
+    const px = atX === undefined ? pointer.x : atX,
+      py = atY === undefined ? pointer.y : atY;
     for (let i = fieldProps.length - 1; i >= 0; i--) {
       const fp = fieldProps[i];
-      if (Math.hypot(fp.x - pointer.x, fp.y - 14 * fp.ds - pointer.y) <= R + 22 * fp.ds) {
+      if (Math.hypot(fp.x - px, fp.y - 14 * fp.ds - py) <= R + 22 * fp.ds) {
         fieldProps.splice(i, 1);
         Sound.coin();
         parts.push({ k: 'ring', x: fp.x, y: fp.y - 10, r: 55, life: 0.4, max: 0.4, c: '#86efac' });
@@ -18277,10 +18424,10 @@ export function startGeminiEngine() {
       }
     }
     for (const cr of crows) {
-      if (!cr.scared && Math.hypot(cr.x - pointer.x, cr.y - pointer.y) <= R + 30) {
+      if (!cr.scared && Math.hypot(cr.x - px, cr.y - py) <= R + 30) {
         cr.scared = true;
         arthurAngerTimer = 2.4;
-        cr.vx = (cr.x < pointer.x ? -1 : 1) * 260;
+        cr.vx = (cr.x < px ? -1 : 1) * 260;
         cr.vy = -220;
         if (cr.loot > 0) {
           // the bag drops: every stolen coin comes back
@@ -18585,13 +18732,13 @@ export function startGeminiEngine() {
       const c = sd.c,
         tx = c.x,
         ty = c.y - c.r * c.ds * 0.55,
-        k = Math.min(1, sd.t);
+        k = Math.max(0, Math.min(1, sd.t));
       sd.x = lerp(sd.sx, tx, k);
       sd.y = lerp(sd.sy, ty, k) - Math.sin(k * Math.PI) * 18;
       if (sd.t < 1) continue;
       sd.done = true;
       if (c.dead) continue;
-      if (hitCrop(c, ty, cur.dmg * (sd.crit ? cur.cm : 1), sd.crit, 'seed') === 2) killed++;
+      if (hitCrop(c, ty, cur.dmg * (sd.crit ? cur.cm : 1) * (sd.pw || 1), sd.crit, 'seed') === 2) killed++;
       Sound.hit(sd.crit);
       if (sd.crit) {
         addText('CRIT', tx, ty - 30, '#ffd34d', 26, -40, 0.7);
@@ -18610,6 +18757,11 @@ export function startGeminiEngine() {
     for (const v of dbdVortexes) {
       v.t -= dt;
       v.a += dt * 14;
+      if (v.follow && pointer.active) {
+        const k = Math.min(1, dt * 7);
+        v.x += (pointer.x - v.x) * k;
+        v.y += (pointer.y - v.y) * k;
+      }
       v.acc += dt;
       while (v.acc >= 0.15) {
         v.acc -= 0.15;
@@ -18617,7 +18769,7 @@ export function startGeminiEngine() {
           if (c.dead || c.age < 0.04) continue;
           const cy = c.y - c.r * c.ds * 0.55;
           if (Math.hypot(c.x - v.x, cy - v.y) > v.r + c.r * c.ds * 0.5) continue;
-          if (hitCrop(c, cy, cur.dmg * 0.6, false, 'flame') === 2) killed++;
+          if (hitCrop(c, cy, cur.dmg * (v.dmg || 0.6), false, 'flame') === 2) killed++;
         }
       }
     }
@@ -18651,6 +18803,7 @@ export function startGeminiEngine() {
   /** Per-frame tool work during the day: seeds in flight, flame particles, burning crops, the boss walking. */
   function toolUpdate(dt) {
     updateVortexes(dt);
+    updateWaves(dt);
     flameT = Math.max(0, flameT - dt);
     updateSeeds(dt);
     if ((cur.style || 'sickle') === 'flame' && pointer.active) {
@@ -19339,6 +19492,7 @@ export function startGeminiEngine() {
   }
   function drawSeeds() {
     for (const sd of seeds) {
+      if (sd.t < 0) continue;
       ctx.save();
       ctx.translate(sd.x, sd.y);
       ctx.rotate(sd.wob + sd.t * 14);
@@ -19559,9 +19713,10 @@ export function startGeminiEngine() {
     combo = comboTimer > 0 ? combo + 1 : 1;
     comboTimer = cur.chainGrace;
     today.best = Math.max(today.best, combo);
+    // v0.12: a cut fills the power meter by its chain multiplier; full fires the tool's power (and the rush)
     if (rushTimer <= 0) {
-      rushCharge++;
-      if (rushCharge >= RUSH_GOAL) triggerRush();
+      rushCharge += powerGain();
+      if (rushCharge >= RUSH_GOAL) firePower();
     }
     const midas =
       hasSkill('gold_midas') &&
@@ -19974,10 +20129,18 @@ export function startGeminiEngine() {
   /* ===== country weather (v0.11.1, Navid 3 Nov: each country its own look). Canada first: snow falls all day, the
      flakes that land settle on the soil and pile up, every crop sits in a ring of ice, and a cut throws up a puff of
      snow. Other countries keep the clear sky until their weather is drawn. ===== */
+  /* Weather by city (v0.12, Navid 5 Nov: every city its own look): the shell's table (src/game/citylook.ts) says
+     snow, leaves or clear for each city, or for its country. */
   function countryWx() {
     if (window.__DBD_NO_WEATHER) return ''; // performance tests compare with a clear sky
-    return meta && meta.country === 'CA' ? 'snow' : '';
+    if (!meta) return '';
+    const T = window.__DBD_WX;
+    const w = T ? (T[meta.cityId] !== undefined ? T[meta.cityId] : T[meta.country]) : undefined;
+    if (w !== undefined) return w === 'clear' ? '' : w;
+    return meta.country === 'CA' ? 'snow' : '';
   }
+  /** Autumn leaves: maple red, orange, gold and rust. */
+  const LEAF_C = ['#D9452B', '#F59E43', '#F2C14E', '#B5562B'];
   /* The snow is drawn cheaply (v0.11.3, Navid: "I really liked the snow; same result with less work for the phone"):
      the settled flakes, the falling flakes, the puffs and the ice rings are each drawn as one batched shape (a few
      fills a frame instead of about a thousand). A copied full-screen layer for the settled snow measured no faster. */
@@ -19987,7 +20150,8 @@ export function startGeminiEngine() {
     puffs = [],
     snowKey = '';
   function updateWeather(dt) {
-    if (countryWx() !== 'snow') {
+    const wx = countryWx();
+    if (wx !== 'snow' && wx !== 'leaves') {
       if (flakes.length || fresh.length || baked.length) {
         flakes = [];
         fresh = [];
@@ -19995,26 +20159,48 @@ export function startGeminiEngine() {
       }
       return;
     }
-    // the snow on the ground starts over each morning
-    const key = (meta.cityId || '') + ':' + (farm ? farm.day : 0);
+    const leaves = wx === 'leaves';
+    // the snow (or the leaves) on the ground starts over each morning
+    const key = (meta.cityId || '') + ':' + (farm ? farm.day : 0) + ':' + wx;
+    let first = false;
     if (key !== snowKey) {
       snowKey = key;
+      flakes = [];
       fresh = [];
       baked = [];
+      first = true;
+      // an autumn field already has leaves lying on it in the morning
+      if (leaves)
+        for (let i = 0; i < 80; i++)
+          baked.push({ x: Math.random() * worldW, y: FIELD_TOP + 14 + Math.random() * (HW - FIELD_TOP - 20), r: 5 + Math.random() * 3.5, a: 1, rot: Math.random() * 6.28,
+            ci: (Math.random() * LEAF_C.length) | 0 });
     }
-    const want = reduceMotion ? 30 : 110;
+    const want = leaves ? (reduceMotion ? 12 : 40) : reduceMotion ? 30 : 110;
     while (flakes.length < want) {
-      flakes.push({ x: Math.random() * (worldW + 60) - 30, y: -10 - Math.random() * HW, r: 2.4 + Math.random() * 3.2, vy: 26 + Math.random() * 34, ph: Math.random() * 6.28,
-        land: FIELD_TOP + 20 + Math.random() * (HW - FIELD_TOP - 26) });
+      const land = FIELD_TOP + 20 + Math.random() * (HW - FIELD_TOP - 26);
+      flakes.push(
+        leaves
+          ? { x: Math.random() * (worldW + 80) - 40, y: first ? Math.random() * HW : -12 - Math.random() * 120, r: 5 + Math.random() * 3.5, vy: 22 + Math.random() * 20,
+              ph: Math.random() * 6.28, rot: Math.random() * 6.28, ci: (Math.random() * LEAF_C.length) | 0, land }
+          : { x: Math.random() * (worldW + 60) - 30, y: -10 - Math.random() * HW, r: 2.4 + Math.random() * 3.2, vy: 26 + Math.random() * 34, ph: Math.random() * 6.28, land },
+      );
     }
     for (let i = flakes.length - 1; i >= 0; i--) {
       const f = flakes[i];
-      f.ph += dt * 1.3;
-      f.x += Math.sin(f.ph) * 14 * dt - 8 * dt;
+      if (leaves) {
+        // a leaf rocks and turns as it drifts down
+        f.ph += dt * 1.8;
+        f.x += Math.sin(f.ph) * 32 * dt - 12 * dt;
+        f.rot += dt * (1.4 + 1.2 * Math.sin(f.ph));
+      } else {
+        f.ph += dt * 1.3;
+        f.x += Math.sin(f.ph) * 14 * dt - 8 * dt;
+      }
       f.y += f.vy * dt;
       if (f.y >= f.land) {
-        // it settles on the soil (only while the field is in play: a day's snow piles up)
-        if (mode === 'day' && fresh.length + baked.length < 700) fresh.push({ x: f.x, y: f.y, r: f.r * (1.6 + Math.random() * 1.2), a: 0 });
+        // it settles on the soil (only while the field is in play: a day's snow, or leaves, piles up)
+        if (mode === 'day' && fresh.length + baked.length < (leaves ? 260 : 700))
+          fresh.push(leaves ? { x: f.x, y: f.y, r: f.r * 1.15, a: 0, rot: f.rot, ci: f.ci } : { x: f.x, y: f.y, r: f.r * (1.6 + Math.random() * 1.2), a: 0 });
         flakes.splice(i, 1);
       }
     }
@@ -20039,17 +20225,52 @@ export function startGeminiEngine() {
   }
   /** A cut in the snow: white puffs fly up around the crop. */
   function snowPuff(x, y, size) {
-    if (countryWx() !== 'snow') return;
-    const n = reduceMotion ? 5 : 12;
+    const wx = countryWx();
+    if (wx !== 'snow' && wx !== 'leaves') return;
+    const leaves = wx === 'leaves';
+    const n = reduceMotion ? 4 : leaves ? 7 : 12;
     for (let i = 0; i < n; i++) {
       const a = -Math.PI * (0.1 + 0.8 * Math.random());
       const sp = 60 + Math.random() * 120;
-      puffs.push({ x: x + (Math.random() - 0.5) * size, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 2.5 + Math.random() * 3.5, life: 0.5 + Math.random() * 0.35, max: 0.85 });
+      puffs.push({ x: x + (Math.random() - 0.5) * size, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: leaves ? 3.6 + Math.random() * 2.4 : 2.5 + Math.random() * 3.5,
+        life: 0.5 + Math.random() * 0.35, max: 0.85, rot: Math.random() * 6.28, ci: (Math.random() * LEAF_C.length) | 0 });
     }
+  }
+  /** Leaves on the ground: all of one colour in one fill (four fills for the field). */
+  function drawLeafSet(list, alphaOf) {
+    for (let k = 0; k < LEAF_C.length; k++) {
+      let any = false;
+      ctx.beginPath();
+      for (const s of list) {
+        if (s.ci !== k) continue;
+        any = true;
+        ctx.moveTo(s.x + Math.cos(s.rot) * s.r, s.y + Math.sin(s.rot) * s.r);
+        ctx.ellipse(s.x, s.y, s.r, s.r * 0.52, s.rot, 0, Math.PI * 2);
+      }
+      if (!any) continue;
+      ctx.globalAlpha = alphaOf ? alphaOf(k) : 0.95;
+      ctx.fillStyle = LEAF_C[k];
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
   /** Under the crops: a frost that thickens through the day, the snow that has settled, a ring of ice around each crop. */
   function drawSnowGround() {
-    if (countryWx() !== 'snow') return;
+    const wx = countryWx();
+    if (wx === 'leaves') {
+      // autumn: the soil stays brown; the leaves that have come down lie on it
+      if (baked.length) drawLeafSet(baked);
+      for (const s of fresh) {
+        ctx.globalAlpha = 0.95 * s.a;
+        ctx.fillStyle = LEAF_C[s.ci];
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y, s.r, s.r * 0.52, s.rot, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (wx !== 'snow') return;
     const prog = mode === 'day' ? FarmScene_clamp(1 - time / Math.max(1, dayLen), 0, 1) : mode === 'dusk' ? 1 : 0.35;
     // v0.11.4 (Navid, 4 Nov: "the farm look is white, like the Canadian winter"): the field itself lies under snow that
     // deepens through the day; the furrows show through as soft blue lines with a bright edge
@@ -20106,7 +20327,29 @@ export function startGeminiEngine() {
   }
   /** Over everything on the field: falling flakes and the puffs from cuts, batched. */
   function drawSnowFront() {
-    if (countryWx() !== 'snow') return;
+    const wx = countryWx();
+    if (wx === 'leaves') {
+      // falling leaves with a thin dark edge, and the bits that fly up from a cut
+      for (let k = 0; k < LEAF_C.length; k++) {
+        let any = false;
+        ctx.beginPath();
+        for (const f of flakes) {
+          if (f.ci !== k) continue;
+          any = true;
+          ctx.moveTo(f.x + Math.cos(f.rot) * f.r, f.y + Math.sin(f.rot) * f.r);
+          ctx.ellipse(f.x, f.y, f.r, f.r * 0.5, f.rot, 0, Math.PI * 2);
+        }
+        if (!any) continue;
+        ctx.fillStyle = LEAF_C[k];
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(43, 23, 7, .55)';
+        ctx.stroke();
+      }
+      if (puffs.length) drawLeafSet(puffs, () => 0.9);
+      return;
+    }
+    if (wx !== 'snow') return;
     ctx.globalAlpha = 0.95;
     ctx.beginPath();
     for (const f of flakes) {
@@ -20207,34 +20450,8 @@ export function startGeminiEngine() {
       }
       updateBombs(dt);
       toolUpdate(dt);
-      spawnAcc += dt; // Charge Cleave charging while holding pointer or Spacebar
-      // v0.11.1: no second finger. With the Charge attachment, a finger held still (or the mouse button, or Space)
-      // charges; lifting it strikes. Moving the finger after a full charge keeps it until the lift.
-      const still = pointer.kind !== 'mouse' && pointer.down && performance.now() - (pointer.mt || 0) > 220;
-      const holding =
-        cur.chargeLv > 0 && pointer.active && ((pointer.down && pointer.kind === 'mouse') || keys.has(' ') || still);
-      if (holding || (cur.chargeLv > 0 && chargeReady && pointer.down && pointer.kind !== 'mouse')) {
-        const cRate =
-          (cur.cleaver ? 1.5 : 1.0) *
-          (1 + 0.25 * Math.max(0, cur.chargeLv - 1)) *
-          (dailyEvent && dailyEvent.chargeFast ? dailyEvent.chargeFast : 1.0);
-        if (holding) {
-          chargeT = Math.min(1, chargeT + dt * 1.9 * cRate);
-          if (chargeT >= 1 && !chargeReady) {
-            chargeReady = true;
-            Sound.tick();
-          }
-        }
-      } else if (chargeT > 0 && pointer.kind !== 'mouse' && pointer.down) {
-        // the finger moved before the charge was full: it fades, no strike
-        chargeT = Math.max(0, chargeT - dt * 3.5);
-      } else if (chargeT > 0) {
-        if (chargeT >= 0.72) unleashChargeCleave();
-        else {
-          chargeT = Math.max(0, chargeT - dt * 3.5);
-          chargeReady = false;
-        }
-      } // Field props & Crow pests timers
+      spawnAcc += dt;
+      // Field props & Crow pests timers
       propTimer -=
         dt * (dailyEvent && dailyEvent.propBoost ? dailyEvent.propBoost : 1) * (hasSkill('soil_bounty') ? 2.0 : 1.0);
       if (propTimer <= 0) {
@@ -22122,16 +22339,7 @@ export function startGeminiEngine() {
     ctx.arc(x, y, R, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
-    if (chargeT > 0.05) {
-      const cR = lerp(R * 0.4, R * (cur.cleaver ? 2.4 : 2.05), chargeT);
-      ctx.save();
-      ctx.strokeStyle = chargeT >= 0.72 ? 'rgba(56, 189, 248, 0.9)' : 'rgba(253, 224, 71, 0.75)';
-      ctx.lineWidth = chargeT >= 0.72 ? 3.5 : 2.2;
-      ctx.beginPath();
-      ctx.arc(x, y, cR, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    } // Dynamic crescent slash arc when swinging
+    // Dynamic crescent slash arc when swinging
     if (sweepT > 0 && (cur.style === 'sickle' || cur.style === 'scythe' || !cur.style)) {
       const t = 1 - sweepT / 0.13;
       const span = Math.PI * 1.28 * t;
@@ -22783,6 +22991,7 @@ export function startGeminiEngine() {
     drawParts();
     drawSeeds();
     drawVortexes();
+    drawWaves();
     drawPropsCrowsAndWeather();
     drawSnowFront(); // Seamless full-canvas evening/night atmospheric tint (NO horizontal cut line at y=105!)
     if (warm > 0.05 || night > 0.05 || dawnAmt(p) > 0.02) {
@@ -23088,7 +23297,7 @@ export function startGeminiEngine() {
     };
     optionalText('multiplierValue', '×' + incomeMultiplier());
     optionalText('chainCount', combo ? `${combo} in a row` : 'Keep harvesting');
-    optionalText('rushLabel', rushTimer > 0 ? `RUSH · ${rushTimer.toFixed(1)}s` : `${rushCharge}/${RUSH_GOAL} TO RUSH`);
+    optionalText('rushLabel', rushTimer > 0 ? `RUSH · ${rushTimer.toFixed(1)}s` : `${Math.floor(rushCharge)}/${RUSH_GOAL} TO RUSH`);
     optionalText(
       'eventLabel',
       rushTimer > 0
@@ -23880,8 +24089,8 @@ export function startGeminiEngine() {
       y0 = (e.clientY - r.top) / scale;
     return [x, e.pointerType === 'mouse' ? y0 : liftedY(y0)];
   }
-  // Touch: the first finger moves the sickle; a second finger held anywhere charges the Charge Cleave and lifting
-  // it strikes at the sickle. Mouse: hold the button. Keyboard: hold Space.
+  // Touch: the first finger moves the sickle; other fingers do nothing (v0.12: no charging, the power meter fills
+  // as you cut).
   const touchDown = new Set();
   let primaryTouch = null,
     chargeTouch = null;
@@ -23939,8 +24148,6 @@ export function startGeminiEngine() {
       primaryTouch = null;
       chargeTouch = null;
       pointer.charge2 = false;
-      // lifting a charged finger strikes where the sickle is
-      if (mode === 'day' && !paused && chargeT >= 0.72 && pointer.active) unleashChargeCleave();
     }
     pointer.down = false;
     if (e.pointerType !== 'mouse') pointer.active = false;
@@ -24307,6 +24514,7 @@ export function startGeminiEngine() {
           seeds = [];
           crops = [];
           dbdVortexes = [];
+          dbdWaves = [];
           parts = [];
           texts = [];
           fieldProps = [];
@@ -24337,6 +24545,7 @@ export function startGeminiEngine() {
           crops = [];
           seeds = [];
           dbdVortexes = [];
+          dbdWaves = [];
           bossCrop = null;
           dayCheckpoint = null;
           sceneryKey = '';
@@ -24360,6 +24569,12 @@ export function startGeminiEngine() {
           bossCrop.calm = true;
           bossCrop.full = 1e9;
           time = Math.min(time, left);
+          return true;
+        },
+        /** The intro's finisher: the tool's power fires now (side farms only). */
+        introPower: () => {
+          if (!savingOff || mode !== 'day') return false;
+          firePower();
           return true;
         },
         /** Ends a side farm's day now (the intro after its finale). */
@@ -24461,6 +24676,13 @@ export function startGeminiEngine() {
         if (full > 0) bossCrop.full = full;
         bombTimer = Math.min(bombTimer, 0.5);
         stormTimer = Math.min(stormTimer, 1);
+        return true;
+      };
+      /** Tests only: fill the power meter to that share of full (1 fires the power now). */
+      engineApi.devPower = (share) => {
+        if (!window.__DBD_DEV_HOOKS || mode !== 'day') return false;
+        if (share >= 1) firePower();
+        else rushCharge = Math.max(0, share) * RUSH_GOAL;
         return true;
       };
       /** Tests only: give the farm these perks (as if picked from chests). */

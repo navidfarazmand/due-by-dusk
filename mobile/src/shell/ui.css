@@ -85,14 +85,19 @@ header.bar, aside.ledger, #fieldSign, #eventLabel, #hud, .dbd-badge, .dbd-btns, 
   @keyframes hbKnock { 30% { transform: translate(-6px, -14px) rotate(-30deg); } 100% { transform: translate(70px, -90px) rotate(260deg); opacity: 0; } }
 }
 .hb-sound { position: absolute; right: 52px; top: 10px; pointer-events: auto; }
-.hb-rush { position: absolute; right: 104px; top: 10px; width: 104px; height: 44px; border-radius: 14px; }
-.hb-rush .rl { position: absolute; left: 10px; top: 5px; font-weight: 900; font-size: 10.5px; line-height: 14px; letter-spacing: .6px; color: var(--dbd-muted); }
-.hb-rush .rn { position: absolute; right: 9px; top: 4px; font-family: var(--ui-display); font-size: 15px; line-height: 16px; font-variant-numeric: tabular-nums; }
-.hb-rush .rl.long { font-size: 9px; letter-spacing: 0; top: 6px; }
-.hb-rush .rbar { position: absolute; left: 9px; right: 9px; top: 23px; height: 10px; box-sizing: border-box; border: 2px solid var(--dbd-ink); border-radius: 5px; background: #fff; overflow: hidden; }
-.hb-rush .rbar i { display: block; height: 100%; width: 0; background: #FF9A3D; }
+/* Arthur Grumble (v0.12), where the rush chip was: left of the sound button, on the HUD line */
+#dbdHud .hb-arthur { position: absolute; inset: auto; right: 100px; top: -12px; width: 96px; height: 88px; pointer-events: none; touch-action: auto; }
+/* the power meter, beside the sun dial (v0.12): fills as you cut; full fires the tool's power and the rush */
+.hb-rush { position: absolute; left: 156px; top: 14px; width: 86px; height: 38px; border-radius: 13px; }
+.hb-rush .rl { position: absolute; left: 0; right: 0; top: 3px; text-align: center; font-weight: 900; font-size: 10.5px; line-height: 13px; letter-spacing: .7px; color: var(--dbd-muted); white-space: nowrap; }
+.hb-rush .rl.long { font-size: 9px; letter-spacing: 0; }
+.hb-rush .rbar { position: absolute; left: 8px; right: 8px; top: 18px; height: 11px; box-sizing: border-box; border: 2px solid var(--dbd-ink); border-radius: 6px; background: #fff; overflow: hidden; }
+.hb-rush .rbar i { display: block; height: 100%; width: 0; background: #FF9A3D; transition: width .2s ease; }
+.hb-rush.near .rbar i { background: var(--dbd-gold); }
+.hb-rush.near .rl { color: var(--dbd-ink); }
 .hb-rush.on { background: var(--dbd-gold); animation: dbdRushGlow .5s ease-in-out infinite alternate; }
 .hb-rush.on .rl { color: var(--dbd-ink); }
+.hb-rush.on .rbar i { background: #FF6B3D; transition: none; }
 @keyframes dbdRushGlow { from { box-shadow: 0 3px 0 var(--dbd-ink), 0 0 0 0 rgba(255, 194, 61, .0); } to { box-shadow: 0 3px 0 var(--dbd-ink), 0 0 14px 4px rgba(255, 194, 61, .75); } }
 .hb-banner { position: absolute; left: 50%; top: 0; width: 300px; height: 66px; box-sizing: border-box; border: 3px solid var(--dbd-ink); border-radius: 18px; background: var(--dbd-cream);
   box-shadow: 0 5px 0 var(--dbd-ink); transform-origin: 50% 50%; }

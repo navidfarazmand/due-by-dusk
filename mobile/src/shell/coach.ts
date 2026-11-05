@@ -576,68 +576,6 @@ export class Coach {
     });
   }
 
-  /** The Charge Cleave (v0.11.1, with the Charge handle): the field stops, the ghost finger holds still on the crops
-   *  until the ring is full, and lifts. Then the field waits for the player to try it. */
-  async cleaveLesson(cleaved: () => number): Promise<boolean> {
-    let learned = false;
-    await this.run(async () => {
-      await this.until(() => (peek()?.crops || []).filter(c => !c.dead && c.age > 0.35).length >= 3, 2500);
-      this.setTime(0.0001);
-      const spotC = densest(this);
-      if (!spotC) return;
-      const p1 = spotC;
-      // no dimming (Navid, 3 Nov): the field just stops while the finger shows it
-      this.showHand(0, { x: p1.x - 90, y: p1.y + 60 });
-      await this.glide(0, p1, 450);
-      this.say(touchy ? t('Hold still') : t('Hold the button'), { x: p1.x, y: p1.y - 96 }, 30);
-      if (touchy) {
-        this.press(0);
-        // time runs slowly so the ring can fill while the finger stays put
-        this.setTime(0.6);
-        await this.until(() => (peek()?.chargeT || 0) >= 0.98, 3500);
-        this.setTime(0.0001);
-        this.say(t('Lift!'), { x: p1.x, y: p1.y - 96 }, 40);
-        await this.wait(500);
-        const n = cleaved();
-        this.setTime(0.6);
-        this.lift(0);
-        await this.until(() => cleaved() > n, 900);
-        await this.wait(450);
-        this.hideHand(0);
-      } else {
-        this.hands[0].classList.add('down');
-        await this.wait(1100);
-        this.say(t('Let go!'), { x: p1.x, y: p1.y - 96 }, 40);
-        this.hands[0].classList.remove('down');
-        await this.wait(700);
-        this.hideHand(0);
-      }
-      // your turn
-      this.setTime(0.0001);
-      this.spot(null);
-      const q = densest(this) || p1;
-      this.say(t('Your turn'), { x: q.x, y: q.y - 90 });
-      if (touchy) {
-        this.showHand(0, q);
-        this.hands[0].classList.add('hint');
-      }
-      const touched = await this.until(() => !!peek()?.pointer.active, 15000);
-      for (const k of this.hands) k.classList.remove('hint');
-      this.hideHand(0);
-      this.hideHand(1);
-      this.hush();
-      this.restoreTime();
-      if (!touched) return;
-      const n0 = cleaved();
-      learned = await this.until(() => cleaved() > n0, 9000);
-      if (learned) {
-        this.say(t('Cleave!'), undefined, 42);
-        await this.wait(900);
-      }
-    });
-    return learned;
-  }
-
   /** A first-time sight on the field: slow motion, a spotlight that follows it, a word or two. */
   async moment(where: () => Pt | null, word: string, ms = 1500, r = 64): Promise<void> {
     await this.run(async () => {

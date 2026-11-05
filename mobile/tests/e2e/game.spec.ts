@@ -66,7 +66,8 @@ test('menu to the first farm and through one day', async ({ page }) => {
   await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('Due day 2');
   // the first bill is paid on the evening it is due, not before: the button starts the day
   await expect(page.locator('.scr-farmhouse .dc-go[data-act="start"]')).toBeVisible();
-  await expect(page.locator('.scr-farmhouse .dc-dots i')).toHaveCount(10);
+  // a Canadian farm is 19 days (v0.12: bills of 2, 3, 4, 5 and 5 days)
+  await expect(page.locator('.scr-farmhouse .dc-dots i')).toHaveCount(19);
   await fast(page);
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
@@ -123,7 +124,7 @@ test('tools: buy the scythe, put it in hand and add an attachment', async ({ pag
   await expect(page.locator('.tool-detail .td-head')).toContainText('In your hands');
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.stats().style)).toBe('scythe');
   await act(page, 'buy-mod', 'scythe.wide');
-  // the Charge handle is the first row now (v0.11.1); the wide blade is the second
+  // the Power booster (the Charge handle until 0.11) is the first row; the wide blade is the second
   await expect(page.locator('.mod-row').nth(1).locator('.pips i.on')).toHaveCount(1);
   const g = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g.tools.owned).toContain('scythe');
@@ -514,7 +515,7 @@ test('perks from silver and gold chests survive a reload', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('the first farm: carrots only, a bill paid on its evening opens a chest, and the radish joins the field', async ({ page }) => {
+test('the first farm: carrots only on day 1, a bill paid on its evening opens a chest, and a new crop joins each morning', async ({ page }) => {
   const errors = await boot(page);
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
   await expect(page.locator('.scr-farmhouse')).toBeVisible();
@@ -530,7 +531,8 @@ test('the first farm: carrots only, a bill paid on its evening opens a chest, an
   });
   await expect(page.locator('.scr-modal .chest-box')).toBeVisible();
   await expect(page.locator('.scr-modal .chest-box')).toContainText('A wooden chest');
-  await expect(page.locator('.scr-modal .chest-new')).toContainText('Runaway Radish');
+  // v0.12: crops come by day, so the chest no longer names one
+  await expect(page.locator('.scr-modal .chest-new')).toHaveCount(0);
   await expect(page.locator('.scr-modal [data-act="perk"]').first()).toBeHidden();
   await act(page, 'chest-open');
   await expect(page.locator('.scr-modal [data-act="perk"]')).toHaveCount(3);
@@ -546,17 +548,21 @@ test('the first farm: carrots only, a bill paid on its evening opens a chest, an
   const st = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
   expect(st.billsPaid).toBe(1);
   expect(st.perks).toHaveLength(1);
-  // a fresh field after paying shows the radish among the carrots
+  // day 3: the day card names this morning's new crop, and the field holds it with the carrots and the radish
+  await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Day 3');
+  await expect(page.locator('.scr-farmhouse .dc-new')).toContainText('New today');
+  const fresh = await page.locator('.scr-farmhouse .dc-new').getAttribute('data-crop');
+  expect(fresh && fresh !== 'carrot' && fresh !== 'radish').toBeTruthy();
   const seen = new Set<string>();
-  for (let i = 0; i < 6 && !seen.has('radish'); i++) {
+  for (let i = 0; i < 8 && !seen.has(fresh!); i++) {
     const t = await page.evaluate(() => {
       (window as any).__DBD_ENGINE.refreshStats();
       return (window as any).__DBD_ENGINE.peek().crops.map((c: any) => c.type);
     });
     t.forEach((x: string) => seen.add(x));
   }
-  expect([...seen].every(x => x === 'carrot' || x === 'radish')).toBe(true);
-  expect(seen.has('radish')).toBe(true);
+  expect([...seen].every(x => x === 'carrot' || x === 'radish' || x === fresh)).toBe(true);
+  expect(seen.has(fresh!)).toBe(true);
   expect(errors).toEqual([]);
 });
 
@@ -650,9 +656,8 @@ test('settings: the finger offset slider reaches the field and is kept after a r
   expect(errors).toEqual([]);
 });
 
-test('touch: with a Charge handle a still finger charges and lifting strikes; a second finger does nothing', async ({ page }) => {
-  const charged = seeded([], 0, { tools: { owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 1 } } });
-  const errors = await boot(page, charged);
+test('touch: a second finger does nothing; a still finger just keeps cutting (v0.12: no charging)', async ({ page }) => {
+  const errors = await boot(page, seeded([], 0, { tools: { owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 1 } } }));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
@@ -662,42 +667,56 @@ test('touch: with a Charge handle a still finger charges and lifting strikes; a 
       const cv = document.getElementById('field')!;
       cv.dispatchEvent(new PointerEvent(type as string, { pointerId: id as number, pointerType: 'touch', isPrimary: id === 1, clientX: x as number, clientY: y as number, bubbles: true }));
     }, [type, id, x, y]);
-  const chargeT = () => page.evaluate(() => (window as any).__DBD_ENGINE.peek().chargeT as number);
   const x = box.x + box.width * 0.5, y = box.y + box.height * 0.6;
   await fire('pointerdown', 1, x, y);
   const p1 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().pointer);
-  // a second finger neither charges nor moves the sickle
   await fire('pointerdown', 2, box.x + box.width * 0.2, box.y + box.height * 0.5);
   await fire('pointermove', 2, box.x + 20, box.y + 20);
   const p2 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().pointer);
   expect(Math.abs(p2.x - p1.x)).toBeLessThan(1);
   await fire('pointerup', 2, box.x + 20, box.y + 20);
-  // the first finger held still charges; lifting it strikes
-  await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().chargeT >= 0.9, null, { timeout: 4000 });
+  await page.waitForTimeout(900);
+  // holding still charges nothing, and lifting strikes nothing
+  const powers0 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().today.powers || 0);
   await fire('pointerup', 1, x, y);
-  expect(await chargeT()).toBe(0);
-  // a finger that keeps moving does not charge
-  await fire('pointerdown', 1, x, y);
-  for (let k = 0; k < 12; k++) {
-    await fire('pointermove', 1, x + (k % 2 ? 40 : -40), y);
-    await page.waitForTimeout(80);
-  }
-  expect(await chargeT()).toBeLessThan(0.3);
-  await fire('pointerup', 1, x, y);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.peek().chargeT)).toBe(0);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.peek().today.powers || 0)).toBe(powers0);
   expect(errors).toEqual([]);
 });
 
-test('touch: without a Charge handle a still finger only cuts', async ({ page }) => {
-  const errors = await boot(page);
+test('the power meter: a card at half full (once), then the tool\'s power and the rush fire together', async ({ page }) => {
+  const errors = await boot(page, seeded([], 0), true);
+  await page.evaluate(() => { const g = (window as any).__DBD_APP.g; g.seen = { intro: true, practice: true, cut: true, start: true, cleave: true, mBoss: true, mBoss2: true, mBomb: true, mEncase: true, mRadish: true, mGolden: true, mGoat: true, mGoatPet: true, mCrow: true, mThief: true, mProp: true, mBolt: true, mRival: true, mChain: true, mRush: true }; });
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
-  const box = (await page.locator('#field').boundingBox())!;
-  await page.evaluate(([x, y]) => {
-    document.getElementById('field')!.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y, bubbles: true }));
-  }, [box.x + box.width * 0.5, box.y + box.height * 0.6]);
-  await page.waitForTimeout(900);
-  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.peek().chargeT)).toBe(0);
+  // beside the sun dial, a bar with no number on it
+  await expect(page.locator('#dbdHud .grp.tc #dbdRush')).toBeVisible();
+  await expect(page.locator('#dbdRushLbl')).toHaveText('POWER');
+  await page.waitForTimeout(2200);
+  await page.evaluate(() => (window as any).__DBD_ENGINE.devPower(0.6));
+  await expect(page.locator('#dbdBanner.new-thing')).toBeVisible({ timeout: 6000 });
+  await expect(page.locator('#dbdBanner')).toContainText('Your power meter');
+  await page.mouse.click(300, 300);
+  await expect(page.locator('#dbdBanner.new-thing')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.seen.mPower)).toBe(true);
+  // full: the sickle's Cleave and the Harvest Rush, at once
+  await page.evaluate(() => {
+    const w = window as any;
+    w.__pw = [];
+    const prev = w.__dbdEvent;
+    w.__dbdEvent = (type: string, d: unknown) => { w.__pw.push(type); if (prev) prev(type, d); };
+  });
+  await page.evaluate(() => (window as any).__DBD_ENGINE.devPower(1));
+  const h = await page.evaluate(() => (window as any).__DBD_ENGINE.hud());
+  expect(h.rushT).toBeGreaterThan(3);
+  expect(h.rushCharge).toBe(0);
+  const got: string[] = await page.evaluate(() => (window as any).__pw);
+  expect(got).toContain('power');
+  expect(got).toContain('cleave');
+  await expect(page.locator('#dbdRush.on')).toBeVisible();
+  await expect(page.locator('#dbdRushLbl')).toHaveText('POWER!');
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.peek().today.powers)).toBe(1);
   expect(errors).toEqual([]);
 });
 

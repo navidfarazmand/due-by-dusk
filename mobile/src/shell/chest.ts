@@ -96,16 +96,21 @@ export function perkIcon(key: string, size = 26): string {
 
 export const TIER_LABEL = ['', 'Common', 'Rare', 'Epic'];
 
-/** Two fingertips and a charging ring: the Charge Cleave gesture (on cards for perks that improve it). */
-const TWO_FINGERS = `<svg class="pk-gest" width="34" height="22" viewBox="0 0 34 22" aria-hidden="true"><circle cx="9" cy="11" r="8" fill="none" stroke="#38BDF8" stroke-width="2.4"/><circle cx="9" cy="11" r="3.6" fill="#fff" stroke="${INK}" stroke-width="2"/><circle cx="26" cy="11" r="3.6" fill="#fff" stroke="${INK}" stroke-width="2"/><path d="M26 3.5 V1 M30.5 5 L32 3 M21.5 5 L20 3" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/></svg>`;
-
-/** One perk card (a button the player picks). Perks that change a gesture show it. */
+/** One perk card (a button the player picks). */
 export function perkCard(p: PerkInfo, i: number, line: string, touch = false): string {
-  const gesture = p.id === 'cleaver' ? TWO_FINGERS : '';
-  const text = p.id === 'cleaver' && touch ? t('Charge Cleave (hold a 2nd finger) charges 50% faster and hits wider.') : t(line);
+  void touch;
+  const gesture = '';
+  const text = t(line);
   return `<button type="button" class="perk-card pk-t${p.tier}" data-act="perk" data-arg="${esc(p.id)}" style="--i: ${i}">
     <span class="pk-top"><span class="pk-ic">${perkIcon(p.icon)}</span>${gesture}<span class="pk-tier">${t(TIER_LABEL[p.tier] || '')}</span></span>
     <b>${esc(t(p.name))}</b><span class="pk-line">${esc(text)}</span></button>`;
+}
+
+/** The crop that joins the field this morning (v0.12: a new crop every morning), for the day card: sprite, name,
+ *  what it pays and how many cuts it takes. */
+export function newTodayHtml(type: string, name: string, pay: number, cuts: number, money: (v: number) => string): string {
+  const cutTxt = cuts <= 1 ? t('one cut') : t('about {n} cuts', { n: cuts });
+  return `<div class="dc-new" data-crop="${esc(type)}">${spriteImg(type, 28, name)}<b>${t('New today: {crop}', { crop: esc(name) })}</b><span>${t('{amt} each', { amt: money(pay) })} · ${cutTxt}</span></div>`;
 }
 
 /** The crop that joins the field after this bill: sprite, name, what it pays and how many cuts it takes. */

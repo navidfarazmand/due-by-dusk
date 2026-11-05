@@ -4,6 +4,7 @@
 //  - Scythe: wide and heavy. Slower swings that catch more crops at once.
 //  - Flame weeder: a fast flame; crops keep cooking for a moment after you move on.
 //  - Seed blaster: shoots seeds at the nearest crops in range, so you don't have to reach them.
+// Each tool has its own power, fired by the power meter (v0.12): Cleave, Whirlwind, Fire wave, Seed storm.
 // A new tool goes on sale when you beat the boss of a country. Attachments are bought per tool (3 levels each).
 
 import { t } from '../i18n/i18n';
@@ -30,7 +31,8 @@ export interface ToolStats {
   range: number;
   storm: boolean;
   frost: boolean;
-  /** Charge Cleave level from the Charge attachment (0: none). Hold still, then lift; each level charges 25% faster. */
+  /** Power booster level (0: none; the Charge handle until 0.11): the power meter fills 25% faster a level and
+   *  the tool's power hits harder. */
   charge: number;
 }
 
@@ -60,11 +62,14 @@ const BASE: Omit<ToolStats, 'style'> = {
   dmg: 1, speed: 1, reach: 1, crit: 0, value: 1, gold: 0, burn: 0, targets: 1, range: 0, storm: false, frost: false, charge: 0,
 };
 
-/** The Charge Cleave as an attachment (v0.11.1, Navid 3 Nov: hold and release, as an upgrade, not a perk). */
+/** The power booster (v0.12; it was the Charge handle in 0.11, so the id stays 'charge' and testers keep their levels). */
 const chargeMod = (base: number): ModDef => ({
-  id: 'charge', name: 'Charge handle', line: 'Hold still, then lift: Charge Cleave. Each level charges faster.', max: 3, base, growth: 2.6,
+  id: 'charge', name: 'Power booster', line: 'Your power meter fills 25% faster and your power hits harder.', max: 3, base, growth: 2.6,
   apply: (s, l) => { s.charge = l; },
 });
+
+/** The power each tool fires when the power meter is full (v0.12, Navid 5 Nov). */
+export const TOOL_POWER: Record<ToolId, string> = { sickle: 'Cleave', scythe: 'Whirlwind', flame: 'Fire wave', blaster: 'Seed storm' };
 
 export const TOOLS: ToolDef[] = [
   {
@@ -99,6 +104,7 @@ export const TOOLS: ToolDef[] = [
     // a clear step up from a scythe with all its attachments (it was weaker than one until 29 Oct)
     base: { ...BASE, dmg: 1.6, speed: 2.3, reach: 1.3, burn: 1.4 },
     mods: [
+      chargeMod(8000),
       { id: 'tank', name: 'Bigger tank', line: '+0.5 s of burning', max: 3, base: 9000, growth: 2.3, apply: (s, l) => { s.burn += 0.5 * l; } },
       { id: 'nozzle', name: 'Hot nozzle', line: '+12% damage', max: 3, base: 10000, growth: 2.3, apply: (s, l) => { s.dmg *= 1 + 0.12 * l; } },
       { id: 'cone', name: 'Wide cone', line: '+8% reach', max: 3, base: 11000, growth: 2.3, apply: (s, l) => { s.reach *= 1 + 0.08 * l; } },
@@ -110,6 +116,7 @@ export const TOOLS: ToolDef[] = [
     // four seeds a shot: a step up from a flame weeder with all its attachments (with one seed it was far weaker)
     base: { ...BASE, dmg: 5, speed: 0.8, reach: 0.8, range: 150, targets: 4 },
     mods: [
+      chargeMod(24000),
       { id: 'scope', name: 'Scope', line: '+15% range', max: 3, base: 25000, growth: 2.3, apply: (s, l) => { s.range *= 1 + 0.15 * l; } },
       { id: 'barrel', name: 'Extra barrel', line: '+1 seed per shot', max: 2, base: 30000, growth: 2.4, apply: (s, l) => { s.targets += l; } },
       {
@@ -184,7 +191,7 @@ export function parseTools(o: any): ToolsState {
 /** Short stat lines for the tool card, relative to the sickle. */
 export function toolSummary(s: ToolStats): string[] {
   const pct = (v: number) => `×${v.toFixed(2)}`;
-  const out = [t('Damage {x}', { x: pct(s.dmg) }), t('Speed {x}', { x: pct(s.speed) })];
+  const out = [t('Power: {p}', { p: t(TOOL_POWER[s.style] || 'Cleave') }), t('Damage {x}', { x: pct(s.dmg) }), t('Speed {x}', { x: pct(s.speed) })];
   if (s.style === 'blaster')
     out.push(t('Range {x}', { x: Math.round(s.range) }), s.targets > 1 ? t('{n} seeds a shot', { n: s.targets }) : t('{n} seed a shot', { n: s.targets }));
   else out.push(t('Reach {x}', { x: pct(s.reach) }));
@@ -192,6 +199,5 @@ export function toolSummary(s: ToolStats): string[] {
   if (s.crit > 0) out.push(t('+{x}% crit', { x: Math.round(s.crit * 100) }));
   if (s.value > 1) out.push(t('Prices {x}', { x: pct(s.value) }));
   if (s.storm) out.push(t('Lightning on crits'));
-  if (s.charge > 0) out.push(t('Charge Cleave Lv {n}', { n: s.charge }));
   return out;
 }

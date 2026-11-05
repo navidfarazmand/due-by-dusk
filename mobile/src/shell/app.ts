@@ -17,7 +17,7 @@ import { TOOLS, isToolId, modCost, modLevel, newTools, toolDef, toolStats, toolS
 import { ART, BAND, MAP, NODES, PREVIEW, SPRITE, bandFor, spriteImg } from './art';
 import { $, ICON, TOOL_ICON, cap, clamp, esc, money, stars } from './dom';
 import { engine, on, type BillInfo, type ChestInfo, type DayEvent, type EngineState, type Today } from './engine';
-import { CHEST_UP_ICON, chestBurst, chestName, chestSvg, newCropHtml, perkCard, perkIcon } from './chest';
+import { CHEST_UP_ICON, chestBurst, chestName, chestSvg, newTodayHtml, perkCard, perkIcon } from './chest';
 import { rivalFace } from './rival';
 import { FarmHud, deviceText, eventIcon, touchy } from './hud';
 import { REPORT_EMAIL, reportDetails, sendReport, watchErrors, watchShake } from '../platform/report';
@@ -33,6 +33,7 @@ import {
   type DuelSetup, type SideOutcome,
 } from './extras';
 import { ribbonIcon } from './looks';
+import { arthurOnCard } from './arthur';
 
 type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'skills' | 'barn' | 'daily' | 'duel' | 'side';
 
@@ -142,8 +143,6 @@ export class GameApp {
    *  Settings, so it ends on the menu instead of starting the first farm. */
   private intro: { snap: string; sound: boolean; ending: boolean; down: boolean; at: Pt | null; practice?: boolean; replay?: boolean } | null = null;
   private coach = new Coach();
-  /** Charge Cleaves struck since launch (the cleave lesson watches it). */
-  private cleaves = 0;
   /** No new field moment before this time (ms). */
   private momentCool = 0;
   /** A "something new" card is holding the field. */
@@ -351,8 +350,11 @@ export class GameApp {
       const lesson = !this.side && !!this.g.run && this.dayLessons();
       this.hud.dayStarted(d.event, lesson);
     });
-    on('cleave', () => this.cleaves++);
+    on('crowSteal', () => this.hud.arthurCrow(true));
+    on('crowBack', () => this.hud.arthurCrow(false));
+    on('billPaid', () => this.hud.arthurBillPaid());
     on('bossDown', () => {
+      this.hud.arthurShock();
       if (this.intro) this.intro.down = true;
     });
     on('dayEnd', d => {
@@ -497,7 +499,10 @@ export class GameApp {
     else if (s === 'country') el.innerHTML = this.countryHtml();
     else if (s === 'farmhouse') el.innerHTML = this.farmhouseHtml();
     else if (s === 'sundown') el.innerHTML = this.sundownHtml();
-    else if (s === 'won' || s === 'lost') el.innerHTML = this.resultHtml();
+    else if (s === 'won' || s === 'lost') {
+      el.innerHTML = this.resultHtml();
+      if (s === 'won') arthurOnCard(el.querySelector<HTMLCanvasElement>('.r-arthur'), 'won');
+    }
     else if (s === 'skills') el.innerHTML = skillMapHtml(this.g, this.skillSel || firstSkill(this.g));
     else if (s === 'barn') el.innerHTML = barnHtml(this.g, this.barnTab, this.barnSel, canOffer(this.g, 'ribbon'));
     else if (s === 'daily') el.innerHTML = this.backdrop() + this.dailyScreen();
@@ -800,8 +805,8 @@ export class GameApp {
     this.finishIntro();
   }
 
-  /** The intro (Navid, 30 Oct): the last seconds of a boss farm, played by the ghost finger. The boss falls to a
-   * Charge Cleave, the deed is paid, and the player lands on their own first farm. Since v0.11.1 new players start
+  /** The intro (Navid, 30 Oct): the last seconds of a boss farm, played by the ghost finger. The boss falls to the
+   * scythe's whirlwind (its power, v0.12), the deed is paid, and the player lands on their own first farm. Since v0.11.1 new players start
    * on the practice farm; the intro plays from Settings. */
   private async playIntro(replay = false): Promise<void> {
     const e = engine();
@@ -860,15 +865,8 @@ export class GameApp {
           t => t,
         );
       await chase(1700);
-      // the finisher: the finger holds still on the boss until the Charge Cleave is full, and lifts
-      if (!it.down) {
-        const q = at() || start;
-        co.showHand(0, q);
-        await co.until(() => (peek()?.chargeT || 0) >= 0.98 || it.down, 1800);
-        co.lift(0);
-        await co.wait(250);
-        if (!it.down) co.press(0);
-      }
+      // the finisher (v0.12): the power meter is full, and the scythe's whirlwind follows the finger onto the boss
+      if (!it.down) e.introPower();
       const t1 = performance.now();
       while (!it.down && performance.now() - t1 < 5000) await chase(250);
       co.lift(0);
@@ -921,8 +919,8 @@ export class GameApp {
     void this.coach.point(btn, t('Start'), () => this.scr !== 'farmhouse' || !this.modal.hidden);
   }
 
-  /** Lessons at the start of a day on a real farm: cutting (a new player's first day), then the Charge Cleave.
-   * Returns whether one started. */
+  /** The lesson at the start of a day on a real farm: cutting, on a new player's first day (the power meter has a
+   * card instead, v0.12). Returns whether it started. */
   private dayLessons(): boolean {
     if (!this.coachOn) return false;
     const seen = this.g.seen;
@@ -935,20 +933,7 @@ export class GameApp {
       return true;
     }
     seen.cut = true;
-    // the Charge Cleave lesson comes with the first Charge handle on the tool in hand (v0.11.1)
     void st;
-    if (!seen.cleave && toolStats(this.g.tools).charge > 0) {
-      const tries = seen.cleave2 ? 3 : seen.cleave1 ? 2 : 1;
-      if (tries === 1) seen.cleave1 = true;
-      else if (tries === 2) seen.cleave2 = true;
-      this.save();
-      this.momentCool = performance.now() + 16000;
-      void this.coach.cleaveLesson(() => this.cleaves).then(ok => {
-        if (ok || tries >= 2) seen.cleave = true;
-        this.save();
-      });
-      return true;
-    }
     return false;
   }
 
@@ -1006,6 +991,18 @@ export class GameApp {
       return void card('mRival', '👑', t('Beat {amt} today', { amt: money(rv.record) }), t("That's {rival}'s best day on this farm. Earn more in one day and the city's crown is yours.", { rival: rv.name }));
     if (!seen.mChain && h.tiers.length > 1 && h.combo >= h.tiers[1].count)
       return void card('mChain', '🔗', t('Chain bonus!'), t('Cut crops quickly, one after another: every crop in a long chain pays more.'));
+    // the power meter, half full: what it does with the tool in hand (once for each tool, v0.12)
+    const style = String(engine().stats().style || 'sickle') as ToolId;
+    const pk = style === 'sickle' ? 'mPower' : 'mPower_' + style;
+    if (!seen[pk] && h.rushT <= 0 && h.rushCharge >= h.rushGoal * 0.5) {
+      const what: Record<ToolId, string> = {
+        sickle: t("Cut crops to fill it. A chain fills it faster. When it's full, your sickle cleaves everything around it."),
+        scythe: t("Cut crops to fill it. A chain fills it faster. When it's full, a whirlwind follows your finger."),
+        flame: t("Cut crops to fill it. A chain fills it faster. When it's full, a ring of fire sets the crops around you alight."),
+        blaster: t("Cut crops to fill it. A chain fills it faster. When it's full, a storm of seeds hits crops all over the field."),
+      };
+      return void card(pk, '⚡', t('Your power meter'), what[style] || what.sickle);
+    }
     if (!seen.mRush && h.rushT > 0) return void card('mRush', '⚡', t('Harvest Rush!'), t('For a few seconds every crop pays 50% more and the field grows faster.'));
   }
 
@@ -1984,8 +1981,10 @@ export class GameApp {
         : '';
     // the city's rival and the record to beat for the crown (Navid, 30 Oct: "who is Captain Arsenault?")
     const p = cityProgress(this.g, run.cityId);
+    // v0.12: a new crop every morning; on those days it takes the rival's place on the card
+    const newRow = bossRow ? '' : this.newTodayRow();
     const rivalRow =
-      !bossRow && !p.crown
+      !bossRow && !newRow && !p.crown
         ? `<div class="dc-rival">${rivalFace(ct.rival, 28)}<span class="dc-rn">${esc(ct.rival)}</span><span class="dc-rec">${ICON.crown('#FFC23D', 18)}<b>${money(plan.record)}</b></span></div>`
         : '';
     // the tiles: what is waiting behind each
@@ -2012,8 +2011,8 @@ export class GameApp {
       <div class="grp mcb" style="width: 390px; height: 316px"><div class="st-chip day-card">
         <div class="dc-city"><span>${esc(ct.short)}</span>${plan.boss ? `<i class="dc-boss-tag">${t('BOSS')}</i>` : ''}</div>
         <h2 class="dc-day">${t('Day {day}', { day: st.day })}</h2>
-        <div class="dc-dots" role="img" aria-label="${t('Day {day} of {n}', { day: st.day, n: total })}">${dots}</div>
-        ${billRow}${bossRow}${rivalRow}
+        <div class="dc-dots${total > 20 ? ' many' : ''}" role="img" aria-label="${t('Day {day} of {n}', { day: st.day, n: total })}">${dots}</div>
+        ${billRow}${bossRow}${newRow}${rivalRow}
         <div class="dc-go-row">${extra}${main}</div>
       </div></div>
       <div class="grp mr" style="width: 160px; height: 316px"><div class="fh-col">
@@ -2282,7 +2281,11 @@ export class GameApp {
         <div class="letter-head"><span class="eyebrow">${t('GRUMBLE &amp; SONS SAVINGS &amp; LOAN')}</span><span class="stamp ok big">${t('PAID IN FULL')}</span></div>
         <h2 class="r-title">${t('The {farm} farm is yours.', { farm: esc(ct.short) })}<button type="button" class="up-info" data-act="info" data-arg="farm" aria-label="${t('About this farm')}"><i class="info-i">i</i></button></h2>
         <div class="star-rows">${starRow}</div>${plan.bossFight ? this.clearedLine(ct.country) : ''}
-        <div class="r-rewards"><span class="r-saved"><b class="money">+${money(r.banked)}</b> ${t('to your savings')}</span><span class="r-gains">${gains}</span></div>
+        <div class="r-rewards">${
+          r.banked > 0
+            ? `<span class="r-saved"><b class="money">+${money(r.banked)}</b> ${t('to your savings')}</span>`
+            : '<canvas class="r-arthur" data-w="140" data-h="56" data-tall="60" data-dx="9" aria-hidden="true"></canvas>'
+        }<span class="r-gains">${gains}</span></div>
         <div class="r-actions"><button type="button" class="st-btn blue btn-md flex1" data-act="map" data-arg="${r.cityId}">${t('Map')}</button>
           ${nextOpen ? `<button type="button" class="st-btn gold btn-md flex1" data-act="next-city">${t('Next farm')}${ICON.next()}</button>` : ''}</div>
       </div></div>`;
@@ -2295,7 +2298,7 @@ export class GameApp {
           ? t('Dear farmer, {boss} was still sitting on the deed at sunset. The farm, the tractor and the goat now belong to us. The goat is already a problem.', { boss: esc(t(plan.bossFight.name)) })
           : t('Dear farmer, regarding your {bill}: you were {amt} short. The farm, the tractor and the goat now belong to us. The goat is already a problem.', { bill: esc(inner(t(r.bill || 'bill'))), amt: money(r.short || 0) })
       }</p>
-      <p class="r-text">${t('You keep your upgrades, your tools and your {amt} of savings.', { amt: money(r.wallet) })}</p>
+      <p class="r-text">${r.wallet > 0 ? t('You keep your upgrades, your tools and your {amt} of savings.', { amt: money(r.wallet) }) : t('You keep your upgrades and your tools.')}</p>
       <div class="r-actions"><button type="button" class="st-btn blue btn-md flex1" data-act="map" data-arg="${r.cityId}">${t('Map')}</button>
         <button type="button" class="st-btn gold btn-md flex1" data-act="retry" data-arg="${r.cityId}">${t('Try again')}</button></div>
     </div></div>`;
@@ -2338,7 +2341,6 @@ export class GameApp {
         <button type="button" class="chest-btn" data-act="chest-open" aria-label="${t('Open the chest')}"><span class="ch-stage">${chestBurst(c.tier)}${chestSvg(c.tier)}</span><span class="chest-tap">${t('Tap to open')}</span></button>
         ${up}
         <div class="chest-cards perk-grid">${cards}</div>
-        ${this.newCropLine()}
       </div>`, two ? 600 : 480);
     // the first chest: a finger taps it
     if (!this.g.seen.chest && !again && this.coachOn) {
@@ -2400,20 +2402,20 @@ export class GameApp {
     }
   }
 
-  /** The crop that joined the field with the bill just paid, if any. */
-  private newCropLine(): string {
+  /** The crop that joins the field this morning (v0.12: day 1 is carrots only, then a new crop each morning). */
+  private newTodayRow(): string {
     const run = this.g.run;
     if (!run) return '';
     const plan = this.farmPlan(run);
     const e = engine();
     const st = e.state();
-    const stage = plan.stages[st.billsPaid];
-    if (!stage || st.billsPaid <= 0) return '';
+    const stage = plan.stages[st.day - 1];
+    if (!stage || st.day <= 1) return '';
     const cur = e.stats() as unknown as { dmg: number; vm: number };
     const pay = stage.val * (cur.vm || 1);
     const hp = stage.hp * plan.hp * (1 + plan.hpDay * Math.max(0, st.day - 1));
     const cuts = Math.max(1, Math.ceil(hp / Math.max(0.01, cur.dmg || 1) - 1e-6));
-    return newCropHtml(stage.type, t(cropName(stage.type)), pay, cuts, money);
+    return newTodayHtml(stage.type, t(cropName(stage.type)), pay, cuts, money);
   }
 
   /** Words that live in index.html (the pause card). */

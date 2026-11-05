@@ -3,6 +3,7 @@
 
 import { t } from '../i18n/i18n';
 import { clamp, money, cap } from './dom';
+import { ArthurView, type ArthurMood } from './arthur';
 import { engine, type DayEvent, type HudState } from './engine';
 import { rivalFace } from './rival';
 
@@ -33,13 +34,6 @@ export function deviceText(t: string): string {
   return touchy
     ? String(t).replace(/Hold click\/Space:?/gi, 'Hold still:').replace(/\(hold click\/Space\)/gi, '(hold your finger still)').replace(/\(hold a 2nd finger\)\s*/gi, '').replace(/click\/Space/gi, 'a still finger')
     : t;
-}
-
-/** How to charge the Charge Cleave on this device (it needs the Charge handle attachment). */
-export function cleaveTip(): string {
-  return touchy
-    ? 'Tip: with a Charge handle, hold your finger still to charge a Cleave, then lift it to strike.'
-    : 'Tip: with a Charge handle, hold the mouse button (or Space) to charge a Cleave, then let go to strike.';
 }
 
 export const HUD_HTML = `<div id="dbdHud" hidden>
@@ -77,9 +71,10 @@ export const HUD_HTML = `<div id="dbdHud" hidden>
       <svg class="hb-bcrown" viewBox="0 0 24 18" aria-hidden="true"><path d="M2 16 L1 3 L7 9 L12 1 L17 9 L23 3 L22 16 Z" fill="#FFC23D" stroke="#2B1708" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="11" r="2.2" fill="#E5484D"/></svg>
       <span class="hb-bname" id="dbdBossName">King</span><span class="hb-bbar"><i id="dbdBossFill"></i></span>
     </div>
+    <div class="st-chip hb-rush" id="dbdRush"><span class="rl" id="dbdRushLbl">POWER</span><span class="rbar"><i id="dbdRushFill"></i></span></div>
   </div>
   <div class="grp tr">
-    <div class="st-chip hb-rush" id="dbdRush"><span class="rl" id="dbdRushLbl">RUSH</span><span class="rn" id="dbdRushN">0/22</span><span class="rbar"><i id="dbdRushFill"></i></span></div>
+    <canvas class="hb-arthur" id="dbdArthur" aria-hidden="true"></canvas>
     <div class="st-chip hb-rival" id="dbdRival" hidden><span class="hb-rface" id="dbdRivalFace"></span><span class="hb-rbar"><i id="dbdRivalFill"></i></span><span class="hb-ramt" id="dbdRivalAmt">$0</span></div>
     <button type="button" class="st-btn st-sq hb-sound" id="dbdSound" aria-label="Sound">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2B1708" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="#2B1708"/><path class="w" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="x" d="M15.5 9.5l5 5M20.5 9.5l-5 5" style="display:none"/></svg>
@@ -112,8 +107,8 @@ export class FarmHud {
     stage.insertAdjacentHTML('beforeend', HUD_HTML);
     this.root = document.getElementById('dbdHud') as HTMLElement;
     for (const k of ['Bank', 'Cash', 'BillFill', 'BillName', 'BillAmt', 'Jar', 'JarGold', 'Badge', 'Chain', 'Mult', 'ChainLbl', 'ChainFill', 'Next', 'ChainTimer',
-      'Arc', 'Sun', 'Secs', 'Boss', 'BossName', 'BossFill', 'Rush', 'RushLbl', 'RushN', 'RushFill', 'Sound', 'Pause', 'Banner', 'BannerIc', 'BannerT', 'BannerD', 'BannerH',
-      'Rival', 'RivalFace', 'RivalFill', 'RivalAmt']) {
+      'Arc', 'Sun', 'Secs', 'Boss', 'BossName', 'BossFill', 'Rush', 'RushLbl', 'RushFill', 'Sound', 'Pause', 'Banner', 'BannerIc', 'BannerT', 'BannerD', 'BannerH',
+      'Rival', 'RivalFace', 'RivalFill', 'RivalAmt', 'Arthur']) {
       this.E[k] = document.getElementById('dbd' + k) as HTMLElement & SVGElement;
     }
     this.E.Pause.addEventListener('click', () => engine().setPaused(true));
@@ -121,6 +116,53 @@ export class FarmHud {
     // the day's event: tapping its badge stops the field and shows the card until the next tap (Navid, 3 Nov)
     this.E.Badge.addEventListener('click', () => this.showInfo());
     (window as any).__dbdCoin = () => this.coin();
+    this.arthur = new ArthurView(this.E.Arthur as unknown as HTMLCanvasElement, 96, 88, 60, 6);
+  }
+
+  /* Arthur Grumble (v0.12): moods from the day, reactions from the field. */
+  private arthur: ArthurView;
+  private dueTonight = false;
+  private sulkUntil = 0;
+  private gloatUntil = 0;
+  private paidSince = false;
+
+  /** A bill was paid: the next morning he stomps, then sulks. */
+  arthurBillPaid(): void {
+    this.paidSince = true;
+  }
+
+  /** His crow got away with coins (a quick gloat), or was chased off (shock). */
+  arthurCrow(stole: boolean): void {
+    if (stole) this.gloatUntil = performance.now() + 2200;
+    else this.arthur.react('shock');
+  }
+
+  /** The boss is knocked out: shock. */
+  arthurShock(): void {
+    this.arthur.react('shock');
+  }
+
+  private arthurFrame(h: HudState, now: number, dt: number): void {
+    const A = this.arthur;
+    let mood: ArthurMood = 'neutral',
+      k = 0;
+    if (!this.goal && h.mode === 'day' && h.bill) {
+      if (now < this.sulkUntil) mood = 'sad';
+      else if (now < this.gloatUntil) {
+        mood = 'gloat';
+        k = 0.8;
+      } else if (h.cash >= h.bill.amt) mood = 'angry';
+      else if (this.dueTonight) {
+        // short on tonight's bill: the further behind and the nearer dusk, the happier he gets (Navid, 3 Nov)
+        const short = clamp(1 - h.cash / Math.max(1, h.bill.amt), 0, 1),
+          dusk = clamp(1 - h.time / Math.max(1, h.dayLen), 0, 1);
+        mood = 'gloat';
+        k = clamp(short * (0.35 + 0.65 * dusk), 0, 1);
+      }
+    }
+    A.mood = mood;
+    A.intensity = k;
+    A.frame(now / 1000, dt);
   }
 
   setGoal(g: HudGoal | null): void {
@@ -171,6 +213,19 @@ export class FarmHud {
     }
     this.lastTier = 0;
     this.show(true);
+    try {
+      // the engine's "tonight" turns on after sunset (when the bill is paid); during the day it's the due day
+      const e = engine(),
+        b = e.bill();
+      this.dueTonight = !!b.tonight || e.state().day >= b.dueDay;
+    } catch {
+      this.dueTonight = false;
+    }
+    if (this.paidSince) {
+      this.paidSince = false;
+      this.arthur.react('stomp');
+      this.sulkUntil = performance.now() + 5200;
+    }
     if (!quiet) setTimeout(() => this.showBanner(true), 30);
   }
 
@@ -250,13 +305,15 @@ export class FarmHud {
     E.Sun.setAttribute('fill', late ? '#FF9A3D' : '#FFD45C');
     E.Secs.textContent = Math.ceil(Math.max(0, h.time)) + 's';
     E.Secs.classList.toggle('late', late);
+    // the power meter (v0.12): fills as you cut; when it's full the tool's power fires and the bar drains with the rush
     const rushing = h.rushT > 0;
+    const pw = rushing ? h.rushT / Math.max(0.01, h.rushDur) : clamp(h.rushCharge / Math.max(1, h.rushGoal), 0, 1);
     E.Rush.classList.toggle('on', rushing);
-    const rl = rushing ? t('RUSH!') : t('RUSH');
+    E.Rush.classList.toggle('near', !rushing && pw >= 0.8);
+    const rl = rushing ? t('POWER!') : t('POWER');
     E.RushLbl.textContent = rl;
-    E.RushLbl.classList.toggle('long', rl.length > 5);
-    E.RushN.textContent = rushing ? h.rushT.toFixed(1) + 's' : h.rushCharge + '/' + h.rushGoal;
-    E.RushFill.style.width = ((rushing ? h.rushT / h.rushDur : h.rushCharge / h.rushGoal) * 100).toFixed(1) + '%';
+    E.RushLbl.classList.toggle('long', rl.length > 7);
+    E.RushFill.style.width = (pw * 100).toFixed(1) + '%';
     const rv = this.rival;
     if (rv && !rv.beaten) {
       const got = this.earnedToday();
@@ -277,6 +334,7 @@ export class FarmHud {
       E.BossFill.style.width = (clamp(bo.hp / Math.max(1, bo.max), 0, 1) * 100).toFixed(1) + '%';
       E.Boss.classList.toggle('angry', bo.phase > 0);
     }
+    this.arthurFrame(h, now, dt);
   }
 
   /** The event card on demand: the field holds still until the player taps anywhere. */

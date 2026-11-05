@@ -20,6 +20,7 @@ import { bootstrapPreferences, persistPreference } from './platform/nativeStorag
 import { initializeMobilePlatform, setHapticsEnabled } from './platform/mobile';
 import { initializeAds, initPrivacyLinks } from './platform/ads';
 import { startGeminiEngine } from './engine/gemini-engine.js';
+import { weatherTable } from './game/citylook';
 import { installEventBridge, whenEngineReady, engine } from './shell/engine';
 import { GameApp, bandRegistry } from './shell/app';
 import * as progress from './game/progress';
@@ -49,6 +50,8 @@ async function start(): Promise<void> {
   w.__odCard = () => '';
   // Claude's skyline bands, keyed the way the engine looks them up (band_<cityId>, band_<CC>).
   w.__DBD_BANDS = bandRegistry();
+  // the weather of each city (v0.12): snow, autumn leaves or a clear sky
+  w.__DBD_WX = weatherTable();
   installEventBridge();
   if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') w.__DBD_DEV_HOOKS = true;
   const app = new GameApp(persist);

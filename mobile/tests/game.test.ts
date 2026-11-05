@@ -7,7 +7,7 @@ import {
   walletAfterForeclosure, type GameSave, type RunInfo,
 } from '../src/game/progress';
 import { MAX_LEVEL, SHED_FX, UPGRADES, emptyLevels, oldWorkshopRefund, settleJob, startUpgrade, upgradeCost, upgradeDuration } from '../src/game/workshop';
-import { TOOLS, modCost, newTools, parseTools, toolStats } from '../src/game/tools';
+import { TOOLS, modCost, newTools, parseTools, toolStats, toolSummary } from '../src/game/tools';
 
 function winAll(g: GameSave, ids: string[], stars = 3): void {
   for (const id of ids) g.cities[id] = { won: true, stars, bestDay: 100, crown: stars === 3, bestDays: 2, plays: 1, paid: 0 };
@@ -348,11 +348,10 @@ describe('tools', () => {
     expect(toolStats(t, 'sickle').dmg).toBeCloseTo(1.36, 5);
   });
 
-  it('gives every tool three attachments of two or three levels, plus a Charge handle on the sickle and the scythe', () => {
+  it('gives every tool three attachments of two or three levels, plus a Power booster (v0.12: on every tool)', () => {
     for (const t of TOOLS) {
-      const charge = t.id === 'sickle' || t.id === 'scythe';
-      expect(t.mods).toHaveLength(charge ? 4 : 3);
-      expect(t.mods.some(m => m.id === 'charge')).toBe(charge);
+      expect(t.mods).toHaveLength(4);
+      expect(t.mods.some(m => m.id === 'charge')).toBe(true);
       for (const m of t.mods) {
         expect(m.max).toBeGreaterThanOrEqual(2);
         expect(modCost(t.id, m.id, 0)!).toBeGreaterThan(0);
@@ -371,6 +370,9 @@ describe('the Charge handle (v0.11.1)', () => {
   it('is what turns the Charge Cleave on, one level at a time', () => {
     expect(toolStats(newTools()).charge).toBe(0);
     expect(toolStats({ owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 2 } }).charge).toBe(2);
+    // v0.12: the Charge handle is the Power booster, on every tool; each tool names its power
+    for (const td of TOOLS) expect(td.mods.some(m => m.id === 'charge' && m.name === 'Power booster')).toBe(true);
+    expect(toolSummary(toolStats({ owned: ['sickle', 'scythe'], equipped: 'scythe', mods: {} }, 'scythe'))[0]).toBe('Power: Whirlwind');
     expect(modCost('sickle', 'charge', 0)).toBe(300);
     expect(parseTools({ owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 9 } }).mods['sickle.charge']).toBe(3);
   });

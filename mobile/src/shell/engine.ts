@@ -139,6 +139,8 @@ export interface EngineApi {
   upgradeChest(): ChestInfo | null;
   /** The intro (side farm only): the boss falls after about `sec` seconds of hitting; `left` seconds of light. */
   introFinale(sec: number, left: number): boolean;
+  /** The intro's finisher (side farm only): the tool's power fires now. */
+  introPower(): boolean;
   /** Ends a side farm's day now. */
   endDayNow(): boolean;
   hud(): HudState;
@@ -200,6 +202,9 @@ export interface EngineEvents {
   bossStomp: { phase: number; name: string };
   bossDown: { name: string; bounty: number; day: number };
   cleave: { killed: number; x: number; y: number };
+  power: { style: string; x: number; y: number };
+  crowSteal: { amt: number };
+  crowBack: { amt: number };
 }
 
 type Handler<K extends keyof EngineEvents> = (detail: EngineEvents[K]) => void;
