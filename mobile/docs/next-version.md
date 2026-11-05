@@ -87,11 +87,14 @@ workflow, run 6):
 - [x] Arthur Grumble (Top Hat Tubby, round 2; Navid: "yes to arthur") on the HUD, left of the sound button: gloats on a
       bill's due day when you're short (more as dusk nears), angry when you have the money, stomps and sulks the
       morning after a bill is paid, shocked when his crow is chased off or the boss falls, faints on the won card.
-- [ ] Every city its own look, from one table (src/game/citylook.ts) so new countries and cities are easy to add:
+- [x] Every city its own look, from one table (src/game/citylook.ts) so new countries and cities are easy to add:
   - [x] Weather by city: Gatineau autumn leaves (falling and lying on the soil), Leamington and Kelowna a clear field,
         Charlottetown, Toronto and Saskatoon snow.
-  - [ ] Landmarks in each Canadian city's skyline band (src/art/bands/<city id>.webp): the lighthouse, the Peace
-        Tower, the CN Tower, the big tomato and greenhouses, a grain elevator, Okanagan Lake with Ogopogo.
+  - [x] Landmarks in each Canadian city's skyline band (src/art/bands/<city id>.webp, drawn by
+        art/source/bands/gen.mjs, one row a city), in the gap the HUD leaves between the bank and the sun dial: the
+        PEI lighthouse (and the farmhouse), the Peace Tower (and a sugar shack, autumn, no snow), the CN Tower (and
+        City Hall), the big tomato and greenhouses (summer), a grain elevator (and the Bessborough), Ogopogo in
+        Okanagan Lake (and a sailboat, summer).
 - [ ] Docs (README, ARCHITECTURE), release notes, version 0.12.0, Play closed testing.
 
 Next version (0.13), to send to Navid before building: one upgrade tree bought with cash (Workshop and skills

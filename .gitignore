@@ -23,3 +23,8 @@ mobile/ios/DerivedData/
 mobile/.tmp/
 mobile/.vitest-cache/
 mobile/pw.local.config.ts
+
+# skyline band generator output (copy the .webp files into mobile/src/art/bands/)
+mobile/art/source/bands/build/
+mobile/art/source/bands/*.webp
+mobile/art/source/bands/preview.png

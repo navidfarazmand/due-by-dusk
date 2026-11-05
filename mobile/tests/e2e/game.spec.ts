@@ -561,7 +561,8 @@ test('the first farm: carrots only on day 1, a bill paid on its evening opens a 
     });
     t.forEach((x: string) => seen.add(x));
   }
-  expect([...seen].every(x => x === 'carrot' || x === 'radish' || x === fresh)).toBe(true);
+  // golden corn can come up from day 3 too
+  expect([...seen].every(x => x === 'carrot' || x === 'radish' || x === 'golden' || x === fresh)).toBe(true);
   expect(seen.has(fresh!)).toBe(true);
   expect(errors).toEqual([]);
 });
@@ -789,7 +790,7 @@ test('Report a problem: from Settings and by one strong shake; no typing in the 
   await expect(page.locator('.scr-modal textarea, .scr-modal input[type="text"]')).toHaveCount(0);
   await expect(page.locator('.scr-modal [data-act="report-send"]')).toHaveText('Open email');
   const details = await page.evaluate(() => (window as any).__DBD_APP.reportText());
-  expect(details).toContain('Due by Dusk 0.11');
+  expect(details).toContain('Due by Dusk 0.12');
   await act(page, 'close');
   // a gentle movement does nothing; one strong shake opens it (and pauses a day)
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
