@@ -26,6 +26,14 @@ Bump `package.json`, `package-lock.json`, `android/app/build.gradle` (versionNam
 - Difficulty: his last test ran on a Kelowna farm started in 0.11 (old bill days, $1,338 of savings), so it said
   nothing about 0.12's bills. Ask him to try a farm started fresh (Austin), without free coins.
 
+## The tree's design (done, 5 Nov)
+
+`src/game/tree.ts` holds the whole tree: 103 nodes (the toolbox, 8 level tracks, 76 tricks, 12 keystones, 6 bridges),
+each with its branch, icon name, effect, levels, prices (a first guess), the nodes that open it and its place on the
+map. `docs/tree/map-template.html` is the map page (minimal line icons drawn in code); the published page is built
+from the template with the data bundled in (esbuild an entry that sets `window.DBD_TREE = { TREE, BRANCHES }` and
+put it where the template says `/*TREE_DATA*/`).
+
 ## Next work (0.13), in this order
 
 1. The upgrade tree once Navid says yes: merge `src/game/workshop.ts` (tracks) and `src/game/skills.ts` (diamond

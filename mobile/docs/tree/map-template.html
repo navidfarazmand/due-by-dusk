@@ -1,0 +1,415 @@
+<title>Due by Dusk Upgrade Tree</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;700;800;900&display=swap">
+<style>
+  /* The tree is a night sky at dusk: a dark round map with gold paths and small line icons, the game's cream
+     sticker cards around it. Map on top with the chosen node's card, then how it works, then every node by branch. */
+  :root {
+    --page: #E9DDC6; --card: #FFF4DC; --chip: #F4E6C8; --ink: #2B1708; --ink-2: #6E4B31; --edge: #2B1708; --gold: #FFC23D;
+    --night: #161126; --night-2: #221A38; --night-3: #2E2449; --star: #FFF1D6; --path: rgba(255, 194, 61, .34); --path-hi: #FFD36A;
+    --blade: #FF6B57; --power: #B48CFF; --reach: #5FB4FF; --field: #6CD07A; --market: #FFC23D; --ranch: #E5A56C; --bridge: #CFC6B8;
+    --display: "Lilita One", "Arial Rounded MT Bold", "Trebuchet MS", sans-serif;
+    --body: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --page: #120D09; --card: #2A1A0D; --chip: #3A2614; --ink: #FFF4DC; --ink-2: #E6C9A2; --edge: #0B0603; color-scheme: dark; } }
+  :root[data-theme="dark"] { --page: #120D09; --card: #2A1A0D; --chip: #3A2614; --ink: #FFF4DC; --ink-2: #E6C9A2; --edge: #0B0603; color-scheme: dark; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { background: var(--page); color: var(--ink); font: 700 1rem/1.5 var(--body); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 72rem; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 2rem 4rem; display: grid; gap: 1.4rem; }
+  header { display: grid; gap: .5rem; }
+  h1 { margin: 0; font: 400 clamp(2.1rem, 6vw, 3.4rem)/1 var(--display); letter-spacing: .01em; text-wrap: balance; }
+  header p { margin: 0; color: var(--ink-2); max-width: 46em; }
+  .stats { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .2rem; }
+  .stats b { font: 800 .86rem/1 var(--body); padding: .45rem .7rem; border-radius: 999px; background: var(--card); border: 2px solid var(--edge); font-variant-numeric: tabular-nums; }
+  .card { background: var(--card); border: 3px solid var(--edge); border-radius: 22px; box-shadow: 0 5px 0 var(--edge); padding: clamp(1rem, 3vw, 1.5rem); display: grid; gap: .9rem; min-width: 0; }
+  h2 { margin: 0; font: 400 1.55rem/1.1 var(--display); letter-spacing: .01em; text-wrap: balance; }
+  .note { margin: 0; font-size: .92rem; color: var(--ink-2); }
+
+  /* the night map */
+  .sky { background: radial-gradient(circle at 50% 46%, var(--night-3) 0%, var(--night-2) 38%, var(--night) 75%); border: 3px solid var(--edge); border-radius: 26px; box-shadow: 0 5px 0 var(--edge); padding: clamp(.8rem, 2vw, 1.2rem); display: grid; gap: .8rem; color: var(--star); min-width: 0; }
+  .sky-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; }
+  .sky-top h2 { color: var(--star); }
+  .chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .chips button { font: 800 .85rem/1 var(--body); color: var(--star); background: rgba(255, 241, 214, .06); border: 2px solid var(--c, var(--star)); border-radius: 999px; padding: .45rem .75rem; cursor: pointer; display: inline-flex; align-items: center; gap: .4rem; }
+  .chips button i { width: .6rem; height: .6rem; border-radius: 50%; background: var(--c); }
+  .chips button[aria-pressed="true"] { background: var(--c); color: var(--night); }
+  .chips button[aria-pressed="true"] i { background: var(--night); }
+  .chips button:focus-visible { outline: 3px solid var(--star); outline-offset: 2px; }
+  .mapgrid { display: grid; grid-template-columns: minmax(0, 1fr) 18.5rem; gap: 1rem; align-items: start; }
+  @media (max-width: 900px) { .mapgrid { grid-template-columns: minmax(0, 1fr); } }
+  .mapbox { overflow-x: auto; min-width: 0; }
+  .mapbox svg { display: block; width: 100%; min-width: 660px; height: auto; }
+  .mapbox svg text { font-family: var(--display); }
+  .nd { cursor: pointer; transition: opacity .2s; }
+  .nd:focus { outline: none; }
+  .nd .halo { opacity: 0; transition: opacity .15s; }
+  .nd:hover .halo, .nd:focus-visible .halo { opacity: .55; }
+  .nd.sel .halo { opacity: 1; }
+  .dim { opacity: .18; }
+  .lk { transition: opacity .2s, stroke .2s; }
+  .lk.hi { stroke: var(--path-hi); opacity: 1; }
+  .detail { display: grid; gap: .55rem; padding: 1rem 1.05rem; border-radius: 18px; background: rgba(255, 241, 214, .07); border: 2px solid rgba(255, 241, 214, .16); min-width: 0; align-content: start; }
+  .detail .kind { font: 900 .7rem/1 var(--body); letter-spacing: .12em; text-transform: uppercase; color: rgba(255, 241, 214, .72); display: flex; align-items: center; gap: .45rem; }
+  .detail .kind i { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; }
+  .detail .head { display: flex; align-items: center; gap: .7rem; }
+  .detail .head svg { flex: none; }
+  .detail h3 { margin: 0; font: 400 1.45rem/1.05 var(--display); color: var(--star); text-wrap: balance; }
+  .detail p { margin: 0; color: var(--star); }
+  .detail .meta { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .detail .meta b { font: 800 .8rem/1 var(--body); padding: .4rem .6rem; border-radius: 999px; background: rgba(255, 241, 214, .1); color: var(--star); font-variant-numeric: tabular-nums; }
+  .detail .small { font-size: .85rem; color: rgba(255, 241, 214, .7); }
+  .legend { display: flex; flex-wrap: wrap; gap: .35rem 1rem; font-size: .84rem; color: rgba(255, 241, 214, .78); }
+  .legend span { display: inline-flex; align-items: center; gap: .4rem; }
+
+  /* how it works */
+  .rules { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .55rem; }
+  .rules li { background: var(--chip); border-radius: 14px; padding: .65rem .8rem; display: grid; gap: .1rem; }
+  .rules li b { font: 400 1.08rem/1.15 var(--display); }
+  .rules li span { color: var(--ink-2); font-weight: 600; font-size: .93rem; }
+
+  /* every node */
+  .branches { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: .9rem; }
+  .br { border: 2px solid var(--edge); border-radius: 18px; background: var(--card); padding: .85rem .95rem; display: grid; gap: .55rem; align-content: start; min-width: 0; }
+  .br h3 { margin: 0; font: 400 1.25rem/1.1 var(--display); display: flex; align-items: center; gap: .5rem; }
+  .br h3 i { width: .95rem; height: .95rem; border-radius: 50%; border: 2px solid var(--edge); flex: none; }
+  .br h3 small { font: 700 .82rem var(--body); color: var(--ink-2); margin-left: auto; }
+  .br ul { margin: 0; padding: 0; list-style: none; display: grid; gap: .35rem; }
+  .br li { display: grid; grid-template-columns: 1.9rem minmax(0, 1fr); gap: .5rem; align-items: start; font-size: .92rem; cursor: pointer; border-radius: 10px; padding: .1rem .2rem; }
+  .br li:hover { background: var(--chip); }
+  .br li svg { margin-top: .05rem; }
+  .br li b { font-weight: 900; }
+  .br li em { font-style: normal; color: var(--ink-2); font-weight: 600; }
+  .br li small { font: 900 .64rem var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin-left: .25rem; }
+  .reply { background: #2B1708; color: #FFF4DC; border-radius: 22px; padding: 1.2rem 1.4rem; display: grid; gap: .5rem; }
+  .reply h2 { color: #FFF4DC; }
+  .reply code { font: 800 1rem/1.5 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; background: rgba(255, 244, 220, .1); border-radius: 10px; padding: .6rem .8rem; display: block; overflow-x: auto; white-space: pre; }
+  .reply p { margin: 0; color: #EBD3B0; }
+  @media (prefers-reduced-motion: reduce) { .nd, .lk, .nd .halo { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>The upgrade tree</h1>
+    <p>For 0.13: one tree bought with the farm's cash, in place of the Workshop and the diamond skill map. The Workshop's levels are the first nodes of each branch, so your power keeps growing all the way to Japan; everything after them is a new trick.</p>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <section class="sky" aria-labelledby="hmap">
+    <div class="sky-top">
+      <h2 id="hmap">The map</h2>
+      <div class="chips" id="chips" role="group" aria-label="Show one branch"></div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="mapgrid">
+      <div class="mapbox"><svg id="map" viewBox="0 0 1000 1000" role="img" aria-label="The upgrade tree: a toolbox in the middle and six branches around it"></svg></div>
+      <aside class="detail" id="detail" aria-live="polite"></aside>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="hrules">
+    <h2 id="hrules">How it works</h2>
+    <ul class="rules">
+      <li><b>Bought with cash</b><span>Each node is a bet against tonight's bill. What is left after a deed is saved for the tree (0.12.2), so a good finish buys the next nodes.</span></li>
+      <li><b>It grows from the middle</b><span>A node opens when one next to it is bought. The toolbox in the middle is yours from the start.</span></li>
+      <li><b>Levels keep you in step</b><span>Square nodes are the old Workshop: many small levels, and a longer build every fifth one.</span></li>
+      <li><b>Big nodes take time</b><span>Keystones and every fifth level build for a few minutes to a few hours; an ad finishes one now.</span></li>
+      <li><b>Keystones are a choice</b><span>Each branch ends in two keystones and you can own one of them. Change your mind with a reset.</span></li>
+      <li><b>Free reset</b><span>A reset gives everything back as tree credit, which only buys nodes, so the tree can't move money between farms.</span></li>
+    </ul>
+  </section>
+
+  <section class="card" aria-labelledby="hbr">
+    <h2 id="hbr">Every node, by branch</h2>
+    <div class="branches" id="branches"></div>
+    <p class="note">Already in the game and moved into the tree: the seven Workshop levels, and Twin germination, Dawn abundance, Artisan compost, Perennial bloom, Retained counsel, Compound reserve, Sovereign mint, Pasture accord, Loyal goat herd, Reaper's verdict, Storm rod, Sundering cleave and Whirlwind echo. Testers keep what they learned; unspent diamonds become tree credit. Prices are a first guess for the bots to set.</p>
+  </section>
+
+  <section class="reply" aria-labelledby="hr">
+    <h2 id="hr">Reply</h2>
+    <code>Tree: yes (or what to change)</code>
+    <p>The tree is saved in the game's code (src/game/tree.ts) with all 103 nodes, ready to build in 0.13.</p>
+  </section>
+</div>
+
+<script id="tree-data">/*TREE_DATA*/</script>
+<script>
+(function () {
+  'use strict';
+  var DATA = window.DBD_TREE || { TREE: [], BRANCHES: [] };
+  var BR = DATA.BRANCHES, TREE = DATA.TREE;
+  var COL = { blade: 'var(--blade)', power: 'var(--power)', reach: 'var(--reach)', field: 'var(--field)', market: 'var(--market)', ranch: 'var(--ranch)', bridge: 'var(--bridge)', trunk: 'var(--gold)' };
+  // minimal line icons on a 24-unit square; c(x,y,r) is a circle
+  var G = {
+    toolbox: 'M3 9 H21 V19 H3 Z M8.5 9 V6 H15.5 V9 M3 13.5 H21 M11 12 H13 V15 H11 Z',
+    edge: 'M5 20 L14 11 M14 11 C15 6 18 4 21 3 C20 7 18 10 14 11',
+    clover: 'c(12,8,3) c(8,12,3) c(16,12,3) c(12,16,3) M12 16 L13 21',
+    star: 'M12 3 L14.2 9.8 L21 12 L14.2 14.2 L12 21 L9.8 14.2 L3 12 L9.8 9.8 Z',
+    stars: 'M9 4 L10.5 8.5 L15 10 L10.5 11.5 L9 16 L7.5 11.5 L3 10 L7.5 8.5 Z M17 13 L18 16 L21 17 L18 18 L17 21 L16 18 L13 17 L16 16 Z',
+    spark: 'M12 5 L13.5 10.5 L19 12 L13.5 13.5 L12 19 L10.5 13.5 L5 12 L10.5 10.5 Z M19 3 V6 M17.5 4.5 H20.5',
+    drop: 'M12 3 C9 8 6 11 6 15 A6 6 0 0 0 18 15 C18 11 15 8 12 3 Z',
+    bolt: 'M13 2 L6 13 H11 L10 22 L18 10 H13 Z',
+    bolt2: 'M10 2 L4 12 H8 L7 20 L14 9 H10 Z M18 8 L15 14 H18 L17 20',
+    sun: 'c(12,12,4) M12 2 V5 M12 19 V22 M2 12 H5 M19 12 H22 M5 5 L7 7 M17 17 L19 19 M19 5 L17 7 M7 17 L5 19',
+    burst: 'M12 2 V8 M12 16 V22 M2 12 H8 M16 12 H22 M5 5 L9 9 M15 15 L19 19 M19 5 L15 9 M9 15 L5 19',
+    weight: 'M6 10 H18 L20 20 H4 Z M9 10 A3 3 0 0 1 15 10',
+    axe: 'M7 21 L16 6 M14 3 C20 3 22 9 20 12 L13 8 Z',
+    scale: 'M12 4 V20 M7 20 H17 M4 8 H20 M4 8 L2 14 H6 Z M20 8 L18 14 H22 Z',
+    sprout: 'M12 21 V12 M12 14 C12 10 9 8 5 8 C5 12 8 14 12 14 M12 12 C12 8 15 6 19 6 C19 10 16 12 12 12',
+    seed: 'M12 20 C8 20 6 17 6 14 C6 10 9 8 12 4 C15 8 18 10 18 14 C18 17 16 20 12 20 Z M12 20 V12',
+    shield: 'M12 3 L20 6 V12 C20 17 16.5 20 12 21 C7.5 20 4 17 4 12 V6 Z M9 12 L11 14 L15 10',
+    swirl: 'M12 12 C12 10 14 10 14 12 C14 15 10 15 10 12 C10 8 16 8 16 12 C16 17 8 17 8 12 C8 6 18 6 18 12 C18 19 6 19 6 12',
+    flame: 'M12 22 C8 22 6 19 6 15.5 C6 12 9 10 9 6 C12 7.5 14 10 14 12.5 C15 11 15.5 10 16 9 C17.5 11 18 13.5 18 15.5 C18 19 16 22 12 22 Z',
+    battery: 'M3 8 H18 V16 H3 Z M18 10.5 H20.5 V13.5 H18 M6 11 V13 M9.5 11 V13 M13 11 V13',
+    half: 'M3 8 H18 V16 H3 Z M18 10.5 H20.5 V13.5 H18 M5.5 10.5 H10 V13.5 H5.5 Z',
+    up: 'M12 20 V5 M6 11 L12 5 L18 11',
+    plus: 'c(12,12,9) M12 7.5 V16.5 M7.5 12 H16.5',
+    link: 'c(9,12,4.5) c(15,12,4.5)',
+    clock: 'c(12,12,8.5) M12 7.5 V12 L15 14',
+    wave: 'M2 15 C5 9 8 9 10 13 C12 17 15 17 17 13 C18.5 10 20 9 22 9',
+    corn: 'M12 3 C15 5 16 9 16 12 C16 16 14 19 12 20 C10 19 8 16 8 12 C8 9 9 5 12 3 Z M12 6 V18 M9 10 H15 M9 14 H15',
+    tornado: 'M3 5 H21 M5 9 H19 M7 13 H16 M9 17 H14 M11 21 H13',
+    rings: 'c(12,12,9) c(12,12,5) c(12,12,1.2)',
+    coin: 'c(12,12,8.5) M14.5 9 C13.5 8 10 8 10 10 C10 12.5 14.5 11.5 14.5 14 C14.5 16 10.5 16 9.5 15 M12 6.5 V17.5',
+    tool: 'M14.5 3.5 A5 5 0 0 0 10 10 L3.5 16.5 A2 2 0 0 0 7.5 20.5 L14 14 A5 5 0 0 0 20.5 9.5 L17.5 12 L14 10 L12 6.5 Z',
+    recycle: 'M5 13 A7 7 0 0 1 16 6.5 M16 3 V7 H12 M19 11 A7 7 0 0 1 8 17.5 M8 21 V17 H12',
+    arrows: 'M3 12 H21 M3 12 L7 8 M3 12 L7 16 M21 12 L17 8 M21 12 L17 16',
+    chevrons: 'M5 6 L11 12 L5 18 M12 6 L18 12 L12 18',
+    target: 'c(12,12,9) c(12,12,5) M12 12 L21 3 M17 3 H21 V7',
+    wind: 'M3 9 H14 A3 3 0 1 0 11 6 M3 13 H18 A3 3 0 1 1 15 16 M3 17 H9',
+    boomerang: 'M3 17 L12 5 L21 17 L17 18 L12 11 L7 18 Z',
+    fan: 'M12 20 L3 8 A12 12 0 0 1 21 8 Z M12 20 L9 8 M12 20 L15 8',
+    ghost: 'M6 21 V11 A6 6 0 0 1 18 11 V21 L15 19 L12 21 L9 19 Z M10 11 V12 M14 11 V12',
+    bounce: 'M3 18 L9 8 L13 15 L17 7 L21 12 M3 21 H21',
+    pause: 'M3 12 H9 M9 12 C9 6 15 6 15 12 C15 18 21 18 21 12 M8 5 V8 M16 16 V19',
+    arc: 'M4 18 A9 9 0 0 1 20 18 M12 18 L18 9',
+    spin: 'M20 12 A8 8 0 1 1 17.5 6 M17.5 2.5 V6 H21',
+    eye: 'M2 12 C5 7 8.5 5 12 5 C15.5 5 19 7 22 12 C19 17 15.5 19 12 19 C8.5 19 5 17 2 12 Z c(12,12,3)',
+    tap: 'c(12,12,3) c(12,12,7.5) M12 2 V4 M12 20 V22 M2 12 H4 M20 12 H22',
+    feather: 'M19 4 C11 4 6 10 6 18 M6 18 C14 18 19 12 19 4 M6 18 L3 21 M10 14 L14 10',
+    orbit: 'c(12,12,3) M3 15 A9.5 4.5 -25 1 1 21 9 A9.5 4.5 -25 1 1 3 15',
+    zigzag: 'M3 16 L7 8 L11 16 L15 8 L19 16 L21 12',
+    grain: 'M12 22 V3 M12 9 L8.5 5.5 M12 9 L15.5 5.5 M12 13 L8.5 9.5 M12 13 L15.5 9.5 M12 17 L8.5 13.5 M12 17 L15.5 13.5',
+    twin: 'c(8,10,3.5) c(16,10,3.5) M8 13.5 V21 M16 13.5 V21 M5 21 H19',
+    sunrise: 'M3 18 H21 M7 18 A5 5 0 0 1 17 18 M12 5 V8 M5 9 L7 11 M19 9 L17 11 M8 21.5 H16',
+    roots: 'M12 3 V13 M12 13 L7 19 M12 13 L17 19 M12 13 V21 M9.5 16 L6 15 M14.5 16 L18 15',
+    flask: 'M9 3 H15 M10 3 V9 L4.5 19 A1.8 1.8 0 0 0 6 21.5 H18 A1.8 1.8 0 0 0 19.5 19 L14 9 V3 M7 15 H17',
+    loop: 'M20 12 A8 8 0 1 1 17 5.7 M17 2 V6 H21 M9 12 L11 14 L15 10',
+    cloud: 'M7 18 A4 4 0 0 1 6.5 10 A5.5 5.5 0 0 1 17 9 A4.5 4.5 0 0 1 17.5 18 Z',
+    book: 'M4 5 H10 A2 2 0 0 1 12 7 V20 A1.5 1.5 0 0 0 10.5 18.5 H4 Z M20 5 H14 A2 2 0 0 0 12 7 V20 A1.5 1.5 0 0 1 13.5 18.5 H20 Z',
+    rotate: 'M4 12 A8 8 0 0 1 18 7 M18 3 V7 H14 M20 12 A8 8 0 0 1 6 17 M6 21 V17 H10',
+    vault: 'M4 4 H20 V20 H4 Z c(12,12,4.5) M12 7.5 V9 M12 15 V16.5 M7.5 12 H9 M15 12 H16.5',
+    hourglass: 'M6 3 H18 M6 21 H18 M7 3 C7 9 17 9 17 12 C17 15 7 15 7 21 M17 3 C17 9 7 9 7 12 C7 15 17 15 17 21',
+    leaf: 'M5 19 C5 10 10 5 20 4 C19 14 14 19 5 19 Z M5 19 L13 11',
+    moon: 'M15 3 A9 9 0 1 0 21 15 A7 7 0 0 1 15 3 Z',
+    bird: 'M2 13 C6 9 9 9 12 13 C15 9 18 9 22 13',
+    cart: 'M2 4 H5 L7.5 15 H18 L20.5 7 H6 c(9,19,1.6) c(17,19,1.6)',
+    scroll: 'M6 4 H17 A2 2 0 0 1 19 6 V18 A2 2 0 0 1 17 20 H8 A2 2 0 0 1 6 18 Z M9 8.5 H16 M9 12 H16 M9 15.5 H13',
+    box: 'M3 8 L12 3 L21 8 V16 L12 21 L3 16 Z M3 8 L12 13 L21 8 M12 13 V21',
+    calendar: 'M4 6 H20 V20 H4 Z M4 10 H20 M8 3 V7 M16 3 V7 M8 14 H10 M14 14 H16',
+    gavel: 'M13.5 3.5 L20.5 10.5 M10.5 6.5 L17.5 13.5 M12 5 L19 12 M14 9.5 L4 19.5 M3 21 H12',
+    medal: 'c(12,15,5.5) M8.5 3 L12 9.5 L15.5 3 M12 12.5 V17.5',
+    bank: 'M3 10 L12 4 L21 10 Z M5.5 10 V18 M10 10 V18 M14 10 V18 M18.5 10 V18 M3 20.5 H21',
+    percent: 'c(7,7,2.5) c(17,17,2.5) M19 5 L5 19',
+    crown: 'M3 18 L5 7 L10 12 L12 5 L14 12 L19 7 L21 18 Z M3 21 H21',
+    jar: 'M7 7 H17 V9 C19 10 19 12 19 14 V18 C19 20 17 21 15 21 H9 C7 21 5 20 5 18 V14 C5 12 5 10 7 9 Z M7 4 H17 V7 H7 Z M9 15 H15',
+    umbrella: 'M3 12 A9 9 0 0 1 21 12 Z M12 12 V19 A2 2 0 0 1 8 19',
+    tag: 'M3 12 L12 3 H21 V12 L12 21 Z c(16.5,7.5,1.5)',
+    deed: 'M6 3 H15 L19 7 V21 H6 Z M15 3 V7 H19 M9 11 H16 M9 14.5 H16 M9 18 H13',
+    cash: 'M2 7 H22 V17 H2 Z c(12,12,2.8) M5.5 10 V14 M18.5 10 V14',
+    chart: 'M4 20 V4 M4 20 H20 M7 16 L11 11 L14 14 L20 7 M16 7 H20 V11',
+    goat: 'M8 9 L5 3 M16 9 L19 3 M8 9 Q12 6 16 9 L15 17 Q12 21 9 17 Z M10 12 H10.2 M14 12 H14.2',
+    goat2: 'M6 9 L4 4 M12 9 L14 4 M6 9 Q9 7 12 9 L11.3 15.5 Q9 18.5 6.7 15.5 Z M16 13 L15 10.5 M20 13 L21 10.5 M16 13 Q18 12 20 13 L19.5 17.5 Q18 19.5 16.5 17.5 Z',
+    herd: 'M5 10 L3 5 M11 10 L13 5 M5 10 Q8 8 11 10 L10.5 16 Q8 19 5.5 16 Z M15 12 L14 9 M19 12 L20 9 M15 12 Q17 11 19 12 L18.5 17 Q17 19 15.5 17 Z M3 21 H21',
+    hat: 'M2 16 H22 M7 16 V10 Q7 6 12 6 Q17 6 17 10 V16 M7 12.5 H17',
+    comb: 'M7 21 V13 A5 5 0 0 1 17 13 V21 M9 8 L10 4 L12 7 L14 4 L15 8 M16 12 L20 13 L17 15',
+    paw: 'c(12,15.5,3.8) c(6.5,10,1.8) c(10,6.5,1.8) c(14,6.5,1.8) c(17.5,10,1.8)',
+    paw2: 'c(10,15.5,3.4) c(5.5,10.5,1.6) c(8.5,7,1.6) c(12,7,1.6) c(15,10.5,1.6) M17 19 L21 15 M18 15 H21 V18',
+    bee: 'M12 7 C15.5 7 17 10 17 13 C17 17 14.5 20 12 21 C9.5 20 7 17 7 13 C7 10 8.5 7 12 7 Z M7.5 12 H16.5 M8 16 H16 c(7,5.5,2.5) c(17,5.5,2.5)',
+    owl: 'c(9,11,3) c(15,11,3) M11 15 L12 17 L13 15 M5 6 L8 8 M19 6 L16 8 M6 14 C6 19 9 21 12 21 C15 21 18 19 18 14',
+    egg: 'M12 3 C16 3 18.5 9 18.5 14 C18.5 18 15.5 21 12 21 C8.5 21 5.5 18 5.5 14 C5.5 9 8 3 12 3 Z',
+    honey: 'M12 3 L19.5 7.5 V16.5 L12 21 L4.5 16.5 V7.5 Z M12 8 V13 M9.5 11 L12 13 L14.5 11',
+    mail: 'M3 6 H21 V18 H3 Z M3 6 L12 13 L21 6',
+    cat: 'M5 21 V10 L7 4 L10 8.5 H14 L17 4 L19 10 V21 Z M9 13.5 H9.2 M15 13.5 H15.2 M10.5 17 L12 18 L13.5 17',
+    basket: 'M3 10 H21 L19 20 H5 Z M7 10 L12 4 L17 10 M8 14 H16',
+    milk: 'M8 3 H16 M9 3 V7 L6 11 V21 H18 V11 L15 7 V3 M6 14 H18',
+    bow: 'M6 3 C14 6 14 18 6 21 M6 3 V21 M6 12 H21 M18 9 L21 12 L18 15'
+  };
+  function gpath(name) {
+    return (G[name] || G.star).replace(/c\(([\d.]+),([\d.]+),([\d.]+)\)/g, function (_, x, y, r) {
+      x = +x; y = +y; r = +r;
+      return 'M' + (x - r) + ' ' + y + ' a' + r + ' ' + r + ' 0 1 0 ' + 2 * r + ' 0 a' + r + ' ' + r + ' 0 1 0 ' + -2 * r + ' 0';
+    });
+  }
+  function icon(name, size, color, sw) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" aria-hidden="true"><path d="' + gpath(name) + '" fill="none" stroke="' + color + '" stroke-width="' + (sw || 1.8) + '" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function money(v) { return v >= 1e6 ? '$' + (v / 1e6).toFixed(v % 1e6 ? 1 : 0) + 'M' : v >= 1000 ? '$' + Math.round(v / 1000) + 'k' : '$' + v; }
+  function priceText(n) {
+    if (n.kind === 'trunk') return 'Free';
+    if (n.kind === 'track') return 'from ' + money(n.price[0]) + ', then 12% more a level';
+    return n.price.map(money).join(' · ');
+  }
+  function levelText(n) {
+    return n.kind === 'track' ? 'Levels 1–' + n.levels : n.kind === 'key' ? 'Keystone' : n.kind === 'trunk' ? 'Yours from the start' : n.levels > 1 ? n.levels + ' levels' : '1 level';
+  }
+
+  // layout: rings of steps from the trunk, branches every 60 degrees from the top, clockwise
+  var C = 500, R0 = 40, STEP = 52, LAT = 52;
+  var byId = {};
+  var bIndex = {};
+  BR.forEach(function (b, i) { bIndex[b.id] = i; });
+  function axis(i) { return -Math.PI / 2 + i * Math.PI / 3; }
+  TREE.forEach(function (n) {
+    byId[n.id] = n;
+    if (n.kind === 'trunk') { n.x = C; n.y = C; return; }
+    var r = R0 + STEP * n.d, a;
+    if (n.kind === 'bridge') a = axis(bIndex[n.between[0]]) + Math.PI / 6;
+    else a = axis(bIndex[n.branch]) + (n.s * LAT) / r;
+    n.x = C + r * Math.cos(a); n.y = C + r * Math.sin(a);
+  });
+
+  var NS = 'http://www.w3.org/2000/svg', map = document.getElementById('map');
+  function el(tag, at, parent) { var e = document.createElementNS(NS, tag); for (var k in at) e.setAttribute(k, at[k]); (parent || map).appendChild(e); return e; }
+  // a faint field of stars and the rings
+  var sky = el('g', { 'aria-hidden': 'true' });
+  var seed = 7;
+  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+  for (var s = 0; s < 70; s++) el('circle', { cx: rnd() * 1000, cy: rnd() * 1000, r: rnd() < 0.85 ? 1 : 1.8, fill: 'var(--star)', opacity: 0.12 + rnd() * 0.25 }, sky);
+  for (var d = 1; d <= 7; d++) el('circle', { cx: C, cy: C, r: R0 + STEP * d, fill: 'none', stroke: 'var(--star)', 'stroke-width': 1, opacity: 0.07, 'stroke-dasharray': '2 7' }, sky);
+  BR.forEach(function (b, i) {
+    var a = axis(i), r = R0 + STEP * 7 + 58;
+    var t = el('text', { x: C + r * Math.cos(a), y: C + r * Math.sin(a) + 9, 'text-anchor': 'middle', 'font-size': 26, fill: COL[b.id], 'letter-spacing': '1' }, sky);
+    t.textContent = b.name;
+  });
+
+  // paths: a soft glow under each, then the line
+  var linksG = el('g', {}), links = [];
+  function link(a, b, dash) {
+    el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: 'rgba(255,194,61,.09)', 'stroke-width': 10, 'stroke-linecap': 'round' }, linksG);
+    var l = el('line', { class: 'lk', x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: 'var(--path)', 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-dasharray': dash || '' }, linksG);
+    links.push({ a: a.id, b: b.id, el: l });
+  }
+  TREE.forEach(function (n) { n.parents.forEach(function (p) { link(byId[p], n, n.kind === 'bridge' ? '6 7' : ''); }); });
+  TREE.forEach(function (n) { if (n.pair && n.id < n.pair) link(n, byId[n.pair], '3 8'); });
+
+  // nodes
+  var nodesG = el('g', {}), gOf = {};
+  TREE.forEach(function (n) {
+    var col = COL[n.branch], g = el('g', { class: 'nd', tabindex: 0, role: 'button', 'aria-label': n.name, 'data-b': n.branch }, nodesG);
+    var x = n.x, y = n.y, iconCol = 'var(--star)', size = 22;
+    if (n.kind === 'trunk') {
+      el('circle', { class: 'halo', cx: x, cy: y, r: 38, fill: 'none', stroke: 'var(--gold)', 'stroke-width': 3 }, g);
+      el('circle', { cx: x, cy: y, r: 29, fill: 'var(--gold)', stroke: 'var(--night)', 'stroke-width': 3 }, g);
+      iconCol = 'var(--night)'; size = 30;
+    } else if (n.kind === 'track') {
+      el('rect', { class: 'halo', x: x - 28, y: y - 28, width: 56, height: 56, rx: 17, fill: 'none', stroke: col, 'stroke-width': 3 }, g);
+      el('rect', { x: x - 21, y: y - 21, width: 42, height: 42, rx: 12, fill: 'var(--night-2)', stroke: col, 'stroke-width': 3 }, g);
+      size = 24;
+    } else if (n.kind === 'key') {
+      var h = 27;
+      el('path', { class: 'halo', d: 'M' + x + ' ' + (y - h - 8) + ' L' + (x + h + 8) + ' ' + y + ' L' + x + ' ' + (y + h + 8) + ' L' + (x - h - 8) + ' ' + y + ' Z', fill: 'none', stroke: col, 'stroke-width': 3 }, g);
+      el('path', { d: 'M' + x + ' ' + (y - h) + ' L' + (x + h) + ' ' + y + ' L' + x + ' ' + (y + h) + ' L' + (x - h) + ' ' + y + ' Z', fill: col, stroke: 'var(--night)', 'stroke-width': 3 }, g);
+      iconCol = 'var(--night)'; size = 24;
+    } else if (n.kind === 'bridge') {
+      el('circle', { class: 'halo', cx: x, cy: y, r: 23, fill: 'none', stroke: 'var(--bridge)', 'stroke-width': 3 }, g);
+      el('circle', { cx: x, cy: y, r: 16, fill: 'var(--night-2)', stroke: COL[n.between[0]], 'stroke-width': 3, 'stroke-dasharray': '12.6 12.6' }, g);
+      el('circle', { cx: x, cy: y, r: 16, fill: 'none', stroke: COL[n.between[1]], 'stroke-width': 3, 'stroke-dasharray': '12.6 12.6', 'stroke-dashoffset': 12.6 }, g);
+      size = 18;
+    } else {
+      el('circle', { class: 'halo', cx: x, cy: y, r: 26, fill: 'none', stroke: col, 'stroke-width': 3 }, g);
+      el('circle', { cx: x, cy: y, r: 19, fill: 'var(--night-2)', stroke: col, 'stroke-width': 2.5 }, g);
+      size = 20;
+      if (n.levels > 1) for (var k = 0; k < n.levels; k++) el('circle', { cx: x + (k - (n.levels - 1) / 2) * 7, cy: y + 26, r: 2.2, fill: col }, g);
+    }
+    var ic = el('g', { transform: 'translate(' + (x - size / 2) + ' ' + (y - size / 2) + ') scale(' + size / 24 + ')' }, g);
+    el('path', { d: gpath(n.glyph), fill: 'none', stroke: iconCol, 'stroke-width': n.kind === 'trunk' || n.kind === 'key' ? 2.1 : 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, ic);
+    g.addEventListener('click', function () { pick(n.id); });
+    g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(n.id); } });
+    gOf[n.id] = g;
+  });
+
+  // the chosen node: its card, its way back to the trunk lit up
+  var detail = document.getElementById('detail');
+  var KIND = { trunk: 'Trunk', track: 'Levels', trick: 'A new trick', key: 'Keystone', bridge: 'Bridge' };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function branchName(n) {
+    if (n.kind === 'trunk') return 'Trunk';
+    if (n.kind === 'bridge') return BR[bIndex[n.between[0]]].name + ' + ' + BR[bIndex[n.between[1]]].name;
+    return BR[bIndex[n.branch]].name;
+  }
+  function wayHome(id) {
+    var on = {}, n = byId[id];
+    while (n && n.kind !== 'trunk') { on[n.id] = true; n = byId[n.parents[0]]; }
+    on.trunk = true;
+    return on;
+  }
+  function pick(id) {
+    var n = byId[id], on = wayHome(id);
+    Object.keys(gOf).forEach(function (k) { gOf[k].classList.toggle('sel', k === id); });
+    links.forEach(function (l) { l.el.classList.toggle('hi', !!(on[l.a] && on[l.b])); });
+    var opens = n.kind === 'trunk' ? '' : 'Opens from ' + n.parents.map(function (p) { return byId[p].name; }).join(' or ') + '.';
+    var pair = n.pair ? '<p class="small">Or ' + esc(byId[n.pair].name) + ': you can own one of the two.</p>' : '';
+    var col = n.kind === 'bridge' ? 'var(--bridge)' : COL[n.branch];
+    detail.innerHTML = '<span class="kind"><i style="background:' + col + '"></i>' + esc(branchName(n)) + ' · ' + KIND[n.kind] + '</span>' +
+      '<div class="head">' + icon(n.glyph, 40, col, 1.7) + '<h3>' + esc(n.name) + '</h3></div><p>' + esc(n.effect) + '</p>' + pair +
+      '<div class="meta"><b>' + esc(levelText(n)) + '</b><b>' + esc(priceText(n)) + '</b></div>' + (opens ? '<p class="small">' + esc(opens) + '</p>' : '');
+  }
+
+  // branch chips: show one branch, the others dimmed
+  var chips = document.getElementById('chips'), focus = '';
+  function setFocus(b) {
+    focus = focus === b ? '' : b;
+    Array.prototype.forEach.call(chips.children, function (c) { c.setAttribute('aria-pressed', String(c.dataset.b === focus)); });
+    Object.keys(gOf).forEach(function (k) {
+      var n = byId[k], keep = !focus || n.branch === focus || n.kind === 'trunk' || (n.kind === 'bridge' && n.between.indexOf(focus) >= 0);
+      gOf[k].classList.toggle('dim', !keep);
+    });
+    links.forEach(function (l) {
+      var a = byId[l.a], b = byId[l.b];
+      var keep = !focus || ((a.branch === focus || a.kind === 'trunk') && (b.branch === focus || (b.kind === 'bridge' && b.between.indexOf(focus) >= 0)));
+      l.el.classList.toggle('dim', !keep);
+    });
+  }
+  BR.forEach(function (b) {
+    var c = document.createElement('button');
+    c.type = 'button'; c.dataset.b = b.id; c.style.setProperty('--c', COL[b.id]); c.setAttribute('aria-pressed', 'false');
+    c.innerHTML = '<i></i>' + esc(b.name);
+    c.addEventListener('click', function () { setFocus(b.id); });
+    chips.appendChild(c);
+  });
+
+  // stats and legend
+  var count = function (k) { return TREE.filter(function (n) { return n.kind === k; }).length; };
+  document.getElementById('stats').innerHTML = ['<b>' + TREE.length + ' nodes</b>', '<b>6 branches</b>', '<b>' + count('track') + ' level tracks</b>', '<b>' + count('trick') + ' tricks</b>', '<b>' + count('key') + ' keystones</b>', '<b>' + count('bridge') + ' bridges</b>'].join('');
+  var sw = function (svg, txt) { return '<span>' + svg + txt + '</span>'; };
+  document.getElementById('legend').innerHTML =
+    sw('<svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="2" width="14" height="14" rx="4" fill="none" stroke="var(--star)" stroke-width="2"/></svg>', 'Levels') +
+    sw('<svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.5" fill="none" stroke="var(--star)" stroke-width="2"/></svg>', 'A trick (dots: its levels)') +
+    sw('<svg width="18" height="18" viewBox="0 0 18 18"><path d="M9 1.5 L16.5 9 L9 16.5 L1.5 9 Z" fill="var(--star)"/></svg>', 'Keystone, one of each pair') +
+    sw('<svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.5" fill="none" stroke="var(--star)" stroke-width="2" stroke-dasharray="4 3"/></svg>', 'Bridge between branches') +
+    '<span>Tap a node to read it.</span>';
+
+  // every node by branch, with its icon
+  var box = document.getElementById('branches');
+  BR.forEach(function (b) {
+    var items = TREE.filter(function (n) { return n.branch === b.id; }).concat(TREE.filter(function (n) { return n.kind === 'bridge' && n.between[0] === b.id; }));
+    var lis = items.map(function (n) {
+      var tagTxt = n.kind === 'track' ? 'levels' : n.kind === 'key' ? 'keystone' : n.kind === 'bridge' ? 'bridge to ' + BR[bIndex[n.between[1]]].name : '';
+      return '<li data-id="' + n.id + '">' + icon(n.glyph, 26, n.kind === 'bridge' ? 'var(--ink-2)' : COL[b.id], 2) + '<div><b>' + esc(n.name) + '</b>' + (tagTxt ? '<small>' + esc(tagTxt) + '</small>' : '') + ' <em>' + esc(n.effect) + '</em></div></li>';
+    }).join('');
+    var d = document.createElement('div');
+    d.className = 'br';
+    d.innerHTML = '<h3><i style="background:' + COL[b.id] + '"></i>' + esc(b.name) + '<small>' + esc(b.about) + '</small></h3><ul>' + lis + '</ul>';
+    box.appendChild(d);
+  });
+  box.addEventListener('click', function (e) {
+    var li = e.target.closest('li[data-id]');
+    if (!li) return;
+    pick(li.dataset.id);
+    document.getElementById('hmap').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  });
+  pick('trunk');
+})();
+</script>
