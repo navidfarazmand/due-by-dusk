@@ -283,21 +283,38 @@ export function valMul(k: number): number {
  * mean like computer great, not human great"). scripts/bots.mjs plays real 15 s days with three players (strong,
  * average, weak) and on-track builds; these numbers are what the average one earned.
  *
- * DAY_SHAPE: an average day by day of the farm, against its settled days (the mean of days 5-19). Day 1 is carrots
- * only; golden corn comes on day 3, the best day; after that each tougher crop pays about what it costs to cut.
+ * DAY_SHAPES: an average day by day of the farm, against its settled days. In Canada and the USA (two runs of days
+ * 1, 2, 3, 5, 8, 12 and 19 per player and farm) day 1 is carrots only, golden corn makes day 3 the best day, and after
+ * that each tougher crop pays about what it costs to cut. Later farms (one run of days 1, 3, 8 and 19 on Belém,
+ * Bento, Avignon, Agen, Sapporo and Kagoshima) are front-loaded: an on-track build cuts the first crops as fast as
+ * they come, and the longer ladders get tough. Between the rows the shape is blended by farm.
  */
-const DAY_SHAPE = [0.61, 0.88, 1.15, 1.13, 1.11];
-/** Days 6 on, against the settled days (whose mean includes day 5's 1.11). */
-const LATER_DAY = 0.96;
-export function dayShape(d: number): number {
-  return d >= 1 && d <= DAY_SHAPE.length ? DAY_SHAPE[d - 1] : LATER_DAY;
+const DAY_SHAPES: Array<[k: number, days: number[], later: number]> = [
+  [8, [0.61, 0.88, 1.15, 1.13, 1.11], 0.96],
+  [13, [1.0, 1.2, 1.45, 1.3, 1.2, 1.1, 1.0], 1],
+  [21, [1.9, 1.8, 1.75, 1.5, 1.3, 1.15, 1.05], 1],
+];
+function shapeRow(i: number, d: number): number {
+  const [, days, later] = DAY_SHAPES[i];
+  return d >= 1 && d <= days.length ? days[d - 1] : later;
+}
+export function dayShape(d: number, k = 0): number {
+  const R = DAY_SHAPES;
+  if (k <= R[0][0]) return shapeRow(0, d);
+  for (let i = 1; i < R.length; i++)
+    if (k <= R[i][0]) {
+      const t = (k - R[i - 1][0]) / (R[i][0] - R[i - 1][0]);
+      return shapeRow(i - 1, d) * (1 - t) + shapeRow(i, d) * t;
+    }
+  return shapeRow(R.length - 1, d);
 }
 /** An average player's settled day on farm k, as a share of dayRef(k) (measured on 25 s days before v0.12). */
 const AVG_POINTS: Array<[k: number, share: number]> = [
   // Canada and the USA: each farm measured (two runs of days 1, 2, 3, 5, 8, 12 and 19 per player)
   [0, 0.307], [1, 0.341], [2, 0.253], [3, 0.32], [4, 0.3], [5, 0.294], [6, 0.246], [7, 0.308], [8, 0.251],
-  // later countries: provisional until their bots are in
-  [29, 0.27],
+  // later countries: a line through one run each on Belém (0.32), Bento (0.24), Avignon (0.23), Agen (0.18),
+  // Sapporo (0.18) and Kagoshima (0.16); to measure again with more runs
+  [9, 0.29], [19, 0.218], [29, 0.143],
 ];
 export function avgDayShare(k: number): number {
   const P = AVG_POINTS;
@@ -307,7 +324,7 @@ export function avgDayShare(k: number): number {
 }
 /** What an average player earns on day `d` of farm k. */
 export function avgDay(k: number, d: number): number {
-  return dayRef(k) * avgDayShare(k) * dayShape(d);
+  return dayRef(k) * avgDayShare(k) * dayShape(d, k);
 }
 /** A bill asks for an average player's days plus this share of the best of them: one doubled day (an ad) covers it,
  *  so an average player pays with one ad, a computer-strong one with none, and a weak one not even with an ad. */

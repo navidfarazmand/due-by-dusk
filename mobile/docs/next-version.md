@@ -66,8 +66,12 @@ workflow, run 6):
 - [x] Days start at 15 s; Longer days and skills add seconds (to about 30).
 - [x] A new crop every morning: carrots on day 1, the radish on day 2, the country's three, then the rest. The day
       card names the crop that joins the field that morning (the chest no longer does).
-- [ ] Bills tuned with three bots (scripts/bots.mjs: strong, average, weak; on-track builds, 15 s days): weak can't pay
-      even with an ad, average pays with one ad, a computer-strong player needs none.
+- [x] Bills tuned with three bots (scripts/bots.mjs: strong, average, weak; on-track builds, 15 s days): weak can't pay
+      even with an ad, average pays with one ad, a computer-strong player needs none. Canada and the USA from two runs
+      of seven days per player and farm (with each farm's settled days, 40 of 47 bills meet all three rules; the rest
+      are on the boss farms, whose bills leave time for the boss, and one at Des Moines). The rival's record is 1.6
+      average days (1.3 on Charlottetown).
+  - [ ] Later countries from one run of four days on six farms: measure again with more runs.
 - [x] The boss: eats the best crops (the Muncher), its armour is off only right after it eats (hit it then and it spits
       the coins back), bomb seeds from its second phase, a country storm from its third (ice, sand or mud; two hits
       free a crop, no bonus). It can fall mid-farm only if you neglect the crops (and then the bills).
