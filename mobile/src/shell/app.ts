@@ -413,9 +413,11 @@ export class GameApp {
     let diamonds = 0;
     if (firstWin) diamonds = plan.boss ? 2 : 1;
     if (diamonds) engine().addDiamonds(diamonds);
-    // what is left on the farm after the deed goes into savings, but only above what this farm had already paid you
-    const banked = bankAfterWin(run, d.cash);
-    this.g.wallet += banked;
+    // v0.12 (Navid, 5 Nov): what is left after the deed stays on the farm (it counts for the second star); nothing
+    // carries to the next farm, so easy farms can't be farmed for money. Upgrades bought with its cash count as paid
+    // out, so a replay only buys upgrades with cash beyond everything this farm has paid you.
+    const banked = 0;
+    void bankAfterWin;
     p.paid = paidAfterRun(run, banked);
     this.g.run = null;
     this.result = {
@@ -979,8 +981,14 @@ export class GameApp {
     };
     const live = (pred: (c: FieldPeek['crops'][number]) => boolean) => (p.crops || []).some(c => !c.dead && c.age > 0.4 && pred(c));
     const st = engine().state();
-    if (!seen.mBoss && st.boss && st.boss.onField && live(c => c.boss))
-      return void card('mBoss', '👑', t('{boss} is here', { boss: t(st.boss.name) }), t('Hit it again and again to knock it out. The deed waits until it is down.'));
+    if (!seen.mBoss2 && st.boss && st.boss.onField && live(c => c.boss))
+      return void card('mBoss2', '👑', t('{boss} is here', { boss: t(st.boss.name) }), t('It eats your best crops. Its armour is off only right after it eats: hit it then and it spits the coins back. The deed waits until it is down.'));
+    if (!seen.mBomb && (p.bombs || 0) > 0)
+      return void card('mBomb', '💣', t('Bomb seeds'), t("Don't cut them! Swipe around them, or you lose cash and your sickle gets dizzy."));
+    if (!seen.mEncase && (p.encased || 0) > 0) {
+      const k = p.encaseKind;
+      return void card('mEncase', k === 'ice' ? '🧊' : k === 'sand' ? '🏜️' : '🟫', k === 'ice' ? t('Frozen solid') : k === 'sand' ? t('Buried in sand') : t('Stuck in mud'), t('Two hits free the crop. The boss\'s storm pays no bonus.'));
+    }
     if (!seen.mRadish && live(c => c.type === 'radish'))
       return void card('mRadish', img('radish'), t('Runaway Radish'), t('It runs from your sickle. Corner it against the edge.'));
     if (!seen.mGolden && (p.lucky || []).length)
@@ -988,7 +996,7 @@ export class GameApp {
     const treaty = st.perks.includes('treaty') || this.g.skills.includes('gold_treaty') || this.g.skills.includes('gold_herd');
     if (!seen.mGoat && !treaty && p.goat) return void card('mGoat', '🐐', t('The goat'), t("Don't touch it! A bumped goat gets angry and costs you daylight."));
     if (!seen.mGoatPet && treaty && p.goat) return void card('mGoatPet', '🐐', t('A friendly goat'), t('Touch it with your sickle: it tips you cash.'));
-    if (!seen.mCrow && (p.crows || []).length) return void card('mCrow', '🐦', t('A crow'), t('It pecks your crops. Swipe at it to shoo it away.'));
+    if (!seen.mThief && (p.crows || []).length) return void card('mThief', '🐦', t('A thief crow'), t('It steals coins from your jar. Swipe it before it flies off and you get them back.'));
     if (!seen.mProp && (p.props || []).length) return void card('mProp', '🎁', t('Something to grab'), t('Swipe over it for a bonus.'));
     if (!seen.mBolt && p.bolts > 0) return void card('mBolt', '⚡', t('Lightning'), t('Your crits throw lightning at crops nearby.'));
     // the HUD: the rival's record, the chain bonus, a harvest rush
@@ -1230,10 +1238,11 @@ export class GameApp {
     const ok = await watch(this.g, 'coins');
     this.busy = false;
     if (ok) {
-      // free coins always go to savings (for upgrades and tools), whatever farm you are on
+      // v0.12: no savings any more, so free coins go to the farm you're on
       const amt = this.coinsReward();
-      this.g.wallet += amt;
-      this.toast(t('+{amt} in your savings.', { amt: money(amt) }));
+      if (this.g.run) engine().addCash(amt);
+      else this.g.wallet += amt;
+      this.toast(t('+{amt} on your farm.', { amt: money(amt) }));
       this.saveNow();
     }
     this.refresh();
@@ -1259,7 +1268,7 @@ export class GameApp {
     }
     const ok = await watch(this.g, 'extraDay');
     this.busy = false;
-    if (ok && engine().extraDay()) this.toast(t('One more day. The bank can wait until tomorrow.'));
+    if (ok && (engine() as unknown as { lateDay(): boolean }).lateDay()) this.toast(t('A late day. Pay before sunset, or the bank comes closer.'));
     this.save();
     this.refresh();
   }
@@ -1935,10 +1944,12 @@ export class GameApp {
     const plan = planFor(run.cityId);
     // the one big button: start the day, or pay tonight's bill, or face the bank
     let main: string;
-    // short on the bill: one more day (an ad, once a farm) is the big choice; the bank is the small one (Navid, 3 Nov)
-    const short = b.tonight && !b.canPay, extraLeft = short && !st.extraDayUsed;
+    // short on the bill: a late day (an ad) is the big choice while there are late days left; the bank is the small one
+    // (v0.12, Navid 5 Nov: late fees of 20%, 40%, 60%, an ad for each late day, the bank after the third)
+    const late = (st as unknown as { late?: number }).late || 0;
+    const short = b.tonight && !b.canPay, extraLeft = short && late < 3;
     if (extraLeft)
-      main = `<button type="button" class="st-btn blue dc-go dc-more ad-btn" data-act="ad-extra">${ICON.play()}<span>${t('One more day')}</span></button>`;
+      main = `<button type="button" class="st-btn blue dc-go dc-more ad-btn" data-act="ad-extra">${ICON.play()}<span class="late-two"><span>${t('Late day {n} of 3', { n: late + 1 })}</span><small>${t('Grumble & Sons take {p}% of it', { p: [20, 40, 60][late] })}</small></span></button>`;
     else if (short) main = `<button type="button" class="st-btn red dc-go" data-act="bank">${t('Face the bank')}</button>`;
     else if (b.tonight) main = `<button type="button" class="st-btn gold dc-go" data-act="pay">${ICON.coin(30)}<span>${t('Pay {amt}', { amt: money(b.amt) })}</span></button>`;
     else
@@ -2224,6 +2235,9 @@ export class GameApp {
     void dots;
     void crownLine;
     void pct;
+    // a late day: what Grumble & Sons took at sunset (v0.12)
+    const fee = (d.today as { fee?: number }).fee || 0, feeRate = (d.today as { feeRate?: number }).feeRate || 0;
+    const feeLine = fee > 0 ? `<div class="sd-fee">${t('Late fee: Grumble & Sons took {amt} ({p}%)', { amt: money(fee), p: Math.round(feeRate * 100) })}</div>` : '';
     // straight to the next day (Navid, 4 Nov); on a bill night only when the bill can be paid now
     const nextBtn = !b.tonight || (b.canPay && !b.bossBlock)
       ? `<button type="button" class="st-btn gold btn-md flex1 sd-next" data-act="next-day">${b.tonight ? `<span class="sn-two"><span>${t('Pay {amt}', { amt: money(b.amt) })}</span><small>${t('Next day')}</small></span>` : t('Next day')}${ICON.next()}</button>`
@@ -2234,7 +2248,7 @@ export class GameApp {
         <button type="button" class="up-info" data-act="info" data-arg="day" aria-label="${t('About today')}"><i class="info-i">i</i></button></div>
       <div class="sd-hero"><span class="sd-big money">+${money(earned)}</span>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('earned today')}</span></div>
       <div class="sd-bill">${ICON.notice(26)}<span class="sb-what"><span class="sb-name">${esc(t(b.name))}</span><span class="sb-due">${dueLine}</span></span><b class="sb-amt">${money(b.amt)}</b>${stamp}</div>
-      ${crownNow}${bossLine}
+      ${feeLine}${crownNow}${bossLine}
       <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house" data-act="farmhouse" aria-label="${t('Farmhouse')}">${ICON.house()}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
     </div></div>`;
   }

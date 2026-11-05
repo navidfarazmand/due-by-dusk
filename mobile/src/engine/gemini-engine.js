@@ -2984,6 +2984,8 @@ export function startGeminiEngine() {
         lastBonus: Math.max(0, num(rawFarm.lastBonus, 0)),
         bestChain: Math.max(0, Math.floor(num(rawFarm.bestChain, 0))),
         extraDayUsed: !!rawFarm.extraDayUsed,
+        late: clamp(Math.floor(num(rawFarm.late, 0)), 0, 3),
+        lateFees: Math.max(0, num(rawFarm.lateFees, 0)),
         won: !!rawFarm.won,
         lost: !!rawFarm.lost,
         boss:
@@ -16900,10 +16902,12 @@ export function startGeminiEngine() {
   function billCount() {
     return billList().length;
   }
-  /** Content gating (goat, crows, extra crops): the city's level plus bills paid on this farm. */
+  /** Content gating (crops, golden corn, the goat, the crows): the city's level plus the days played on this farm.
+   *  v0.12 (Navid, 5 Nov): a new crop every morning (day 1 carrots, day 2 radishes, then the country's three...),
+   *  not one per bill paid. */
   function unlockLevel() {
     const p = plan();
-    return (p ? p.unlock || 0 : 0) + farm.billsPaid;
+    return (p ? p.unlock || 0 : 0) + Math.max(0, (farm.day || 1) - 1);
   }
   function planVal() {
     const p = plan();
@@ -17793,6 +17797,19 @@ export function startGeminiEngine() {
     today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0 },
     coinTarget = null,
     lastBump = 0;
+  /** What a tuning bot sees each step (see update). */
+  const botView = {
+    get crops() { return crops; },
+    get pointer() { return pointer; },
+    get worldW() { return worldW; },
+    get top() { return FIELD_TOP; },
+    get bottom() { return HW; },
+    get reach() { return cur ? cur.R : 48; },
+    get time() { return time; },
+    get earned() { return today.earned; },
+    get crows() { return crows; },
+    get goat() { return goat; },
+  };
   const pointer = {
     x: 0,
     y: 0,
@@ -17975,6 +17992,10 @@ export function startGeminiEngine() {
     fieldProps = [];
     crows = [];
     bolts = [];
+    bombs = [];
+    stunT = 0;
+    bombTimer = 5;
+    stormTimer = 7;
     spawnAcc = 0;
     tickAcc = 0;
     combo = 0;
@@ -18027,6 +18048,14 @@ export function startGeminiEngine() {
     duskT = 0;
     paused = false;
     syncPause();
+    if ((farm.late || 0) > 0 && !farm.won) {
+      const rate = LATE_FEES[Math.min(LATE_FEES.length - 1, farm.late - 1)];
+      const fee = Math.min(Math.max(0, Math.floor(farm.cash)), Math.round(today.earned * rate));
+      farm.cash -= fee;
+      farm.lateFees = (farm.lateFees || 0) + fee;
+      today.fee = fee;
+      today.feeRate = rate;
+    }
     farm.lastEarn = today.earned;
     farm.lastCount = today.count;
     farm.lastBest = today.best;
@@ -18126,6 +18155,15 @@ export function startGeminiEngine() {
         today.earned += 2;
         addText('ICE CRACK +$2', c.x, cy - 22, '#bae6fd', 18, -35, 0.8);
       }
+      if (c.encase) {
+        hitEncased(c, cy);
+        if (c.encase) hitEncased(c, cy);
+        continue;
+      }
+      if (bossArmoured(c)) {
+        clink(c, cy);
+        continue;
+      }
       c.hp -= cleaveDmg;
       c.sq = 1;
       c.flash = 1;
@@ -18165,21 +18203,47 @@ export function startGeminiEngine() {
     const y = FIELD_TOP + 45 + R() * (HW - FIELD_TOP - 80);
     fieldProps.push({ kind, x, y, ds: depth(y), age: 0, life: 9.5 });
   }
+  /* Thief crows (v0.12, Navid 5 Nov: on every farm). A crow flies to the coin jar, steals some of the cash and carries
+     it low across the field to the far side. Swipe it on the way in and it flees with nothing; swipe it while it
+     carries the bag and the coins come back. If it gets away, the coins are gone. */
+  function jarSpot() {
+    try {
+      const [x, y] = hudPoint();
+      return [FarmScene_clamp(x, 40, worldW - 40), Math.max(70, y + 34)];
+    } catch (e) {
+      return [worldW * 0.16, 90];
+    }
+  }
   function spawnCrow() {
     if (crows.length >= 2 || !crops.length) return;
     const R = fieldRng('crow');
-    const target = crops[Math.floor(R() * crops.length)];
     const fromLeft = R() < 0.5;
+    const [jx, jy] = jarSpot();
     crows.push({
       x: fromLeft ? -30 : worldW + 30,
       y: 45 + R() * 55,
-      tx: target.x,
-      ty: target.y - 18,
+      tx: jx,
+      ty: jy,
       vx: 0,
       vy: 0,
       t: 0,
+      side: fromLeft ? -1 : 1,
+      state: 'in',
+      loot: 0,
       scared: false,
     });
+  }
+  function crowSteal(cr) {
+    const amt = Math.min(Math.floor(farm.cash), Math.max(2, Math.round(farm.cash * 0.06)));
+    cr.state = 'out';
+    cr.loot = Math.max(0, amt);
+    farm.cash = Math.max(0, farm.cash - cr.loot);
+    // away to the far side, low over the field so a swipe can catch it
+    cr.tx = cr.side < 0 ? worldW + 60 : -60;
+    cr.ty = FIELD_TOP + 50 + Math.random() * Math.max(20, HW - FIELD_TOP - 170);
+    if (cr.loot > 0) addText('-' + fmtGain(cr.loot).replace('+', ''), cr.x, cr.y + 10, '#fca5a5', 22, -30, 1.0);
+    Sound.pop(6);
+    dbdEvent('crowSteal', { amt: cr.loot });
   }
   function checkPropsAndCrows(rad) {
     const R = rad || cur.R;
@@ -18213,18 +18277,23 @@ export function startGeminiEngine() {
       }
     }
     for (const cr of crows) {
-      if (!cr.scared && Math.hypot(cr.x - pointer.x, cr.y - pointer.y) <= R + 28) {
+      if (!cr.scared && Math.hypot(cr.x - pointer.x, cr.y - pointer.y) <= R + 30) {
         cr.scared = true;
         arthurAngerTimer = 2.4;
         cr.vx = (cr.x < pointer.x ? -1 : 1) * 260;
         cr.vy = -220;
-        const tip = Math.round((3 + unlockLevel() * 2) * planVal());
-        farm.cash += tip;
-        farm.earned += tip;
-        today.earned += tip;
-        addText(`SHOO CROW! +$${tip}`, cr.x, cr.y - 20, '#fde047', 22, -38, 0.95);
+        if (cr.loot > 0) {
+          // the bag drops: every stolen coin comes back
+          farm.cash += cr.loot;
+          addText('COINS BACK ' + fmtGain(cr.loot), cr.x, cr.y - 20, '#bef264', 22, -38, 1.0);
+          for (let k = 0; k < Math.min(6, 2 + cr.loot / 10); k++) coin(cr.x + (Math.random() - 0.5) * 24, cr.y, k * 0.04);
+          dbdEvent('crowBack', { amt: cr.loot });
+          cr.loot = 0;
+        } else {
+          addText('SHOO!', cr.x, cr.y - 20, '#fde047', 22, -38, 0.8);
+          coin(cr.x, cr.y, 0);
+        }
         Sound.pop(10);
-        coin(cr.x, cr.y, 0);
       }
     }
   }
@@ -18235,7 +18304,39 @@ export function startGeminiEngine() {
     aimA = -0.5,
     bossCrop = null;
   /** One hit on one crop. Returns 0 (blocked), 1 (hit) or 2 (harvested). */
+  /** A hit on a crop encased by the boss's storm: it cracks the casing, two hits free the crop, no bonus. */
+  function hitEncased(c, cy) {
+    c.encase.hits -= 1;
+    c.sq = 0.6;
+    const kind = c.encase.kind;
+    const col = kind === 'ice' ? '#e0f2fe' : kind === 'sand' ? '#fde68a' : '#8b6b4a';
+    for (let i = 0; i < 6 && canAdd(); i++)
+      parts.push({ k: 'clod', x: c.x + (Math.random() - 0.5) * c.r * c.ds, y: cy, vx: (Math.random() - 0.5) * 160, vy: -80 - Math.random() * 90, g: 520, floor: c.y + 4, r: 2 + Math.random() * 2.5, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 12, c: col, life: 0.6, max: 0.6 });
+    if (c.encase.hits <= 0) {
+      c.encase = null;
+      addText(kind === 'ice' ? 'ICE BROKEN' : 'FREE!', c.x, cy - 22, '#e0f2fe', 18, -34, 0.7);
+    } else addText('CRACK', c.x, cy - 22, '#e0f2fe', 16, -34, 0.6);
+    if (Sound.ok()) Sound.tone(kind === 'ice' ? 1760 : 420, 0.06, { type: 'triangle', v: 0.12, to: kind === 'ice' ? 2400 : 300 });
+    return 0;
+  }
+  /** The boss's armour is on except for a few seconds after it eats. */
+  function bossArmoured(c) {
+    return !!(c && c.boss && !(c.full > 0));
+  }
+  let clinkT = 0;
+  function clink(c, cy) {
+    if (tNow - clinkT < 0.25) return;
+    clinkT = tNow;
+    addText('CLINK', c.x + (Math.random() - 0.5) * 30, cy - 20, '#e2e8f0', 20, -30, 0.5);
+    spark(c.x + (Math.random() - 0.5) * c.r * c.ds, cy);
+    if (Sound.ok()) Sound.tone(2100, 0.05, { type: 'square', v: 0.06, to: 1500 });
+  }
   function hitCrop(c, cy, dmg, crit, src) {
+    if (c.encase) return hitEncased(c, cy);
+    if (bossArmoured(c)) {
+      clink(c, cy);
+      return 0;
+    }
     if (c.frosted) {
       c.frosted = false;
       farm.cash += 2;
@@ -18324,6 +18425,78 @@ export function startGeminiEngine() {
       }
     }
     return killed;
+  }
+  function updateBombs(dt) {
+    for (let i = bombs.length - 1; i >= 0; i--) {
+      const b = bombs[i];
+      if (b.fly < 1) {
+        b.fly = Math.min(1, b.fly + dt / 0.55);
+        b.x = b.sx + (b.tx - b.sx) * b.fly;
+        b.y = b.sy + (b.ty - b.sy) * b.fly - Math.sin(b.fly * Math.PI) * 90;
+        continue;
+      }
+      b.t += dt;
+      if (b.t >= b.fuse) {
+        // it fizzles out on its own
+        for (let k = 0; k < 5 && canAdd(); k++) parts.push({ k: 'smoke', x: b.x, y: b.y - 6, vx: (Math.random() - 0.5) * 30, vy: -30, g: -10, s: 4, life: 0.5, max: 0.5 });
+        bombs.splice(i, 1);
+        continue;
+      }
+      if (pointer.active && stunT <= 0 && Math.hypot(pointer.x - b.x, pointer.y - (b.y - 14)) < cur.R * 0.55 + 20) {
+        // cut it, and it goes off
+        const loss = Math.min(Math.floor(farm.cash), Math.max(3, Math.round(farm.cash * 0.05)));
+        farm.cash = Math.max(0, farm.cash - loss);
+        stunT = 1.0;
+        addText('BOOM! -' + fmtGain(loss).replace('+', ''), b.x, b.y - 30, '#fca5a5', 30, -34, 1.0);
+        parts.push({ k: 'ring', x: b.x, y: b.y - 8, r: 70, life: 0.4, max: 0.4, c: '#fb923c' });
+        for (let k = 0; k < 10 && canAdd(); k++) parts.push({ k: Math.random() < 0.5 ? 'flame' : 'smoke', x: b.x, y: b.y - 8, vx: (Math.random() - 0.5) * 220, vy: -60 - Math.random() * 120, g: 60, s: 4 + Math.random() * 4, life: 0.6, max: 0.6 });
+        shake(10);
+        hitStopTimer = 0.06;
+        Sound.stomp();
+        dbdEvent('bomb', { loss });
+        bombs.splice(i, 1);
+      }
+    }
+  }
+  function drawBombs() {
+    for (const b of bombs) {
+      const left = b.fuse - b.t,
+        blink = left < 2.5 && !reduceMotion ? Math.floor(tNow * (left < 1 ? 12 : 6)) % 2 : 0,
+        k = 1.7;
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      if (b.fly >= 1) {
+        // a pulsing warning ring on the ground: don't cut here
+        const pr = reduceMotion ? 0.5 : (tNow * 1.6) % 1;
+        ctx.strokeStyle = `rgba(239, 68, 68, ${0.7 * (1 - pr)})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(0, 2, 16 * k * (0.7 + pr * 0.6), 6 * k * (0.7 + pr * 0.6), 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(30,20,10,.28)';
+        ell(ctx, 0, 2, 12 * k, 4 * k);
+      }
+      ctx.scale(k, k);
+      ctx.fillStyle = blink ? '#b91c1c' : '#2B1708';
+      ctx.strokeStyle = '#120902';
+      ctx.lineWidth = 1.6;
+      ell(ctx, 0, -9, 10, 11);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,.35)';
+      ell(ctx, -3.5, -13, 3, 2.4);
+      ctx.strokeStyle = '#a16207';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(2, -19);
+      ctx.quadraticCurveTo(6, -25, 3, -29);
+      ctx.stroke();
+      if (!reduceMotion) {
+        const f = (tNow * 9) % 1;
+        ctx.fillStyle = f < 0.5 ? '#fde047' : '#fb923c';
+        circ(ctx, 3, -29, 2.6 + f * 1.4);
+      }
+      ctx.restore();
+    }
   }
   function swing() {
     if (!pointer.active) return;
@@ -18508,6 +18681,7 @@ export function startGeminiEngine() {
     for (const c of crops) {
       if (!(c.burnT > 0) || c.dead) continue;
       c.burnT = Math.max(0, c.burnT - dt);
+      if (c.encase || bossArmoured(c)) continue;
       c.hp -= (c.burnD || 0) * dt;
       c.hpShow = Math.max(c.hpShow, 0.5);
       if (!reduceMotion && Math.random() < dt * 8 && canAdd()) {
@@ -18558,7 +18732,14 @@ export function startGeminiEngine() {
     const pl = plan();
     const floor = CROP[bf.type].hp * (pl.hp || 1) * 6;
     let max;
-    if (bf.focusSec) {
+    if (bf.share) {
+      // v0.12 (Navid, 5 Nov): a player who does nothing but hit the boss (in every window its armour is off) knocks
+      // it out halfway through the farm, and then can't pay the bills. A balanced player gets it about by the deed.
+      let dps = 0;
+      for (const t of tools && tools.length ? tools : [window.__DBD_TOOL]) dps = Math.max(dps, bossDpsWith(t));
+      const fieldSec = (pl.totalDays || 12) * (cur ? cur.day : 15);
+      max = Math.max(floor, dps * fieldSec * bf.share * (bf.uptime || 0.45));
+    } else if (bf.focusSec) {
       let dps = 0;
       for (const t of tools && tools.length ? tools : [window.__DBD_TOOL]) dps = Math.max(dps, bossDpsWith(t));
       max = Math.max(floor, dps * bf.focusSec);
@@ -18638,20 +18819,121 @@ export function startGeminiEngine() {
     Sound.stomp();
     dbdEvent('bossAppear', { name: bf.name, hp: c.hp, max: c.maxHp });
   }
+  /* The boss (v0.12, Navid 5 Nov). Muncher: it walks to the ripest crops and eats them. Armour: it only takes damage
+     for a few seconds right after it eats, and every hit then spits part of what it ate back out as coins. From two
+     thirds of its health it tosses bomb seeds (cut one and you lose cash and your sickle is dizzy for a second); from a
+     third, its country's storm encases crops (Canada: ice cubes) that take two hits to free and pay nothing extra. */
+  const BOSS_FULL = 3.2;
+  let bombs = [],
+    stunT = 0,
+    bombTimer = 0,
+    stormTimer = 0;
+  function stormKind() {
+    const cc = meta && meta.country;
+    return cc === 'CA' || cc === 'JP' ? 'ice' : cc === 'MA' || cc === 'US' ? 'sand' : 'mud';
+  }
+  function bossEat(c, f) {
+    f.dead = true;
+    const val = cropBaseVal(f.type) * (cur.vm || 1) * (f.lucky ? 3 : 1);
+    c.belly = (c.belly || 0) + val;
+    c.bellyMax = Math.max(c.bellyMax || 0, c.belly);
+    c.full = BOSS_FULL * (farm.boss && farm.boss.phase >= 2 ? 0.8 : 1);
+    c.target = null;
+    c.sq = 1;
+    c.stretch = -0.5;
+    c.stretchVel = 8;
+    const def = CROP[c.type];
+    addText('MUNCH!', c.x, c.y - def.top * c.ds - 20, '#fde68a', 30, -30, 0.9);
+    debris(f, 6);
+    Sound.stomp();
+    crops = crops.filter((x) => !x.dead);
+    dbdEvent('bossEat', { type: f.type });
+  }
+  function bossPickTarget(c) {
+    let best = null,
+      bs = -1;
+    for (const f of crops) {
+      if (f.dead || f.boss || f.stage < 3 || f.encase) continue;
+      const v = cropBaseVal(f.type) * (f.lucky ? 3 : 1),
+        d = Math.hypot(f.x - c.x, f.y - c.y);
+      const sc = v / (1 + d / 140);
+      if (sc > bs) {
+        bs = sc;
+        best = f;
+      }
+    }
+    return best;
+  }
+  function tossBomb(c) {
+    if (bombs.length >= 4) return;
+    const tx = PAD + 50 + Math.random() * Math.max(10, worldW - PAD * 2 - 100),
+      ty = FIELD_TOP + 60 + Math.random() * Math.max(10, HW - FIELD_TOP - 100);
+    bombs.push({ x: c.x, y: c.y - c.r * c.ds, sx: c.x, sy: c.y - c.r * c.ds, tx, ty, fly: 0, t: 0, fuse: 7 });
+    addText('BOMB SEED!', c.x, c.y - CROP[c.type].top * c.ds - 20, '#fca5a5', 24, -30, 0.8);
+  }
+  function bossStorm(c) {
+    const kind = stormKind();
+    const pool = crops.filter((f) => !f.dead && !f.boss && f.stage >= 2 && !f.encase);
+    pool.sort(() => Math.random() - 0.5);
+    const n = Math.min(pool.length, 5);
+    for (let i = 0; i < n; i++) pool[i].encase = { kind, hits: 2 };
+    const word = kind === 'ice' ? 'FREEZE!' : kind === 'sand' ? 'SANDSTORM!' : 'MUDSLIDE!';
+    addText(word, c.x, c.y - CROP[c.type].top * c.ds - 30, kind === 'ice' ? '#bae6fd' : kind === 'sand' ? '#fde68a' : '#d6b38a', 34, -24, 1.2);
+    shake(8);
+    Sound.stomp();
+    dbdEvent('bossStorm', { kind, n });
+  }
   function bossMove(c, dt) {
     const ph = farm.boss ? farm.boss.phase || 0 : 0;
+    if (c.calm) return;
+    // its new moves: bomb seeds from two thirds of its health, its country's storm from a third
+    if (ph >= 1) {
+      bombTimer -= dt;
+      if (bombTimer <= 0) {
+        bombTimer = (ph >= 2 ? 4.5 : 6.5) + Math.random() * 2;
+        tossBomb(c);
+      }
+    }
+    if (ph >= 2) {
+      stormTimer -= dt;
+      if (stormTimer <= 0) {
+        stormTimer = 9 + Math.random() * 3;
+        bossStorm(c);
+      }
+    }
+    // full: it sits and digests with its armour off, then rests a moment (armour on) before the next meal
+    if (c.full > 0) {
+      c.full = Math.max(0, c.full - dt);
+      if (c.full <= 0) c.rest = 1.2;
+      return;
+    }
+    if (c.rest > 0) {
+      c.rest -= dt;
+      return;
+    }
+    if (!c.target || c.target.dead || c.target.encase) c.target = bossPickTarget(c);
+    if (c.target) {
+      c.tx = c.target.x;
+      c.ty = c.target.y;
+      if (Math.hypot(c.target.x - c.x, c.target.y - c.y) < c.r * c.ds * 0.75 + c.target.r * c.target.ds * 0.4) {
+        bossEat(c, c.target);
+        return;
+      }
+      c.wait = 0;
+    }
     c.wait -= dt;
     if (c.wait > 0) return;
     const dx = c.tx - c.x,
       dy = c.ty - c.y,
       d = Math.hypot(dx, dy);
-    if (d < 6) {
+    if (d < 6 && !c.target) {
       c.wait = (ph >= 2 ? 0.4 : 0.9) + Math.random() * 1.2;
       c.tx = PAD + 70 + Math.random() * Math.max(10, worldW - PAD * 2 - 140);
       c.ty = FIELD_TOP + 70 + Math.random() * Math.max(10, HW - FIELD_TOP - 110);
       return;
     }
-    const sp = ph >= 2 ? 44 : ph >= 1 ? 33 : 24;
+    if (d < 1) return;
+    const sp = c.target ? (ph >= 2 ? 66 : ph >= 1 ? 58 : 50) : ph >= 2 ? 44 : ph >= 1 ? 33 : 24;
     c.x += (dx / d) * sp * dt;
     c.y += (dy / d) * sp * dt;
     c.ds = depth(c.y) * BOSS_SCALE;
@@ -18673,11 +18955,16 @@ export function startGeminiEngine() {
     farm.boss.hp = Math.max(0, c.hp);
     if (!quiet) {
       c.hits = (c.hits || 0) + 1;
-      const pay = CROP[c.type].val * cur.vm * 0.05;
-      farm.cash += pay;
-      farm.earned += pay;
-      today.earned += pay;
-      if (c.hits % 4 === 0) coin(c.x + (Math.random() - 0.5) * 30, c.y - c.r * c.ds * 0.6, 0);
+      // every hit spits a quarter of what it ate back out as coins
+      const spit = Math.min(c.belly || 0, Math.max(1, (c.bellyMax || 0) / 4));
+      if (spit > 0) {
+        c.belly -= spit;
+        farm.cash += spit;
+        farm.earned += spit;
+        today.earned += spit;
+        coin(c.x + (Math.random() - 0.5) * 30, c.y - c.r * c.ds * 0.6, 0);
+        addText(fmtGain(spit), c.x + (Math.random() - 0.5) * 40, c.y - c.r * c.ds - 10, '#fde047', 20, -40, 0.7);
+      }
     }
     if (c.hp <= 0) return;
     const f = c.hp / Math.max(1, c.maxHp);
@@ -19854,6 +20141,8 @@ export function startGeminiEngine() {
   }
   function update(dt) {
     if (paused) return;
+    // tuning and tests only: a bot steers the sickle every step (window.__DBD_BOT, with the dev hooks on)
+    if (window.__DBD_BOT && window.__DBD_DEV_HOOKS && mode === 'day') window.__DBD_BOT(dt, botView);
     updateWeather(dt);
     if (hitStopTimer > 0) {
       hitStopTimer = Math.max(0, hitStopTimer - dt);
@@ -19911,10 +20200,12 @@ export function startGeminiEngine() {
       rushTimer = Math.max(0, rushTimer - dt);
       tickAcc += dt;
       const iv = 1 / cur.tick;
+      stunT = Math.max(0, stunT - dt);
       while (tickAcc >= iv) {
         tickAcc -= iv;
-        swing();
+        if (stunT <= 0) swing();
       }
+      updateBombs(dt);
       toolUpdate(dt);
       spawnAcc += dt; // Charge Cleave charging while holding pointer or Spacebar
       // v0.11.1: no second finger. With the Charge attachment, a finger held still (or the mouse button, or Space)
@@ -20112,12 +20403,15 @@ export function startGeminiEngine() {
         const dx = cr.tx - cr.x,
           dy = cr.ty - cr.y,
           d = Math.hypot(dx, dy) || 1;
-        cr.x += (dx / d) * 115 * dt;
-        cr.y += (dy / d) * 115 * dt;
-        if (d < 12) {
-          cr.scared = true;
-          cr.vx = (Math.random() < 0.5 ? -1 : 1) * 180;
-          cr.vy = -160;
+        // in fast to the jar; out slower with the bag (a fair chance to catch it)
+        const sp = cr.state === 'out' ? 92 : 125;
+        cr.vx = (dx / d) * sp;
+        cr.x += (dx / d) * sp * dt;
+        cr.y += (dy / d) * sp * dt;
+        if (cr.state === 'in' && d < 14) crowSteal(cr);
+        else if (cr.state === 'out' && (cr.x < -50 || cr.x > worldW + 50)) {
+          if (cr.loot > 0) dbdEvent('crowAway', { amt: cr.loot });
+          crows.splice(i, 1);
         }
       } else {
         cr.x += cr.vx * dt;
@@ -21294,7 +21588,30 @@ export function startGeminiEngine() {
       ell(ctx, 0, -c.r * 0.58, c.r * 0.92, c.r * 0.7);
       ctx.restore();
     }
+    if (c.encase && c.stage >= 2) drawEncase(c, def);
     if (c.boss) drawBossCrown(c, def);
+    if (c.boss && c.full > 0) {
+      // armour off: a soft gold glow while it digests
+      ctx.save();
+      ctx.globalAlpha = 0.35 + 0.25 * Math.sin(tNow * 10);
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 3;
+      ell(ctx, 0, -def.top * 0.5, c.r * 1.05, def.top * 0.62);
+      ctx.stroke();
+      ctx.restore();
+    } else if (c.boss && !reduceMotion) {
+      // armour on: a steel glint sweeps across it
+      ctx.save();
+      const gx = ((tNow * 0.8) % 1.6 - 0.8) * c.r * 2;
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = '#f1f5f9';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(gx - 6, -def.top * 0.9);
+      ctx.lineTo(gx + 6, -def.top * 0.15);
+      ctx.stroke();
+      ctx.restore();
+    }
     if (c.lucky && c.stage === 3) {
       const starY = -def.top - 8,
         tw = reduceMotion ? 0 : tNow * 0.8;
@@ -21311,6 +21628,71 @@ export function startGeminiEngine() {
       ctx.closePath();
       ctx.fill();
       ctx.restore();
+    }
+    ctx.restore();
+  }
+  /** The storm's casings: an ice cube (the crop dimmed inside, the ice strong), a sand pile, or mud. */
+  function drawEncase(c, def) {
+    const r = c.r,
+      top = def.top,
+      kind = c.encase.kind,
+      cracked = c.encase.hits < 2;
+    ctx.save();
+    if (kind === 'ice') {
+      const w = r * 1.08,
+        y0 = -top - 5,
+        y1 = 5;
+      ctx.fillStyle = 'rgba(214, 240, 255, 0.72)';
+      ctx.strokeStyle = 'rgba(56, 132, 186, 0.95)';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.roundRect(-w, y0, w * 2, y1 - y0, 6);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.beginPath();
+      ctx.roundRect(-w + 3, y0 + 3, w * 0.5, 6, 3);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(w - 6, y0 + 8);
+      ctx.lineTo(w - 6, y1 - 10);
+      ctx.stroke();
+      if (cracked) {
+        ctx.strokeStyle = 'rgba(30, 64, 104, 0.85)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.2, y0 + 2);
+        ctx.lineTo(w * 0.05, (y0 + y1) * 0.45);
+        ctx.lineTo(-w * 0.15, (y0 + y1) * 0.3);
+        ctx.lineTo(w * 0.35, y1 - 6);
+        ctx.stroke();
+      }
+    } else if (kind === 'sand') {
+      ctx.fillStyle = '#e9c88a';
+      ctx.strokeStyle = '#a17a3d';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-r * 1.15, 5);
+      ctx.quadraticCurveTo(-r * 0.7, -top * (cracked ? 0.45 : 0.75), 0, -top * (cracked ? 0.55 : 0.85));
+      ctx.quadraticCurveTo(r * 0.7, -top * (cracked ? 0.45 : 0.75), r * 1.15, 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(161, 122, 61, 0.55)';
+      for (let i = 0; i < 7; i++) circ(ctx, Math.sin(i * 2.3) * r * 0.7, -top * 0.15 - Math.abs(Math.cos(i * 1.7)) * top * 0.4, 1.4);
+    } else {
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = '#7a5a3c';
+      ctx.strokeStyle = '#4a3222';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, -top * 0.42, r * 1.0, top * (cracked ? 0.32 : 0.5), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#5f4433';
+      for (let i = -1; i <= 1; i++) ell(ctx, i * r * 0.45, -top * 0.05, 4, 7);
     }
     ctx.restore();
   }
@@ -21711,6 +22093,25 @@ export function startGeminiEngine() {
     const R = cur.R,
       x = pointer.x,
       y = pointer.y;
+    if (stunT > 0) {
+      ctx.save();
+      for (let i = 0; i < 3; i++) {
+        const a = tNow * 7 + (i * Math.PI * 2) / 3;
+        ctx.fillStyle = '#fde047';
+        ctx.strokeStyle = '#2B1708';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (let k = 0; k < 10; k++) {
+          const rr = k % 2 ? 2.4 : 6,
+            b = (k * Math.PI) / 5;
+          ctx.lineTo(x + Math.cos(a) * R * 0.9 + Math.cos(b) * rr, y - R * 0.6 + Math.sin(a) * R * 0.3 + Math.sin(b) * rr);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     ctx.fillStyle = rushTimer > 0 ? 'rgba(255,230,115,.11)' : 'rgba(255,246,213,.06)';
     circ(ctx, x, y, R);
     ctx.setLineDash([5, 7]);
@@ -22194,6 +22595,7 @@ export function startGeminiEngine() {
       const wing = reduceMotion ? 0 : Math.sin(cr.t * 22) * 8;
       ctx.save();
       ctx.translate(cr.x, cr.y);
+      ctx.scale(1.7, 1.7);
       if (cr.vx < 0 || (!cr.scared && cr.tx < cr.x)) ctx.scale(-1, 1);
       const BD = lookOf().bird || ['#1e293b', '#f59e0b'];
       ctx.fillStyle = BD[0];
@@ -22214,6 +22616,26 @@ export function startGeminiEngine() {
       circ(ctx, 7, -2, 2);
       ctx.fillStyle = '#0f172a';
       circ(ctx, 7.5, -2, 1);
+      if (cr.loot > 0) {
+        // the stolen coins, in a little sack hanging from the beak
+        const sw = reduceMotion ? 0 : Math.sin(cr.t * 7) * 0.25;
+        ctx.translate(16, 2);
+        ctx.rotate(sw);
+        ctx.strokeStyle = '#2B1708';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, 5);
+        ctx.stroke();
+        ctx.fillStyle = '#c98a4a';
+        ell(ctx, 0, 11, 7, 7.5);
+        ctx.stroke();
+        ctx.fillStyle = '#ffc23d';
+        ctx.font = '900 8px Nunito, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('$', 0, 11.5);
+      }
       ctx.restore();
     } // Storm Scythe Chain Lightning Bolts
     for (const b of bolts) {
@@ -22356,6 +22778,7 @@ export function startGeminiEngine() {
       drawCrop(c);
     }
     if (!goatDrawn) drawGoat(goat);
+    drawBombs();
     for (const c of list) drawHpBar(c);
     drawParts();
     drawSeeds();
@@ -22682,6 +23105,20 @@ export function startGeminiEngine() {
       rushBar.style.transform = `scaleX(${rushTimer > 0 ? rushTimer / RUSH_DURATION : rushCharge / RUSH_GOAL})`;
     stage.classList.toggle('rushing', rushTimer > 0 && mode === 'day');
   }
+  /* Late fees (v0.12, Navid 5 Nov): a bill you can't pay on its night isn't the end at once. Each late day needs an ad,
+     and Grumble & Sons take a share of that day's earnings at sunset: 20%, then 40%, then 60%. The bill itself stays
+     the same. After the third late day, only the bank is left. */
+  const LATE_FEES = [0.2, 0.4, 0.6];
+  function lateDay() {
+    if (mode !== 'idle' || !billStatus().tonight) return false;
+    if ((farm.late || 0) >= LATE_FEES.length) return false;
+    if (farm.cash >= billObj(farm.bill).amt && !bossBlocked()) return false;
+    farm.late = (farm.late || 0) + 1;
+    farm.due += 1;
+    save();
+    renderAll();
+    return true;
+  }
   /* actions */ function payBill() {
     if (mode !== 'idle' || farm.pendingPerks || !el.modal.hidden) return;
     const b = billObj(farm.bill);
@@ -22693,6 +23130,7 @@ export function startGeminiEngine() {
     farm.cash -= b.amt;
     farm.paidTotal += b.amt;
     farm.billsPaid += 1;
+    farm.late = 0;
     arthurAngerTimer = 3.0;
     dbdEvent('billPaid', {
       index: farm.bill,
@@ -23639,6 +24077,9 @@ export function startGeminiEngine() {
           pendingPerks: farm.pendingPerks ? farm.pendingPerks.slice() : null,
           perks: farm.perks.slice(),
           extraDayUsed: !!farm.extraDayUsed,
+          late: farm.late || 0,
+          lateMax: LATE_FEES.length,
+          lateNext: LATE_FEES[Math.min(LATE_FEES.length - 1, farm.late || 0)],
           boss: bossHud(),
           lastEarn: farm.lastEarn,
           lastCount: farm.lastCount,
@@ -23758,15 +24199,10 @@ export function startGeminiEngine() {
           foreclose();
           return !!farm.lost;
         },
-        /** Rewarded ad: one more day on the bill that is due tonight, once per farm. */
-        extraDay: () => {
-          if (mode !== 'idle' || farm.extraDayUsed || !billStatus().tonight) return false;
-          farm.due += 1;
-          farm.extraDayUsed = true;
-          save();
-          renderAll();
-          return true;
-        },
+        /** Rewarded ad: a late day on the bill due tonight (v0.12: up to three; Grumble & Sons take 20%, 40%, then
+         *  60% of each late day's earnings, and after the third the bank takes the farm). */
+        lateDay: () => lateDay(),
+        extraDay: () => lateDay(),
         addCash: (amt) => {
           if (!(amt > 0)) return false;
           farm.cash += amt;
@@ -23920,6 +24356,9 @@ export function startGeminiEngine() {
           farm.boss.max = bossCrop.maxHp;
           farm.boss.hp = hp;
           farm.boss.phase = 2;
+          // the film's boss stands still for its finale: armour off, no eating, no bombs, no storm
+          bossCrop.calm = true;
+          bossCrop.full = 1e9;
           time = Math.min(time, left);
           return true;
         },
@@ -23988,6 +24427,12 @@ export function startGeminiEngine() {
         bolts: bolts.length,
         lucky: crops.filter((c) => c.lucky && !c.dead).map((c) => ({ x: c.x, y: c.y - c.r * c.ds * 0.5 })),
         frosted: crops.filter((c) => c.frosted && !c.dead).length,
+        bombs: bombs.length,
+        encased: crops.filter((c) => c.encase && !c.dead).length,
+        encaseKind: (crops.find((c) => c.encase && !c.dead) || { encase: {} }).encase.kind || '',
+        crowLoot: crows.reduce((a, c) => a + (c.loot || 0), 0),
+        bossFull: !!(bossCrop && bossCrop.full > 0),
+        stunned: stunT > 0,
       });
       /** Tests only: the current bill is due tonight (as if its days had been played). */
       engineApi.devDue = () => {
@@ -23995,6 +24440,27 @@ export function startGeminiEngine() {
         farm.day = Math.max(farm.day, farm.due + 1);
         save();
         renderAll();
+        return true;
+      };
+      /** Tests and tuning only: jump the farm to day `d` (the crops of that morning), with no bill due before it. */
+      engineApi.devDay = (d) => {
+        if (!window.__DBD_DEV_HOOKS || mode !== 'idle' || !farm) return false;
+        farm.day = Math.max(1, Math.floor(d));
+        farm.due = Math.max(farm.due, farm.day);
+        cur = stats();
+        save();
+        renderAll();
+        return true;
+      };
+      /** Tests only: the boss on the field goes to `phase` (1: bomb seeds, 2: and the storm) with that share of its
+       *  health left; `full` takes its armour off for that many seconds. */
+      engineApi.devBoss = (phase, frac, full) => {
+        if (!window.__DBD_DEV_HOOKS || !bossCrop || !farm.boss) return false;
+        farm.boss.phase = Math.max(0, Math.min(2, phase | 0));
+        if (frac > 0) bossCrop.hp = farm.boss.hp = Math.max(1, Math.round(farm.boss.max * frac));
+        if (full > 0) bossCrop.full = full;
+        bombTimer = Math.min(bombTimer, 0.5);
+        stormTimer = Math.min(stormTimer, 1);
         return true;
       };
       /** Tests only: give the farm these perks (as if picked from chests). */

@@ -160,6 +160,8 @@ test('boss farm: the deed waits until the boss is knocked out', async ({ page })
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
   await page.waitForFunction(() => (window as any).__DBD_ENGINE.hud().boss?.onField);
+  // v0.12: its armour only comes off right after it eats; take it off for the test
+  await page.evaluate(() => (window as any).__DBD_ENGINE.devBoss(0, 0, 30));
   const box = (await page.locator('#field').boundingBox())!;
   for (let i = 0; i < 30; i++) {
     await page.mouse.move(box.x + box.width / 2 + (i % 5) * 8, box.y + box.height * 0.6);
@@ -447,7 +449,7 @@ test('Skip practice lands on the first farm; the intro plays from Settings and S
 
 test('something new on a real farm holds the field with a card until a tap', async ({ page }) => {
   const errors = await boot(page, seeded([], 0), true);
-  await page.evaluate(() => { const g = (window as any).__DBD_APP.g; g.seen = { intro: true, practice: true, cut: true, start: true, cleave: true, mBoss: true, mRadish: true, mGolden: true, mGoat: true, mGoatPet: true, mCrow: true, mProp: true, mBolt: true, mRival: true, mRush: true }; });
+  await page.evaluate(() => { const g = (window as any).__DBD_APP.g; g.seen = { intro: true, practice: true, cut: true, start: true, cleave: true, mBoss: true, mBoss2: true, mBomb: true, mEncase: true, mRadish: true, mGolden: true, mGoat: true, mGoatPet: true, mCrow: true, mThief: true, mProp: true, mBolt: true, mRival: true, mRush: true }; });
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
@@ -900,3 +902,66 @@ test("a purchase that leaves too little for tonight's bill asks on a card over a
   expect(errors).toEqual([]);
 });
 
+test('the boss eats crops, its armour is off only after it eats, and thief crows give coins back when shooed (v0.12)', async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 5), 0));
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_kelowna'));
+  await expect(page.locator('.scr-farmhouse .dc-boss')).toContainText('King Russet');
+  await page.evaluate(() => { (window as any).__DBD_ENGINE.devDay(5); (window as any).__DBD_ENGINE.addCash(500); });
+  // a finger parked out of the way
+  await page.evaluate(() => { (window as any).__DBD_BOT = (dt: number, w: any) => { w.pointer.x = w.worldW * 0.95; w.pointer.y = w.bottom - 30; w.pointer.active = false; }; });
+  await act(page, 'start');
+  await page.waitForFunction(() => (window as any).__DBD_ENGINE.hud().boss?.onField);
+  await page.evaluate(() => (window as any).__DBD_ENGINE.hold(false));
+  // armoured: a hit does nothing
+  const hp0 = await page.evaluate(() => (window as any).__DBD_ENGINE.hud().boss.hp);
+  // it eats within a few seconds, and then its armour is off
+  await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().bossFull, undefined, { timeout: 15_000 });
+  expect(hp0).toBeGreaterThan(0);
+  // bomb seeds and the storm come with its later phases
+  await page.evaluate(() => (window as any).__DBD_ENGINE.devBoss(2, 0.3));
+  await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().bombs > 0, undefined, { timeout: 10_000 });
+  await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().encased > 0, undefined, { timeout: 10_000 });
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.peek().encaseKind)).toBe('ice');
+  await page.evaluate(() => { (window as any).__DBD_BOT = null; });
+  expect(errors).toEqual([]);
+});
+
+
+test('late fees: up to three late days, each with an ad; the collector takes 20%, 40%, 60%; then only the bank (v0.12)', async ({ page }) => {
+  const errors = await boot(page);
+  await act(page, 'play');
+  await expect(page.locator('.scr-farmhouse .dc-day')).toBeVisible();
+  // the seed loan is due tonight and there's no cash for it
+  await page.evaluate(() => { (window as any).__DBD_ENGINE.devDue(); (window as any).__DBD_APP.show('farmhouse'); });
+  const lateBtn = page.locator('.scr-farmhouse [data-act="ad-extra"]');
+  await expect(lateBtn).toContainText('Late day 1 of 3');
+  await expect(lateBtn).toContainText('20%');
+  await lateBtn.click();
+  await expect.poll(() => page.evaluate(() => (window as any).__DBD_ENGINE.state().late)).toBe(1);
+  // the late day: earn, and at sunset Grumble & Sons take 20% of it
+  await page.evaluate(() => { (window as any).__DBD_TIMESCALE = 8; });
+  await act(page, 'start');
+  await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(10));
+  await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
+  const fee = await page.evaluate(() => (window as any).__DBD_APP.day.today);
+  if (fee.earned > 0) await expect(page.locator('.scr-sundown .sd-fee')).toContainText('20%');
+  expect(fee.feeRate).toBe(0.2);
+  await act(page, 'farmhouse');
+  // still short: late days 2 and 3, at 40% and 60%
+  for (const [n, p] of [[2, '40%'], [3, '60%']] as const) {
+    await expect(lateBtn).toContainText(`Late day ${n} of 3`);
+    await expect(lateBtn).toContainText(p);
+    await lateBtn.click();
+    await expect.poll(() => page.evaluate(() => (window as any).__DBD_ENGINE.state().late)).toBe(n);
+    await act(page, 'start');
+    await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
+    await act(page, 'farmhouse');
+  }
+  // three late days used: no ad any more, only the bank
+  await expect(lateBtn).toHaveCount(0);
+  await expect(page.locator('.scr-farmhouse .dc-go[data-act="bank"]')).toBeVisible();
+  // paying the bill clears the late days
+  await page.evaluate(() => { (window as any).__DBD_ENGINE.addCash(100000); (window as any).__DBD_APP.payBill(); });
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().late)).toBe(0);
+  expect(errors).toEqual([]);
+});

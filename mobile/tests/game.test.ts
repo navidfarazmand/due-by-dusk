@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BILL_COUNT, DAYS_PER_BILL, LADDER_HP, LADDER_VAL, allPlans, cropName, planFor, dayRef, expectedPower, toughnessFor } from '../src/game/plan';
+import { BILL_COUNT, DAY_SECONDS, billDays, LADDER_HP, LADDER_VAL, allPlans, cropName, planFor, dayRef, expectedPower, toughnessFor } from '../src/game/plan';
 import { BLASTER_RANGE_GAIN, bestPower, fieldPower } from '../src/game/power';
 import { COUNTRIES, ROUTE, isBossCity } from '../src/game/world';
 import {
@@ -21,11 +21,12 @@ describe('city plans', () => {
     expect(plans.map(p => p.index)).toEqual(ROUTE.map((_, i) => i));
   });
 
-  it('gives every farm two days per bill, starting with the seed loan and ending with the deed', () => {
+  it('gives every farm bills of 2, 3, 4, then 5 days, starting with the seed loan and ending with the deed', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map(billDays)).toEqual([2, 3, 4, 5, 5, 5, 5]);
     for (const p of plans) {
       expect(p.bills.length).toBe(BILL_COUNT[p.country] + (p.boss ? 1 : 0));
       expect(p.bills.length).toBeGreaterThanOrEqual(5);
-      for (const b of p.bills) expect(b.days).toBe(DAYS_PER_BILL);
+      p.bills.forEach((b, i) => expect(b.days).toBe(billDays(i)));
       expect(p.totalDays).toBe(p.bills.reduce((a, b) => a + b.days, 0));
       expect(p.bills[0].name).toBe('Seed loan');
       expect(p.bills[p.bills.length - 1].name).toBe('The deed');
@@ -39,8 +40,8 @@ describe('city plans', () => {
         if (i) expect(p.bills[i].amt).toBeGreaterThan(p.bills[i - 1].amt);
       }
     }
-    // Navid (29 Oct): the first farm runs about ten days
-    expect(plans[0].totalDays).toBe(10);
+    // Navid (5 Nov): bills of 2, 3, 4 and 5 days, so a five-bill farm runs 19 days
+    expect(plans[0].totalDays).toBe(19);
   });
 
   it('gets harder city by city', () => {
@@ -91,8 +92,9 @@ describe('city plans', () => {
     expect(cropName('pei_russet')).toBe('Hoser Russet');
   });
 
-  it('gives days of 25 seconds before upgrades', () => {
-    for (const p of plans) expect(p.dayBase).toBe(25);
+  it('gives days of 15 seconds before upgrades', () => {
+    expect(DAY_SECONDS).toBe(15);
+    for (const p of plans) expect(p.dayBase).toBe(15);
   });
 });
 

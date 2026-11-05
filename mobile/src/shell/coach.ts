@@ -36,6 +36,13 @@ export interface FieldPeek {
   bolts: number;
   lucky: Pt[];
   frosted: number;
+  /** v0.12: the boss's bomb seeds and storm casings, the coins thief crows carry, and its armour. */
+  bombs?: number;
+  encased?: number;
+  encaseKind?: string;
+  crowLoot?: number;
+  bossFull?: boolean;
+  stunned?: boolean;
 }
 
 export function peek(): FieldPeek | null {

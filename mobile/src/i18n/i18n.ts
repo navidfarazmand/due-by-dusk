@@ -71,6 +71,8 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/^Good goat \+\$([\d,.]+)$/, 'Good goat +${n}'],
   [/^CHAIN ×([\d.]+)$/, 'CHAIN ×{n}'],
   [/^BOUNTY (.+)$/, 'BOUNTY {n}'],
+  [/^BOOM! -\$([\d,.]+)$/, 'BOOM! -${n}'],
+  [/^COINS BACK \+\$([\d,.]+)$/, 'COINS BACK +${n}'],
 ];
 
 export function tx(s: string): string {

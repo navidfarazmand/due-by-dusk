@@ -1,10 +1,10 @@
 // City plans: what each of the 30 farms asks of the player. Pure data and maths, no DOM, so it can be tested.
 //
-// A farm is a run of bills, each due two days after the one before; the last one is the deed. The field starts
-// with carrots only, and every bill paid adds the next crop on the farm's ladder: radishes, then the country's
-// three, then staples. Each new crop pays more and takes more cuts than the one before (Navid, 29 Oct: "only
-// carrots first day (much cheaper!) then if i can overcome the first bill, the second bill come with second
-// vegetable which is red radish, etc."). Bills follow what the field can pay at each step.
+// A farm is a run of bills; the last one is the deed. v0.12 (Navid, 5 Nov): the first bill is due after 2 days, the
+// next after 3, then 4, then 5 (and 5 from then on), and a new crop joins the field every morning: day 1 carrots,
+// day 2 radishes, then the country's three, then staples, so the field is full by about day 6. Each new crop pays
+// more and takes more cuts than the one before. Bills follow what the field can pay, tuned with bots so a weak
+// player can't pay even with an ad, an average one pays with one ad, and a computer-strong one needs none.
 // City by city, crops get tougher (hp) and pay more (val), and farms get longer.
 
 import { COUNTRIES, ROUTE, type CityDef, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from './world';
@@ -37,6 +37,10 @@ export interface BossFight {
   focusSec: number;
   /** Fallback health factor (× the crop's health × the city's crop health) when no tool info is given. */
   hpMul: number;
+  /** v0.12: share of the farm's field time a player hitting only the boss needs to knock it out (0.5: halfway through
+   *  the farm), and the share of time its armour is off (it only takes damage right after it eats). */
+  share?: number;
+  uptime?: number;
   /** Paid out when the boss is knocked out. */
   bounty: number;
 }
@@ -95,11 +99,24 @@ export const BOSSES: Record<CountryCode, { type: string; name: string }> = {
   JP: { type: 'kabocha', name: 'King Kabocha' },
 };
 
-/** Bills per farm in each country (the boss farm has one more). Every bill is due two days after the last. */
+/** Bills per farm in each country (the boss farm has one more). */
 export const BILL_COUNT: Record<CountryCode, number> = { CA: 5, US: 5, BR: 6, MA: 6, FR: 6, CN: 7, JP: 7 };
-export const DAYS_PER_BILL = 2;
-/** Seconds of daylight with no upgrades (Gemini's build had 14; Navid: days were far too short). */
-export const DAY_SECONDS = 25;
+/** Days a bill gives you, from the one before (Navid, 5 Nov: 2, 3, 4, 5, then 5). */
+export function billDays(i: number): number {
+  return Math.min(5, 2 + Math.max(0, i));
+}
+/** The farm's day on which bill `i` is due. */
+export function billDueDay(i: number): number {
+  let d = 0;
+  for (let j = 0; j <= i; j++) d += billDays(j);
+  return d;
+}
+/** Which rung of the crop ladder is out on a day (day 1 is carrots only, a new crop every morning). */
+export function stageOnDay(day: number, rungs: number): number {
+  return Math.max(0, Math.min(rungs - 1, day - 1));
+}
+/** Seconds of daylight with no upgrades. v0.12 (Navid, 5 Nov): 15 s; Longer days and skills add up to about 30. */
+export const DAY_SECONDS = 15;
 
 /**
  * The crop ladder: value, toughness and how often it comes up, by stage. Value per cut stays about the same, so a
@@ -128,16 +145,6 @@ export function billMul(cityId: string): number {
     return CANADA_MUL[Math.max(0, i)] ?? BILL_MUL.CA;
   }
   return BILL_MUL[c.country];
-}
-
-/** Share of the day's pay each bill asks for, per day it gives you: about half on the first farm, rising to
- * about three quarters from the USA on, and a little more for the later bills of a farm. */
-const PRESSURE = [0.5, 0.58, 0.63, 0.66, 0.68];
-export function billPressure(k: number): number {
-  return PRESSURE[k] ?? 0.7;
-}
-function billShare(i: number, n: number, k: number): number {
-  return billPressure(k) * (n <= 1 ? 1 : 0.9 + 0.2 * (i / (n - 1)));
 }
 
 const GENERIC_BILLS: Array<[string, string]> = [
@@ -270,10 +277,33 @@ export function valMul(k: number): number {
   return Math.pow(1.115, Math.min(6, k)) * Math.pow(1.37, Math.max(0, k - 6));
 }
 
+/**
+ * What an average player earns on a day of farm k, as a share of dayRef(k) × STAGE_PAY (a steady player's day with the
+ * whole ladder out, measured on 25 s days). Calibrated with the bots in scripts/bots.mjs on 15 s days with an
+ * on-track build (v0.12): see AVG_POINTS.
+ */
+const AVG_POINTS: Array<[k: number, share: number]> = [[0, 0.6], [29, 0.6]];
+export function avgDayShare(k: number): number {
+  const P = AVG_POINTS;
+  if (k <= P[0][0]) return P[0][1];
+  for (let i = 1; i < P.length; i++) if (k <= P[i][0]) { const [k0, a] = P[i - 1], [k1, b] = P[i]; return a + ((b - a) * (k - k0)) / (k1 - k0); }
+  return P[P.length - 1][1];
+}
+/** What an average player earns on day `d` of farm k (whose ladder has `rungs` crops). */
+export function avgDay(k: number, d: number, rungs: number): number {
+  return dayRef(k) * STAGE_PAY[stageOnDay(d, rungs)] * avgDayShare(k);
+}
+/** A bill asks for an average player's days plus this share of one more day: one doubled day (an ad) covers it, so an
+ *  average player pays with one ad, a computer-strong one with none, and a weak one not even with an ad. */
+export const BILL_OVER = 0.5;
+/** Each bill of a farm asks this much more than the one before, for the same days. */
+export const BILL_CLIMB = 0.04;
+
 function roundMoney(v: number): number {
   if (v < 100) return Math.max(10, Math.round(v / 5) * 5);
   if (v < 1000) return Math.round(v / 10) * 10;
   if (v < 10000) return Math.round(v / 50) * 50;
+  if (v < 100000) return Math.round(v / 100) * 100;
   return Math.round(v / 500) * 500;
 }
 
@@ -310,13 +340,20 @@ export function planFor(cityId: string): CityPlan {
   const ref = dayRef(k);
   const mul = billMul(cityId);
   const names = pickBillNames(city, k, n);
-  const bills: Bill[] = names.map((nm, i) => ({
-    name: nm[0],
-    note: nm[1],
-    days: DAYS_PER_BILL,
-    // a boss farm pays a bounty and has one more crop: all its bills are heavier, the deed most of all
-    amt: roundMoney(ref * STAGE_PAY[i] * DAYS_PER_BILL * billShare(i, n, k) * mul * (boss ? (i === n - 1 ? 1.2 : 1.06) : 1)),
-  }));
+  let prevAmt = 0;
+  const bills: Bill[] = names.map((nm, i) => {
+    const from = i ? billDueDay(i - 1) + 1 : 1, to = billDueDay(i);
+    let sum = 0;
+    for (let d = from; d <= to; d++) sum += avgDay(k, d, n);
+    return {
+      name: nm[0],
+      note: nm[1],
+      days: billDays(i),
+      // a boss farm: time spent on the boss earns nothing, so its bills are lighter; the bounty helps with the deed
+      // later bills climb a little (a perk comes with every bill paid, and upgrades keep coming)
+      amt: (prevAmt = Math.max(roundMoney((sum + BILL_OVER * avgDay(k, to, n)) * (1 + BILL_CLIMB * i) * mul * (boss ? (i === n - 1 ? 1 : 0.85) : 1)), roundMoney(prevAmt * 1.02 + 5))),
+    };
+  });
   // the goat and the crows come after two bills on the first farms, from the start later on
   const unlock = Math.min(5, Math.floor(k / 2));
   const ladder = ladderFor(city).slice(0, n);
@@ -328,11 +365,11 @@ export function planFor(cityId: string): CityPlan {
     cropVal[s.type] = s.val;
     cropHp[s.type] = s.hp;
   }
-  const totalDays = n * DAYS_PER_BILL;
+  const totalDays = billDueDay(n - 1);
   // Bosses take longer in later countries: 14 s of steady hitting in Canada, 38 s in Japan.
   const ci = COUNTRIES.findIndex(c => c.code === city.country);
   const bossFight: BossFight | undefined = boss
-    ? { ...BOSSES[city.country], focusSec: 14 + 4 * ci, hpMul: Math.round(0.6 * (12 + 0.45 * k) * totalDays), bounty: roundMoney(ref * mul) }
+    ? { ...BOSSES[city.country], focusSec: 14 + 4 * ci, share: 0.5, uptime: 0.45, hpMul: Math.round(0.6 * (12 + 0.45 * k) * totalDays), bounty: roundMoney(ref * mul) }
     : undefined;
   return {
     cityId,

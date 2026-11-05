@@ -799,4 +799,8 @@
 .sd-actions.three { gap: 8px; }
 .sd-actions.three .btn-md { font-size: 17px; padding: 0 11px; }
 .sd-actions.three .sd-house { width: 48px; padding: 0; }
+/* late fees (v0.12): the two-line late-day button, and the collector's cut on Sundown */
+.dc-more .late-two { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; line-height: 1; }
+.dc-more .late-two small { font: 800 12px/1 var(--ui-body); opacity: .9; }
+.sd-fee { margin-top: -2px; padding: 5px 10px; border-radius: 10px; background: #FBE3DF; color: #8E2E24; font: 800 13px/1.2 var(--ui-body); text-align: center; }
 
