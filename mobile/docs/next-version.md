@@ -95,7 +95,8 @@ workflow, run 6):
         PEI lighthouse (and the farmhouse), the Peace Tower (and a sugar shack, autumn, no snow), the CN Tower (and
         City Hall), the big tomato and greenhouses (summer), a grain elevator (and the Bessborough), Ogopogo in
         Okanagan Lake (and a sailboat, summer).
-- [ ] Docs (README, ARCHITECTURE), release notes, version 0.12.0, Play closed testing.
+- [x] Docs (README, ARCHITECTURE), release notes, version 0.12.0: rolled out to closed testing on 5 Nov 2026
+      (versionCode 1107, Play release workflow run 7).
 
 Next version (0.13), to send to Navid before building: one upgrade tree bought with cash (Workshop and skills
 together, six branches, free reset, long builds with an ad); perks with 5 levels (a perk can come back as its next
