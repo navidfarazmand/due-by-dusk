@@ -417,11 +417,11 @@ export class GameApp {
     let diamonds = 0;
     if (firstWin) diamonds = plan.boss ? 2 : 1;
     if (diamonds) engine().addDiamonds(diamonds);
-    // v0.12 (Navid, 5 Nov): what is left after the deed stays on the farm (it counts for the second star); nothing
-    // carries to the next farm, so easy farms can't be farmed for money. Upgrades bought with its cash count as paid
-    // out, so a replay only buys upgrades with cash beyond everything this farm has paid you.
-    const banked = 0;
-    void bankAfterWin;
+    // v0.12.2 (Navid, 5 Nov: option B): what is left after the deed becomes savings that buy upgrades and tools, never
+    // a bill (the tree credit of 0.13). Only above what this farm has already paid you (its mark), so a replay of an
+    // easy farm can't be farmed for money; the next farm still starts its bills at $0.
+    const banked = bankAfterWin(run, d.cash);
+    this.g.wallet += banked;
     p.paid = paidAfterRun(run, banked);
     this.g.run = null;
     this.result = {

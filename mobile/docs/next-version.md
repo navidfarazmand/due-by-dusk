@@ -111,8 +111,9 @@ workflow, run 6):
       autumn gale, autumn showers in Gatineau, no frost mornings on the summer farms.
 - [x] Free coins: half an average day of the farm you're on (one of your own days from any farm gave $710 on
       Austin's first morning, against a $740 seed loan).
-- [ ] Navid to review the 0.13 upgrade tree: https://claude.ai/artifact/7t59cN7bWpBkviWoQnjKLF (and whether the
-      leftover after a deed becomes tree credit).
+- [ ] Navid to review the 0.13 upgrade tree: https://claude.ai/artifact/7t59cN7bWpBkviWoQnjKLF
+- [x] 0.12.2 (Navid: option B): the leftover after a deed is banked again as savings (upgrades and tools only,
+      never a bill; only above the farm's mark). In 0.13 it becomes the tree's credit.
 
 Next version (0.13), to send to Navid before building: one upgrade tree bought with cash (Workshop and skills
 together, six branches, free reset, long builds with an ad); perks with 5 levels (a perk can come back as its next
