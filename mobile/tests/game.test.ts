@@ -366,14 +366,14 @@ describe('tools', () => {
   });
 });
 
-describe('the Charge handle (v0.11.1)', () => {
-  it('is what turns the Charge Cleave on, one level at a time', () => {
+describe('the Power booster (the Charge handle until 0.11)', () => {
+  it('boosts the power meter, one level at a time, up to five (v0.12.1)', () => {
     expect(toolStats(newTools()).charge).toBe(0);
     expect(toolStats({ owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 2 } }).charge).toBe(2);
     // v0.12: the Charge handle is the Power booster, on every tool; each tool names its power
     for (const td of TOOLS) expect(td.mods.some(m => m.id === 'charge' && m.name === 'Power booster')).toBe(true);
     expect(toolSummary(toolStats({ owned: ['sickle', 'scythe'], equipped: 'scythe', mods: {} }, 'scythe'))[0]).toBe('Power: Whirlwind');
     expect(modCost('sickle', 'charge', 0)).toBe(300);
-    expect(parseTools({ owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 9 } }).mods['sickle.charge']).toBe(3);
+    expect(parseTools({ owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 9 } }).mods['sickle.charge']).toBe(5);
   });
 });
