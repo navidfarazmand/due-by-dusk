@@ -756,6 +756,22 @@ test('the day\'s event badge holds the field until the next tap', async ({ page 
   expect(errors).toEqual([]);
 });
 
+test('the 0.13 upgrade tree (a preview): 103 nodes from the skill map, the Workshop and learned skills on it', async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 2), 0, { skills: ['core_awakening', 'gold_root', 'gold_lawyer'] }));
+  await page.evaluate(() => (window as any).__DBD_APP.show('skills'));
+  await act(page, 'tree');
+  await expect(page.locator('.scr-tree .tr-nd')).toHaveCount(103);
+  await page.locator('.scr-tree [data-act="tree-node"][data-arg="m2"]').click();
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Retained counsel');
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Yours');
+  await page.locator('.scr-tree [data-act="tree-node"][data-arg="b9"]').click();
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Coming in 0.13');
+  await page.locator('.scr-tree [data-act="tree-zoom"][data-arg="1"]').click();
+  await page.locator('.scr-tree [data-act="tree-back"]').click();
+  await expect(page.locator('.scr-skills')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('menu: the signpost (Design 4), Barn opens skills or the Bling Barn, the plank opens the map', async ({ page }) => {
   const errors = await boot(page);
   await expect(page.locator('.scr-menu .sp-play')).toBeVisible();

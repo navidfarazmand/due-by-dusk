@@ -819,3 +819,30 @@
 .dc-late { align-self: stretch; margin: 7px 0 0; padding: 5px 10px; border-radius: 10px; background: #FBE3DF; color: #8E2E24; font: 800 12px/1.3 var(--ui-body); text-align: center; }
 .sd-fee { margin-top: -2px; padding: 5px 10px; border-radius: 10px; background: #FBE3DF; color: #8E2E24; font: 800 13px/1.2 var(--ui-body); text-align: center; }
 
+
+/* the 0.13 upgrade tree, a preview (5 Nov): a dusk sky that scrolls, the chosen node's card beside it */
+.scr-tree { background: radial-gradient(circle at 40% 50%, #2E2449 0%, #221A38 40%, #161126 80%); color: #FFF1D6; }
+.tr-wrap { position: absolute; inset: 0; display: flex; flex-direction: column; padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); gap: 6px; }
+.tr-top { display: flex; align-items: center; gap: 10px; }
+.tr-titles { flex: 1; min-width: 0; }
+.tr-titles h2 { margin: 0; font: 400 24px/1 var(--ui-display); color: #FFF1D6; }
+.tr-titles p { margin: 2px 0 0; font: 800 12px/1.2 var(--ui-body); color: rgba(255, 241, 214, .7); }
+.tr-zoom { display: flex; gap: 6px; }
+.tr-zoom .st-btn { width: 40px; height: 40px; font: 400 24px/1 var(--ui-display); }
+.tr-body { flex: 1; min-height: 0; display: flex; gap: 10px; }
+.tr-map { flex: 1; min-width: 0; overflow: auto; border-radius: 18px; background: rgba(0, 0, 0, .18); -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
+.tr-map svg { display: block; }
+.tr-map svg text { font-family: var(--ui-display); }
+.tr-nd { cursor: pointer; }
+.tr-card { width: 236px; flex: none; align-self: flex-start; max-height: 100%; overflow: auto; box-sizing: border-box; padding: 12px; border-radius: 16px; background: rgba(255, 241, 214, .08); border: 2px solid rgba(255, 241, 214, .16); display: flex; flex-direction: column; gap: 7px; }
+.tr-kind { font: 900 10px/1 var(--ui-body); letter-spacing: .12em; text-transform: uppercase; color: rgba(255, 241, 214, .72); display: flex; align-items: center; gap: 6px; }
+.tr-kind i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.tr-head { display: flex; align-items: center; gap: 8px; }
+.tr-head svg { flex: none; }
+.tr-head h3 { margin: 0; font: 400 20px/1.05 var(--ui-display); color: #FFF1D6; }
+.tr-card p { margin: 0; font: 700 13px/1.35 var(--ui-body); color: #FFF1D6; }
+.tr-card .tr-small { font-size: 12px; color: rgba(255, 241, 214, .7); }
+.tr-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+.tr-meta b { font: 800 11.5px/1 var(--ui-body); padding: 6px 8px; border-radius: 999px; background: rgba(255, 241, 214, .1); }
+.tr-meta b.own { background: #FFC23D; color: #2B1708; }
+.sk-tree-btn { position: absolute; left: 0; top: 72px; padding: 0 12px; pointer-events: auto; }

@@ -34,6 +34,11 @@ map. `docs/tree/map-template.html` is the map page (minimal line icons drawn in 
 from the template with the data bundled in (esbuild an entry that sets `window.DBD_TREE = { TREE, BRANCHES }` and
 put it where the template says `/*TREE_DATA*/`).
 
+In the game (on the branch, not released yet): the skill map has a "See the 0.13 tree" button that opens the whole
+map (`src/shell/treeview.ts`, icons in `treeglyphs.ts`): it scrolls and zooms, and a card shows the chosen node.
+Level tracks show the player's Workshop levels and 12 tricks light up when the matching diamond skill is learned
+(`TRACK_LEVEL`, `SKILL_OF`); everything else says "Coming in 0.13". Nothing can be bought there yet.
+
 ## Next work (0.13), in this order
 
 1. The upgrade tree once Navid says yes: merge `src/game/workshop.ts` (tracks) and `src/game/skills.ts` (diamond

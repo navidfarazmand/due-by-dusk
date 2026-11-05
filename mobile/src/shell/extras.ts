@@ -71,7 +71,8 @@ export function skillMapHtml(g: GameSave, sel: string): string {
   const left = diamondsLeft(g), earned = diamondsEarned(g);
   return `<div class="bg fit sk-map"><svg class="sk-sky" viewBox="0 0 844 390" width="844" height="390" aria-hidden="true">${STARS}${links}</svg>${labels}${nodes}${clouds}</div>
     <div class="grp tl" style="width: 330px; height: 64px"><button type="button" class="st-btn st-sq top-btn" data-act="back" aria-label="${t('Back')}">${ICON.back()}</button>
-      <div class="sk-titles"><h2>${t('Skill map')}</h2><p>${t('Win a farm, earn a diamond. Boss farms give two.')}</p></div></div>
+      <div class="sk-titles"><h2>${t('Skill map')}</h2><p>${t('Win a farm, earn a diamond. Boss farms give two.')}</p></div>
+      <button type="button" class="st-btn gold btn-sm sk-tree-btn" data-act="tree">${t('See the 0.13 tree')}</button></div>
     <div class="grp tr" style="width: 250px; height: 390px">
       <p class="sk-gems">${ICON.diamond(18)}<b>${left}</b> ${t('to spend · {n} earned', { n: earned })}</p>
       <div class="st-chip sk-card">${skillCardHtml(g, sel)}</div></div>`;

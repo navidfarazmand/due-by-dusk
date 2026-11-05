@@ -34,8 +34,9 @@ import {
 } from './extras';
 import { ribbonIcon } from './looks';
 import { arthurOnCard } from './arthur';
+import { TREE_ZOOMS, centerTree, treeMapHtml } from './treeview';
 
-type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'skills' | 'barn' | 'daily' | 'duel' | 'side';
+type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'skills' | 'tree' | 'barn' | 'daily' | 'duel' | 'side';
 
 /** A side farm in progress (the daily farm or one duel turn): the real farm waits in a snapshot. */
 interface SideRun {
@@ -183,7 +184,7 @@ export class GameApp {
     this.root = document.createElement('div');
     this.root.id = 'dbdScreens';
     document.body.append(this.root);
-    for (const s of ['menu', 'world', 'country', 'farmhouse', 'sundown', 'won', 'lost', 'skills', 'barn', 'daily', 'duel', 'side']) {
+    for (const s of ['menu', 'world', 'country', 'farmhouse', 'sundown', 'won', 'lost', 'skills', 'tree', 'barn', 'daily', 'duel', 'side']) {
       const el = document.createElement('section');
       el.className = 'scr scr-' + s;
       el.dataset.scr = s;
@@ -506,6 +507,16 @@ export class GameApp {
       if (s === 'won') arthurOnCard(el.querySelector<HTMLCanvasElement>('.r-arthur'), 'won');
     }
     else if (s === 'skills') el.innerHTML = skillMapHtml(this.g, this.skillSel || firstSkill(this.g));
+    else if (s === 'tree') {
+      // the 0.13 tree (a preview): keep the map where it was scrolled, unless it was just opened or zoomed
+      const box = el.querySelector<HTMLElement>('#dbdTreeMap');
+      const keep = box && !this.treeRecenter ? [box.scrollLeft, box.scrollTop] : null;
+      el.innerHTML = treeMapHtml(this.g, this.treeSel, this.treeZoom);
+      const nb = el.querySelector<HTMLElement>('#dbdTreeMap');
+      if (keep && nb) [nb.scrollLeft, nb.scrollTop] = keep;
+      else requestAnimationFrame(() => centerTree(el, this.treeSel, this.treeZoom));
+      this.treeRecenter = false;
+    }
     else if (s === 'barn') el.innerHTML = barnHtml(this.g, this.barnTab, this.barnSel, canOffer(this.g, 'ribbon'));
     else if (s === 'daily') el.innerHTML = this.backdrop() + this.dailyScreen();
     else if (s === 'duel') el.innerHTML = this.backdrop() + this.duelScreen();
@@ -588,6 +599,10 @@ export class GameApp {
       case 'skills': if (!this.modal.hidden) this.closeModal(); this.backTo = this.scr === 'skills' || this.scr === 'barn' ? this.backTo : this.scr; this.skillSel = firstSkill(this.g); this.show('skills'); break;
       case 'back': this.show(this.backTo); break;
       case 'skill': this.skillSel = arg; this.render('skills'); break;
+      case 'tree': this.treeSel = 'trunk'; this.treeRecenter = true; this.show('tree'); break;
+      case 'tree-back': this.show('skills'); break;
+      case 'tree-node': this.treeSel = arg; this.render('tree'); break;
+      case 'tree-zoom': this.treeZoom = Math.max(0, Math.min(TREE_ZOOMS.length - 1, this.treeZoom + (Number(arg) || 0))); this.treeRecenter = true; this.render('tree'); break;
       case 'skill-learn': this.learnSkill(arg); break;
       case 'skill-reset': this.resetAllSkills(); break;
       case 'barn': if (!this.modal.hidden) this.closeModal(); this.backTo = this.scr === 'skills' || this.scr === 'barn' ? this.backTo : this.scr; this.barnSel = this.g.flair.equipped[this.barnTab]; this.show('barn'); break;
@@ -1294,6 +1309,11 @@ export class GameApp {
   private applyLook(): void {
     (window as any).__DBD_LOOK = lookFor(this.g.flair);
   }
+
+  /** The 0.13 tree preview: the chosen node and the zoom step. */
+  private treeSel = 'trunk';
+  private treeZoom = 1;
+  private treeRecenter = true;
 
   private learnSkill(id: string): void {
     if (!learn(this.g, id)) return;
