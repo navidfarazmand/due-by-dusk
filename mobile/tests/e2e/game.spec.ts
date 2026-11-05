@@ -763,12 +763,28 @@ test('the 0.13 upgrade tree (a preview): 103 nodes from the skill map, the Works
   await expect(page.locator('.scr-tree .tr-nd')).toHaveCount(103);
   await page.locator('.scr-tree [data-act="tree-node"][data-arg="m2"]').click();
   await expect(page.locator('.scr-tree .tr-card')).toContainText('Retained counsel');
-  await expect(page.locator('.scr-tree .tr-card')).toContainText('Yours');
+  // the skill learned with diamonds is its first level; the next one can be bought in the tree
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Level 1 of 3');
   await page.locator('.scr-tree [data-act="tree-node"][data-arg="b9"]').click();
   await expect(page.locator('.scr-tree .tr-card')).toContainText('Coming in 0.13');
   await page.locator('.scr-tree [data-act="tree-zoom"][data-arg="1"]').click();
   await page.locator('.scr-tree [data-act="tree-back"]').click();
   await expect(page.locator('.scr-skills')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('the upgrade tree sells a node with savings, and the next one opens (0.13 preview)', async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 2), 5000));
+  await page.evaluate(() => (window as any).__DBD_APP.show('skills'));
+  await act(page, 'tree');
+  await page.locator('.scr-tree [data-act="tree-node"][data-arg="p1"]').click();
+  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="p1"]').click();
+  const g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g.tree.p1).toBe(1);
+  expect(g.wallet).toBeLessThan(5000);
+  expect(await page.evaluate(() => (window as any).__DBD_TREEFX.p1)).toBe(1);
+  await page.locator('.scr-tree [data-act="tree-node"][data-arg="p2"]').click();
+  await expect(page.locator('.scr-tree [data-act="tree-buy"][data-arg="p2"]')).toBeVisible();
   expect(errors).toEqual([]);
 });
 

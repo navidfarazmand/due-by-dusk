@@ -36,8 +36,15 @@ put it where the template says `/*TREE_DATA*/`).
 
 In the game (on the branch, not released yet): the skill map has a "See the 0.13 tree" button that opens the whole
 map (`src/shell/treeview.ts`, icons in `treeglyphs.ts`): it scrolls and zooms, and a card shows the chosen node.
-Level tracks show the player's Workshop levels and 12 tricks light up when the matching diamond skill is learned
-(`TRACK_LEVEL`, `SKILL_OF`); everything else says "Coming in 0.13". Nothing can be bought there yet.
+Level tracks show the player's Workshop levels (bought in the farmhouse, `TREE_WORKSHOP`). Nodes can be bought in
+the tree with savings, then farm cash above the farm's mark (the shell's `spend`, the same as upgrades): the 12 tricks
+that are today's diamond skills (`TREE_SKILL`; owning either gives the effect) and 10 new tricks the engine does
+through `window.__DBD_TREEFX` / `tfx(id)` (`TREE_NEW_LIVE`: Power cell, Big power, Chain fuel, Long rush, Spark start,
+Rooster, Keen edge, Golden soil, Deed discount, Scarecrow). A node opens when a neighbour is owned; a keystone is not
+sold if its partner is owned. The other nodes say "Coming in 0.13": to make one work, add its effect in the engine
+with `tfx('<id>')` and its id to `TREE_NEW_LIVE`. Still to do: a tree reset (refund as tree credit), long builds for
+keystones and every fifth level, moving the Workshop tracks and the diamond skills fully into the tree (retire
+diamonds), translations of the node names and effects, bot-tuned prices.
 
 ## Next work (0.13), in this order
 

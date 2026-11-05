@@ -222,3 +222,44 @@ function build(): TreeNode[] {
 }
 
 export const TREE: TreeNode[] = build();
+
+/** Level tracks that are today's Workshop upgrades (bought in the farmhouse, shown on the tree). */
+export const TREE_WORKSHOP: Record<string, string> = { b1: 'scythe', b2: 'clover', r1: 'swing', r2: 'hands', f1: 'soil', f2: 'days', m1: 'market' };
+/** Tricks that are today's diamond skills: owning either one gives the effect. */
+export const TREE_SKILL: Record<string, string> = {
+  b11: 'reap_exec', p5: 'reap_cleave', p8: 'reap_vortex', f3: 'soil_twin', f4: 'soil_dew', f7: 'soil_bounty', f8: 'soil_eden',
+  m2: 'gold_lawyer', m7: 'gold_interest', m8: 'gold_midas', a1: 'gold_treaty', a14: 'gold_herd',
+};
+/** New tricks the engine already does (window.__DBD_TREEFX): Power cell, Big power, Chain fuel, Long rush, Spark start,
+ *  Rooster, Keen edge, Golden soil, Deed discount, Scarecrow. */
+export const TREE_NEW_LIVE = ['p1', 'p2', 'p3', 'p4', 'p6', 'a3', 'b3', 'f5', 'm14', 'a2'];
+
+const NODE: Record<string, TreeNode> = {};
+for (const n of TREE) NODE[n.id] = n;
+export function treeNode(id: string): TreeNode | undefined {
+  return NODE[id];
+}
+
+/** Whether a node can be bought in the tree today. */
+export function nodeLive(id: string): boolean {
+  return !!TREE_SKILL[id] || TREE_NEW_LIVE.includes(id);
+}
+
+/** The price of the next level (a track's levels cost 12% more each). */
+export function nodeCost(n: TreeNode, level: number): number {
+  if (n.kind === 'track') return Math.round(n.price[0] * Math.pow(1.12, level));
+  return n.price[Math.min(level, n.price.length - 1)];
+}
+
+export type BuyCheck = { ok: true; cost: number } | { ok: false; why: 'workshop' | 'soon' | 'max' | 'locked' | 'pair' };
+
+/** `have(id)`: the level the player has of a node (bought in the tree, learned as a skill, or a Workshop level). */
+export function canBuyNode(n: TreeNode, have: (id: string) => number): BuyCheck {
+  if (TREE_WORKSHOP[n.id]) return { ok: false, why: 'workshop' };
+  if (!nodeLive(n.id)) return { ok: false, why: 'soon' };
+  const lv = have(n.id);
+  if (lv >= n.levels) return { ok: false, why: 'max' };
+  if (n.pair && have(n.pair) > 0) return { ok: false, why: 'pair' };
+  if (!n.parents.some(p => p === 'trunk' || have(p) > 0)) return { ok: false, why: 'locked' };
+  return { ok: true, cost: nodeCost(n, lv) };
+}

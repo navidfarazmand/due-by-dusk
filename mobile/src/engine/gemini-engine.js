@@ -16863,8 +16863,8 @@ export function startGeminiEngine() {
       spawn: spawnRate / dens / (pl.spawn || 1) / FIELD.spawn,
       vm,
       cc: Math.min(0.65, 0.04 + FX.crit * shed.clover + 0.02 * n('clover') + 0.04 * n('clover2') + (T.crit || 0)),
-      cm: n('heavy') ? 3.3 : 2.8,
-      gold: 0.015 + FX.gold * shed.clover + 0.02 * n('gold') + (T.gold || 0),
+      cm: Math.max(n('heavy') ? 3.3 : 2.8, [0, 3.2, 3.6, 4][Math.min(3, tfx('b3'))]),
+      gold: (0.015 + FX.gold * shed.clover + 0.02 * n('gold') + (T.gold || 0)) * (1 + Math.min(2, tfx('f5'))),
       comboCap: 2,
       chainGrace: n('combo') ? 1.2 : 0.9,
       radishSlow: n('whisper') || T.frost ? 0.5 : 1,
@@ -16943,7 +16943,7 @@ export function startGeminiEngine() {
   function billObj(idx) {
     const list = billList();
     const raw = list[FarmScene_clamp(idx, 0, list.length - 1)];
-    const m = (list === FarmScene_BILLS ? curBiome().mul : 1) * (hasSkill('gold_lawyer') ? 0.88 : 1.0);
+    const m = (list === FarmScene_BILLS ? curBiome().mul : 1) * (hasSkill('gold_lawyer') ? 0.88 : 1.0) * (tfx('m14') && idx >= list.length - 1 ? 0.9 : 1);
     return { name: raw.name, days: raw.days, note: raw.note, amt: Math.max(10, Math.round(raw.amt * m)) };
   }
   function billStatus() {
@@ -18020,8 +18020,8 @@ export function startGeminiEngine() {
     crowTimer = unlockLevel() >= 2 ? 5.5 : 999;
     chargeT = 0;
     chargeReady = false;
-    rushTimer = 0;
-    rushCharge = 0;
+    rushTimer = tfx('a3') ? 2 : 0;
+    rushCharge = RUSH_GOAL * 0.25 * Math.min(2, tfx('p6'));
     paused = false;
     today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0, boss: 0 };
     if (fieldSeed) for (const k in fieldSeq) fieldSeq[k] = 0;
@@ -18134,7 +18134,7 @@ export function startGeminiEngine() {
     if (focus) focus.focus();
   }
   function triggerRush() {
-    rushTimer = RUSH_DURATION;
+    rushTimer = RUSH_DURATION + Math.min(2, tfx('p4'));
     const sc = window.__PHASER_FARM_SCENE;
     if (sc && sc.cameras && sc.cameras.main) sc.cameras.main.flash(260, 255, 235, 145);
     rushCharge = 0;
@@ -18147,14 +18147,24 @@ export function startGeminiEngine() {
      Power booster attachment (the old Charge handle) adds 25% a level, Power mastery (the perk or the skill) 50%,
      and the windy day doubles it. When it's full, the tool in hand fires its own power where the finger is (on the
      thickest patch of crops if no finger is down), and the Harvest Rush starts: +50% pay, a faster field, 4 s. */
+  /** Upgrade-tree levels (0.13 preview): window.__DBD_TREEFX maps a node id (src/game/tree.ts) to its level. */
+  function tfx(id) {
+    const T = window.__DBD_TREEFX;
+    return (T && T[id]) | 0;
+  }
   function powerGain() {
     return (
       chainMultiplier() *
       (1 + 0.25 * (cur.chargeLv || 0)) *
       (cur.cleaver ? 1.5 : 1) *
-      (dailyEvent && dailyEvent.chargeFast ? dailyEvent.chargeFast : 1)
+      (dailyEvent && dailyEvent.chargeFast ? dailyEvent.chargeFast : 1) *
+      // tree: Power cell (+5% a level), Chain fuel (twice as fast from ×1.5)
+      (1 + 0.05 * tfx('p1')) *
+      (tfx('p3') && chainMultiplier() >= 1.5 ? 2 : 1)
     );
   }
+  /** Tree: Big power (+20% a level) on whatever power fires. */
+  let powerHit = 1;
   /** Where a power lands: at the finger, or on the thickest patch of crops when no finger is down. */
   function powerSpot() {
     if (pointer.active && pointer.placed) return { x: pointer.x, y: pointer.y };
@@ -18179,6 +18189,7 @@ export function startGeminiEngine() {
       lv = cur.chargeLv || 0,
       style = cur.style || 'sickle';
     today.powers = (today.powers || 0) + 1;
+    powerHit = 1 + 0.2 * Math.min(3, tfx('p2'));
     sweepT = 0.22;
     hitStopTimer = 0.04;
     shake(8);
@@ -18208,7 +18219,7 @@ export function startGeminiEngine() {
   /** Sickle: the Cleave, one big cut all around. */
   function powerCleave(x, y, lv) {
     const cleaveR = cur.R * (cur.cleaver ? 2.5 : 2.15) * (1 + 0.08 * lv);
-    const cleaveDmg = cur.dmg * 2.6 * (1 + 0.2 * lv);
+    const cleaveDmg = cur.dmg * 2.6 * (1 + 0.2 * lv) * powerHit;
     parts.push({ k: 'ring', x, y, r: cleaveR, life: 0.42, max: 0.42, c: '#38bdf8' });
     parts.push({ k: 'ring', x, y, r: cleaveR * 0.72, life: 0.32, max: 0.32, c: '#fde047' });
     addText('CLEAVE!', x, y - cleaveR * 0.6, '#fde047', 28, -45, 0.85);
@@ -18254,7 +18265,7 @@ export function startGeminiEngine() {
   /** Scythe: a whirlwind that follows the finger for a couple of seconds, chopping all the way. */
   function powerWhirl(x, y, lv) {
     const r = cur.R * 1.45 * (1 + 0.08 * lv);
-    dbdVortexes.push({ x, y, r, t: 2.4 + 0.3 * lv, acc: 0, a: 0, follow: true, dmg: 0.75 * (1 + 0.2 * lv) });
+    dbdVortexes.push({ x, y, r, t: 2.4 + 0.3 * lv, acc: 0, a: 0, follow: true, dmg: 0.75 * (1 + 0.2 * lv) * powerHit });
     parts.push({ k: 'ring', x, y, r: r * 1.3, life: 0.4, max: 0.4, c: '#fde047' });
     addText('WHIRLWIND!', x, y - r, '#fde047', 28, -45, 0.9);
     powerCalmsGoat(x, y, r);
@@ -18287,7 +18298,7 @@ export function startGeminiEngine() {
           continue;
         }
         c.burnT = Math.max(c.burnT || 0, (cur.burn || 1.4) + 1.2);
-        c.burnD = Math.max(c.burnD || 0, cur.dmg * 2.6 * (1 + 0.2 * w.lv));
+        c.burnD = Math.max(c.burnD || 0, cur.dmg * 2.6 * (1 + 0.2 * w.lv) * powerHit);
         c.flash = 1;
         c.hpShow = 1.6;
       }
@@ -18349,7 +18360,7 @@ export function startGeminiEngine() {
         t: -i * 0.05,
         dur: FarmScene_clamp(tg.d / 900, 0.08, 0.4),
         crit: true,
-        pw: 1 + 0.2 * lv,
+        pw: (1 + 0.2 * lv) * powerHit,
         wob: Math.random() * 6,
       });
     }
@@ -18397,7 +18408,7 @@ export function startGeminiEngine() {
     });
   }
   function crowSteal(cr) {
-    const amt = Math.min(Math.floor(farm.cash), Math.max(2, Math.round(farm.cash * 0.06)));
+    const amt = Math.round(Math.min(Math.floor(farm.cash), Math.max(2, Math.round(farm.cash * 0.06))) * (1 - 0.5 * Math.min(2, tfx('a2'))));
     cr.state = 'out';
     cr.loot = Math.max(0, amt);
     farm.cash = Math.max(0, farm.cash - cr.loot);

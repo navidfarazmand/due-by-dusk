@@ -34,7 +34,8 @@ import {
 } from './extras';
 import { ribbonIcon } from './looks';
 import { arthurOnCard } from './arthur';
-import { TREE_ZOOMS, centerTree, treeMapHtml } from './treeview';
+import { TREE_ZOOMS, centerTree, treeHave, treeMapHtml } from './treeview';
+import { TREE_SKILL, canBuyNode, treeNode } from '../game/tree';
 
 type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'skills' | 'tree' | 'barn' | 'daily' | 'duel' | 'side';
 
@@ -602,6 +603,7 @@ export class GameApp {
       case 'tree': this.treeSel = 'trunk'; this.treeRecenter = true; this.show('tree'); break;
       case 'tree-back': this.show('skills'); break;
       case 'tree-node': this.treeSel = arg; this.render('tree'); break;
+      case 'tree-buy': this.buyTreeNode(arg); break;
       case 'tree-zoom': this.treeZoom = Math.max(0, Math.min(TREE_ZOOMS.length - 1, this.treeZoom + (Number(arg) || 0))); this.treeRecenter = true; this.render('tree'); break;
       case 'skill-learn': this.learnSkill(arg); break;
       case 'skill-reset': this.resetAllSkills(); break;
@@ -1299,11 +1301,43 @@ export class GameApp {
   // ------------------------------------------------------------------ skills and looks
 
   private applySkills(): void {
+    // the upgrade tree (0.13 preview): its nodes that are today's skills count as learned; its new tricks go to the
+    // engine as levels (window.__DBD_TREEFX)
+    const tree = this.g.tree || {};
+    (window as any).__DBD_TREEFX = { ...tree };
+    const fromTree = Object.keys(tree).filter(id => tree[id] > 0 && TREE_SKILL[id]).map(id => TREE_SKILL[id]);
     try {
-      engine().setSkills(this.g.skills);
+      engine().setSkills([...new Set([...this.g.skills, ...fromTree])]);
     } catch {
       /* engine not ready yet; start() applies them */
     }
+  }
+
+  /** Buy a node's next level in the tree: savings first, then farm cash above the farm's mark (as upgrades do). */
+  private buyTreeNode(id: string): void {
+    const n = treeNode(id);
+    if (!n) return;
+    const have = (x: string) => {
+      const m = treeNode(x);
+      return m ? treeHave(this.g, m) : 0;
+    };
+    const chk = canBuyNode(n, have);
+    if (!chk.ok) return;
+    if (!this.spend(chk.cost)) {
+      this.toast(t('Not enough money for {name}.', { name: n.name }));
+      return;
+    }
+    const tree = (this.g.tree ||= {});
+    tree[id] = have(id) + 1;
+    this.applySkills();
+    try {
+      engine().refreshStats();
+    } catch {
+      /* engine not ready */
+    }
+    this.saveNow();
+    this.toast(t('{name}: yours.', { name: n.name }));
+    this.render('tree');
   }
 
   private applyLook(): void {

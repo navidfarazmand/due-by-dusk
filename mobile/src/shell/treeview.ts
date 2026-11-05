@@ -3,7 +3,7 @@
 // has: the Workshop levels on the level tracks, and learned skills on their nodes. Buying in the tree comes with 0.13.
 
 import { t } from '../i18n/i18n';
-import { BRANCHES, TREE, type TreeNode, type TreeBranch } from '../game/tree';
+import { BRANCHES, TREE, TREE_SKILL, TREE_WORKSHOP, canBuyNode, type TreeNode, type TreeBranch } from '../game/tree';
 import type { GameSave } from '../game/progress';
 import { glyphPath } from './treeglyphs';
 import { esc } from './dom';
@@ -11,13 +11,8 @@ import { esc } from './dom';
 const COL: Record<string, string> = {
   blade: '#FF6B57', power: '#B48CFF', reach: '#5FB4FF', field: '#6CD07A', market: '#FFC23D', ranch: '#E5A56C', bridge: '#CFC6B8', trunk: '#FFC23D',
 };
-/** Level tracks that are today's Workshop upgrades. */
-const TRACK_LEVEL: Record<string, string> = { b1: 'scythe', b2: 'clover', r1: 'swing', r2: 'hands', f1: 'soil', f2: 'days', m1: 'market' };
-/** Tricks that are today's diamond skills. */
-const SKILL_OF: Record<string, string> = {
-  b11: 'reap_exec', p5: 'reap_cleave', p8: 'reap_vortex', f3: 'soil_twin', f4: 'soil_dew', f7: 'soil_bounty', f8: 'soil_eden',
-  m2: 'gold_lawyer', m7: 'gold_interest', m8: 'gold_midas', a1: 'gold_treaty', a14: 'gold_herd',
-};
+const TRACK_LEVEL = TREE_WORKSHOP;
+const SKILL_OF = TREE_SKILL;
 export const TREE_ZOOMS = [620, 820, 1100];
 
 const byId: Record<string, TreeNode> = {};
@@ -41,8 +36,9 @@ export function treeHave(g: GameSave, n: TreeNode): number {
   if (n.kind === 'trunk') return 1;
   const w = TRACK_LEVEL[n.id];
   if (w) return (g.workshop.levels as unknown as Record<string, number>)[w] || 0;
+  const bought = (g.tree && g.tree[n.id]) || 0;
   const s = SKILL_OF[n.id];
-  return s && g.skills.includes(s) ? 1 : 0;
+  return Math.max(bought, s && g.skills.includes(s) ? 1 : 0);
 }
 
 function money(v: number): string {
@@ -98,8 +94,18 @@ function cardHtml(g: GameSave, n: TreeNode): string {
   let state: string;
   if (n.kind === 'trunk') state = t('Yours from the start');
   else if (n.kind === 'track') state = t('Level {n} of {m}', { n: have, m: n.levels });
-  else if (have) state = t('Yours');
-  else state = t('Coming in 0.13');
+  else if (have >= n.levels) state = t('Yours');
+  else if (have) state = t('Level {n} of {m}', { n: have, m: n.levels });
+  else state = t('Not yours yet');
+  // what the player can do here (0.13 preview: today's skills and ten new tricks can be bought)
+  const chk = n.kind === 'trunk' ? null : canBuyNode(n, id => (byId[id] ? treeHave(g, byId[id]) : 0));
+  const why: Record<string, string> = {
+    workshop: t('Upgrade it in the farmhouse.'), soon: t('Coming in 0.13.'), max: '', pair: t('You own its partner keystone.'),
+    locked: t('Buy a node next to it first.'),
+  };
+  const action = !chk ? '' : chk.ok
+    ? `<button type="button" class="st-btn gold btn-sm tr-buy" data-act="tree-buy" data-arg="${n.id}">${esc(t('Buy for {amt}', { amt: money(chk.cost) }))}</button>`
+    : why[chk.why] ? `<p class="tr-small">${esc(why[chk.why])}</p>` : '';
   const price = n.kind === 'trunk' ? '' : n.kind === 'track' ? `${t('from')} ${money(n.price[0])}` : n.price.map(money).join(' · ');
   const pair = n.pair ? `<p class="tr-small">${esc(t('Or {name}: you can own one of the two.', { name: byId[n.pair].name }))}</p>` : '';
   return `<div class="tr-card">
@@ -107,6 +113,7 @@ function cardHtml(g: GameSave, n: TreeNode): string {
     <div class="tr-head"><svg width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><path d="${glyphPath(n.glyph)}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><h3>${esc(n.name)}</h3></div>
     <p>${esc(n.effect)}</p>${pair}
     <div class="tr-meta"><b class="${have ? 'own' : ''}">${esc(state)}</b>${price ? `<b>${esc(price)}</b>` : ''}</div>
+    ${action}
   </div>`;
 }
 
@@ -137,7 +144,7 @@ export function treeMapHtml(g: GameSave, sel: string, zoom: number): string {
   const px = TREE_ZOOMS[Math.max(0, Math.min(TREE_ZOOMS.length - 1, zoom))];
   return `<div class="tr-wrap">
     <div class="tr-top"><button type="button" class="st-btn st-sq" data-act="tree-back" aria-label="${t('Back')}">${backIcon()}</button>
-      <div class="tr-titles"><h2>${t('Upgrade tree')}</h2><p>${t('{n} nodes · a preview of 0.13 · you have {m}', { n: TREE.length, m: owned })}</p></div>
+      <div class="tr-titles"><h2>${t('Upgrade tree')}</h2><p>${t('{n} nodes · you have {m} · savings {amt}', { n: TREE.length, m: owned, amt: money(Math.round(g.wallet || 0)) })}</p></div>
       <div class="tr-zoom"><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="-1" aria-label="${t('Zoom out')}">−</button><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="1" aria-label="${t('Zoom in')}">+</button></div></div>
     <div class="tr-body">
       <div class="tr-map" id="dbdTreeMap"><svg viewBox="0 0 1000 1000" width="${px}" height="${px}" role="img" aria-label="${t('Upgrade tree')}">${rings}${labels}${links}${nodes}</svg></div>

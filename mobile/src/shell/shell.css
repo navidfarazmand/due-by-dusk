@@ -846,3 +846,4 @@
 .tr-meta b { font: 800 11.5px/1 var(--ui-body); padding: 6px 8px; border-radius: 999px; background: rgba(255, 241, 214, .1); }
 .tr-meta b.own { background: #FFC23D; color: #2B1708; }
 .sk-tree-btn { position: absolute; left: 0; top: 72px; padding: 0 12px; pointer-events: auto; }
+.tr-buy { align-self: flex-start; padding: 0 14px; height: 38px; font-size: 16px; }

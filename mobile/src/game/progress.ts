@@ -107,6 +107,8 @@ export interface GameSave {
   tools: ToolsState;
   /** Skills learned on the skill map (diamonds come from wins; see skills.ts). */
   skills: string[];
+  /** The upgrade tree (0.13 preview): node id -> level bought there. */
+  tree?: Record<string, number>;
   /** Diamonds from outside the route (daily gold medals). */
   bonusDiamonds: number;
   /** County-fair ribbons for the Bling Barn, and what's bought there. */
@@ -219,6 +221,11 @@ export function parseGame(raw: string | null): GameSave {
   g.econ = ECONOMY;
   g.tools = parseTools(o.tools);
   if (Array.isArray(o.skills)) g.skills = o.skills.filter((s: unknown) => typeof s === 'string' && /^[a-z_]{3,30}$/.test(s as string)).slice(0, 40);
+  if (o.tree && typeof o.tree === 'object') {
+    const tr: Record<string, number> = {};
+    for (const [k, v] of Object.entries(o.tree as Record<string, unknown>)) if (/^[a-z]\d{1,2}$/.test(k) && Number.isFinite(v as number)) tr[k] = Math.max(0, Math.min(60, Math.floor(v as number)));
+    g.tree = tr;
+  }
   g.bonusDiamonds = Math.max(0, Math.floor(num(o.bonusDiamonds)));
   if (Array.isArray(o.recentEarn)) g.recentEarn = o.recentEarn.map(num).filter((v: number) => v >= 0).slice(-RECENT_DAYS);
   g.flair = parseFlair(o.flair);

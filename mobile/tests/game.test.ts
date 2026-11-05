@@ -8,6 +8,7 @@ import {
 } from '../src/game/progress';
 import { MAX_LEVEL, SHED_FX, UPGRADES, emptyLevels, oldWorkshopRefund, settleJob, startUpgrade, upgradeCost, upgradeDuration } from '../src/game/workshop';
 import { TOOLS, modCost, newTools, parseTools, toolStats, toolSummary } from '../src/game/tools';
+import { TREE, canBuyNode, nodeCost, treeNode } from '../src/game/tree';
 
 function winAll(g: GameSave, ids: string[], stars = 3): void {
   for (const id of ids) g.cities[id] = { won: true, stars, bestDay: 100, crown: stars === 3, bestDays: 2, plays: 1, paid: 0 };
@@ -375,5 +376,26 @@ describe('the Power booster (the Charge handle until 0.11)', () => {
     expect(toolSummary(toolStats({ owned: ['sickle', 'scythe'], equipped: 'scythe', mods: {} }, 'scythe'))[0]).toBe('Power: Whirlwind');
     expect(modCost('sickle', 'charge', 0)).toBe(300);
     expect(parseTools({ owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 9 } }).mods['sickle.charge']).toBe(5);
+  });
+});
+
+describe('the upgrade tree (0.13 preview)', () => {
+  it('has at least 100 nodes, each opening from one that exists', () => {
+    expect(TREE.length).toBeGreaterThanOrEqual(100);
+    const ids = new Set(TREE.map(n => n.id));
+    for (const n of TREE) for (const p of n.parents) expect(ids.has(p)).toBe(true);
+  });
+  it('sells a node next to one you have, one level at a time; the Workshop tracks stay in the farmhouse', () => {
+    const owned: Record<string, number> = {};
+    const have = (id: string) => owned[id] || 0;
+    expect(canBuyNode(treeNode('p1')!, have).ok).toBe(true);
+    expect(canBuyNode(treeNode('p2')!, have)).toEqual({ ok: false, why: 'locked' });
+    owned.p1 = 1;
+    expect(canBuyNode(treeNode('p2')!, have).ok).toBe(true);
+    expect(canBuyNode(treeNode('b1')!, have)).toEqual({ ok: false, why: 'workshop' });
+    expect(canBuyNode(treeNode('b4')!, have)).toEqual({ ok: false, why: 'soon' });
+    expect(nodeCost(treeNode('p1')!, 1)).toBe(Math.round(treeNode('p1')!.price[0] * 1.12));
+    owned.p2 = 3;
+    expect(canBuyNode(treeNode('p2')!, have)).toEqual({ ok: false, why: 'max' });
   });
 });
