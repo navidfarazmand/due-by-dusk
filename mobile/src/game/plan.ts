@@ -278,33 +278,58 @@ export function valMul(k: number): number {
 }
 
 /**
- * What an average player earns on a day of farm k, as a share of dayRef(k) × STAGE_PAY (a steady player's day with the
- * whole ladder out, measured on 25 s days). Calibrated with the bots in scripts/bots.mjs on 15 s days with an
- * on-track build (v0.12): see AVG_POINTS.
+ * Bills from the bots (v0.12, Navid 5 Nov: "you did bad even with an ad, you should not have enough to pay the bill.
+ * you are medium and with ad yes you can pay the bill, you are great? you don't need to watch the ad. but my great i
+ * mean like computer great, not human great"). scripts/bots.mjs plays real 15 s days with three players (strong,
+ * average, weak) and on-track builds; these numbers are what the average one earned.
+ *
+ * DAY_SHAPE: an average day by day of the farm, against its settled days (the mean of days 5-19). Day 1 is carrots
+ * only; golden corn comes on day 3, the best day; after that each tougher crop pays about what it costs to cut.
  */
-const AVG_POINTS: Array<[k: number, share: number]> = [[0, 0.6], [29, 0.6]];
+const DAY_SHAPE = [0.61, 0.88, 1.15, 1.13, 1.11];
+/** Days 6 on, against the settled days (whose mean includes day 5's 1.11). */
+const LATER_DAY = 0.96;
+export function dayShape(d: number): number {
+  return d >= 1 && d <= DAY_SHAPE.length ? DAY_SHAPE[d - 1] : LATER_DAY;
+}
+/** An average player's settled day on farm k, as a share of dayRef(k) (measured on 25 s days before v0.12). */
+const AVG_POINTS: Array<[k: number, share: number]> = [
+  // Canada and the USA: each farm measured (two runs of days 1, 2, 3, 5, 8, 12 and 19 per player)
+  [0, 0.307], [1, 0.341], [2, 0.253], [3, 0.32], [4, 0.3], [5, 0.294], [6, 0.246], [7, 0.308], [8, 0.251],
+  // later countries: provisional until their bots are in
+  [29, 0.27],
+];
 export function avgDayShare(k: number): number {
   const P = AVG_POINTS;
   if (k <= P[0][0]) return P[0][1];
   for (let i = 1; i < P.length; i++) if (k <= P[i][0]) { const [k0, a] = P[i - 1], [k1, b] = P[i]; return a + ((b - a) * (k - k0)) / (k1 - k0); }
   return P[P.length - 1][1];
 }
-/** What an average player earns on day `d` of farm k (whose ladder has `rungs` crops). */
-export function avgDay(k: number, d: number, rungs: number): number {
-  return dayRef(k) * STAGE_PAY[stageOnDay(d, rungs)] * avgDayShare(k);
+/** What an average player earns on day `d` of farm k. */
+export function avgDay(k: number, d: number): number {
+  return dayRef(k) * avgDayShare(k) * dayShape(d);
 }
-/** A bill asks for an average player's days plus this share of one more day: one doubled day (an ad) covers it, so an
- *  average player pays with one ad, a computer-strong one with none, and a weak one not even with an ad. */
+/** A bill asks for an average player's days plus this share of the best of them: one doubled day (an ad) covers it,
+ *  so an average player pays with one ad, a computer-strong one with none, and a weak one not even with an ad. */
 export const BILL_OVER = 0.5;
-/** Each bill of a farm asks this much more than the one before, for the same days. */
-export const BILL_CLIMB = 0.04;
+/** Each bill of a farm asks this much more than the one before, for the same days: upgrades should keep up. */
+export const BILL_CLIMB = 0.01;
+/** The rival's record: this many average settled days in one. The strong bot's best day (day 3, golden corn) is 1.8 to
+ *  3 of them from Gatineau on, the average one's 1.15 to 1.5; on the first farms the two are close, so the record
+ *  starts lower there (1.3 on Charlottetown) and a good first run can take the crown. */
+export const RECORD_DAYS = 1.6;
 
+function moneyStep(v: number): number {
+  return v < 100 ? 5 : v < 1000 ? 10 : v < 10000 ? 50 : v < 100000 ? 100 : 500;
+}
 function roundMoney(v: number): number {
-  if (v < 100) return Math.max(10, Math.round(v / 5) * 5);
-  if (v < 1000) return Math.round(v / 10) * 10;
-  if (v < 10000) return Math.round(v / 50) * 50;
-  if (v < 100000) return Math.round(v / 100) * 100;
-  return Math.round(v / 500) * 500;
+  const st = moneyStep(v);
+  return v < 100 ? Math.max(10, Math.round(v / st) * st) : Math.round(v / st) * st;
+}
+/** At least a little more than `p`, in round money (each bill of a farm asks more than the one before). */
+function moreThan(p: number): number {
+  const v = roundMoney(p * 1.01 + 5);
+  return v > p ? v : p + moneyStep(p);
 }
 
 function pickBillNames(city: CityDef, k: number, n: number): Array<[string, string]> {
@@ -343,15 +368,20 @@ export function planFor(cityId: string): CityPlan {
   let prevAmt = 0;
   const bills: Bill[] = names.map((nm, i) => {
     const from = i ? billDueDay(i - 1) + 1 : 1, to = billDueDay(i);
-    let sum = 0;
-    for (let d = from; d <= to; d++) sum += avgDay(k, d, n);
+    let sum = 0,
+      best = 0;
+    for (let d = from; d <= to; d++) {
+      const v = avgDay(k, d);
+      sum += v;
+      best = Math.max(best, v);
+    }
     return {
       name: nm[0],
       note: nm[1],
       days: billDays(i),
       // a boss farm: time spent on the boss earns nothing, so its bills are lighter; the bounty helps with the deed
       // later bills climb a little (a perk comes with every bill paid, and upgrades keep coming)
-      amt: (prevAmt = Math.max(roundMoney((sum + BILL_OVER * avgDay(k, to, n)) * (1 + BILL_CLIMB * i) * mul * (boss ? (i === n - 1 ? 1 : 0.85) : 1)), roundMoney(prevAmt * 1.02 + 5))),
+      amt: (prevAmt = Math.max(roundMoney((sum + BILL_OVER * best) * (1 + BILL_CLIMB * i) * mul * (boss ? (i === n - 1 ? 1 : 0.85) : 1)), moreThan(prevAmt))),
     };
   });
   // the goat and the crows come after two bills on the first farms, from the start later on
@@ -394,7 +424,7 @@ export function planFor(cityId: string): CityPlan {
     cropHp,
     // the rival's best day: about a good day with the whole ladder out, a little more on later farms, so a good
     // player can take the crown on a first run (stars open the next country)
-    record: roundMoney(ref * STAGE_PAY[n - 1] * (0.95 + 0.01 * k)),
+    record: roundMoney(ref * avgDayShare(k) * (RECORD_DAYS - 0.3 * Math.max(0, 1 - k / 2)) * mul),
     totalDays,
     spare: roundMoney(bills[n - 1].amt * 0.5),
     signatureEvent: SIGNATURE[cityId] || 'market',

@@ -59,21 +59,37 @@ workflow, run 6):
 - [x] Canada's snow: the field itself snow white, crops push snow (with a little soil) when they come up.
 - [x] Crop size and count are right now (keep them).
 
-Needs Navid's decision, for 0.12 (proposals page: https://claude.ai/artifact/U3PTtWms8LHpEti34e7QVH):
-- [ ] Difficulty: far too easy (Kelowna, day 6: every day pays much more than the bill). Target: poor play can't pay
-      even with an ad; average play pays with an ad; very strong play (bot-level) pays without one.
-- [ ] Bills: a bill every other day is samey; first bills short (2 days) so the new crops come in, later bills longer
-      (4–6 days) and bigger.
-- [ ] Crops: when each crop joins (each bill now; each day instead, all in by day 5–6?) and whether a crop found on one
-      farm carries to the next.
-- [ ] Days feel too long before upgrades and perks: shorter early days that grow with upgrades.
-- [ ] Boss: should do something that hurts (eat crops, plant a bomb, ...) and be much harder (beaten on day 2).
-- [ ] Charge handle: still can't trigger it on purpose. Options: a meter by the day timer that fills as you cut and
-      lets you release the charge; or each tool's own special fires when you reach a multiplier.
-- [ ] Skills: much deeper (more branches, real choices); how upgrades, perks and skills fit together.
-- [ ] Cities: each city its own look and weather (Gatineau: autumn leaves falling instead of snow, ...) and its landmark
-      in the background (Toronto: the CN Tower, ...). Today every Canadian farm looks the same.
-- [ ] Arthur (Grumble & Sons' banker) in the background, reacting to the day: sulking when you do well, happier as you
-      fall short on a bill night, angry when you pay. 10 designs for Navid to pick from first.
+## 0.12 (Navid's picks, 5 Nov 2026; choices page: https://claude.ai/artifact/U3PTtWms8LHpEti34e7QVH)
 
-Replaces the open "six countries' weather" item above: looks per city, not only per country.
+- [x] Bills of 2, 3, 4, then 5 days (later bills stay at 5): a Canadian farm is 19 days, a Japanese one 29. The day
+      card shows a dot per day (smaller dots on farms over 20 days).
+- [x] Days start at 15 s; Longer days and skills add seconds (to about 30).
+- [x] A new crop every morning: carrots on day 1, the radish on day 2, the country's three, then the rest. The day
+      card names the crop that joins the field that morning (the chest no longer does).
+- [ ] Bills tuned with three bots (scripts/bots.mjs: strong, average, weak; on-track builds, 15 s days): weak can't pay
+      even with an ad, average pays with one ad, a computer-strong player needs none.
+- [x] The boss: eats the best crops (the Muncher), its armour is off only right after it eats (hit it then and it spits
+      the coins back), bomb seeds from its second phase, a country storm from its third (ice, sand or mud; two hits
+      free a crop, no bonus). It can fall mid-farm only if you neglect the crops (and then the bills).
+- [x] Thief crows on every farm: they take 6% of the jar and fly off; swipe them first to get the coins back.
+- [x] Late fees instead of "one more day": up to three late days, each needs an ad; Grumble & Sons take 20%, then
+      40%, then 60% of that day's earnings; after the third the bank takes the farm.
+- [x] One money: nothing carries from a won farm to the next (no grinding the first town for upgrades); free coins go
+      to the farm you're on. The won card no longer shows "+$0 to your savings".
+- [x] Power meter beside the sun dial (replaces the hold-still Charge Cleave and the RUSH counter): cuts fill it, a
+      chain fills it faster; full fires the tool's power and the Harvest Rush together. Sickle: Cleave. Scythe:
+      Whirlwind (follows the finger). Flame weeder: Fire wave. Seed blaster: Seed storm. The Charge handle is now the
+      Power booster (same id, testers keep their levels), on every tool. A card explains the meter once per tool.
+- [x] Arthur Grumble (Top Hat Tubby, round 2; Navid: "yes to arthur") on the HUD, left of the sound button: gloats on a
+      bill's due day when you're short (more as dusk nears), angry when you have the money, stomps and sulks the
+      morning after a bill is paid, shocked when his crow is chased off or the boss falls, faints on the won card.
+- [ ] Every city its own look, from one table (src/game/citylook.ts) so new countries and cities are easy to add:
+  - [x] Weather by city: Gatineau autumn leaves (falling and lying on the soil), Leamington and Kelowna a clear field,
+        Charlottetown, Toronto and Saskatoon snow.
+  - [ ] Landmarks in each Canadian city's skyline band (src/art/bands/<city id>.webp): the lighthouse, the Peace
+        Tower, the CN Tower, the big tomato and greenhouses, a grain elevator, Okanagan Lake with Ogopogo.
+- [ ] Docs (README, ARCHITECTURE), release notes, version 0.12.0, Play closed testing.
+
+Next version (0.13), to send to Navid before building: one upgrade tree bought with cash (Workshop and skills
+together, six branches, free reset, long builds with an ad); perks with 5 levels (a perk can come back as its next
+level); crop levels that never reset; a tool shop and a seed album; diamonds retired (refunded).

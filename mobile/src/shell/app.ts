@@ -352,7 +352,9 @@ export class GameApp {
     });
     on('crowSteal', () => this.hud.arthurCrow(true));
     on('crowBack', () => this.hud.arthurCrow(false));
-    on('billPaid', () => this.hud.arthurBillPaid());
+    on('billPaid', () => {
+      if (!this.side && !this.intro) this.hud.arthurBillPaid();
+    });
     on('bossDown', () => {
       this.hud.arthurShock();
       if (this.intro) this.intro.down = true;

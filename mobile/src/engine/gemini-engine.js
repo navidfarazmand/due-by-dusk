@@ -16493,8 +16493,8 @@ export function startGeminiEngine() {
       name: 'Power mastery',
       line: 'Your power meter fills 50% faster and your power hits wider.',
       once: true,
-      // v0.11.1: the Charge Cleave is a tool attachment now, so this perk is no longer offered (old saves keep it)
-      req: () => false,
+      // v0.12: every tool has a power now, so the perk is back (not for a player whose skill already does the same)
+      req: () => !hasSkill('reap_cleave'),
     },
     { id: 'spite3', tier: 3, icon: 'blade', name: 'Grudge', line: '+15% damage on this farm.' },
     { id: 'fever3', tier: 3, icon: 'coin', name: 'Fair day', line: 'Crops sell for 18% more.' },
