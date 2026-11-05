@@ -118,7 +118,7 @@ function cardHtml(g: GameSave, n: TreeNode): string {
 }
 
 /** The tree screen: the map (it scrolls; + and - zoom) and the chosen node's card. */
-export function treeMapHtml(g: GameSave, sel: string, zoom: number): string {
+export function treeMapHtml(g: GameSave, sel: string, zoom: number, resetArmed = false): string {
   const on = wayHome(sel);
   let links = '';
   for (const n of TREE) {
@@ -144,7 +144,8 @@ export function treeMapHtml(g: GameSave, sel: string, zoom: number): string {
   const px = TREE_ZOOMS[Math.max(0, Math.min(TREE_ZOOMS.length - 1, zoom))];
   return `<div class="tr-wrap">
     <div class="tr-top"><button type="button" class="st-btn st-sq" data-act="tree-back" aria-label="${t('Back')}">${backIcon()}</button>
-      <div class="tr-titles"><h2>${t('Upgrade tree')}</h2><p>${t('{n} nodes · you have {m} · savings {amt}', { n: TREE.length, m: owned, amt: money(Math.round(g.wallet || 0)) })}</p></div>
+      <div class="tr-titles"><h2>${t('Upgrade tree')}</h2><p>${t('{n} nodes · you have {m} · savings {amt}', { n: TREE.length, m: owned, amt: money(Math.round(g.wallet || 0)) })}${g.treeCredit ? ' · ' + esc(t('tree credit {amt}', { amt: money(g.treeCredit) })) : ''}</p></div>
+      ${g.tree && Object.values(g.tree).some(v => v > 0) ? `<button type="button" class="st-btn btn-sm tr-reset${resetArmed ? ' red' : ''}" data-act="tree-reset">${esc(resetArmed ? t('Tap again to reset') : t('Reset'))}</button>` : ''}
       <div class="tr-zoom"><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="-1" aria-label="${t('Zoom out')}">−</button><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="1" aria-label="${t('Zoom in')}">+</button></div></div>
     <div class="tr-body">
       <div class="tr-map" id="dbdTreeMap"><svg viewBox="0 0 1000 1000" width="${px}" height="${px}" role="img" aria-label="${t('Upgrade tree')}">${rings}${labels}${links}${nodes}</svg></div>

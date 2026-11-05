@@ -785,6 +785,13 @@ test('the upgrade tree sells a node with savings, and the next one opens (0.13 p
   expect(await page.evaluate(() => (window as any).__DBD_TREEFX.p1)).toBe(1);
   await page.locator('.scr-tree [data-act="tree-node"][data-arg="p2"]').click();
   await expect(page.locator('.scr-tree [data-act="tree-buy"][data-arg="p2"]')).toBeVisible();
+  // a free reset: two taps, and what it cost comes back as tree credit
+  const spent = 5000 - g.wallet;
+  await page.locator('.scr-tree [data-act="tree-reset"]').click();
+  await page.locator('.scr-tree [data-act="tree-reset"]').click();
+  const g2 = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(Object.values(g2.tree).filter((v: any) => v > 0)).toHaveLength(0);
+  expect(g2.treeCredit).toBe(spent);
   expect(errors).toEqual([]);
 });
 

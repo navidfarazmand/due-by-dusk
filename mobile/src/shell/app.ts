@@ -35,7 +35,7 @@ import {
 import { ribbonIcon } from './looks';
 import { arthurOnCard } from './arthur';
 import { TREE_ZOOMS, centerTree, treeHave, treeMapHtml } from './treeview';
-import { TREE_SKILL, canBuyNode, treeNode } from '../game/tree';
+import { TREE_SKILL, canBuyNode, treeNode, treeRefund } from '../game/tree';
 
 type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'skills' | 'tree' | 'barn' | 'daily' | 'duel' | 'side';
 
@@ -512,7 +512,7 @@ export class GameApp {
       // the 0.13 tree (a preview): keep the map where it was scrolled, unless it was just opened or zoomed
       const box = el.querySelector<HTMLElement>('#dbdTreeMap');
       const keep = box && !this.treeRecenter ? [box.scrollLeft, box.scrollTop] : null;
-      el.innerHTML = treeMapHtml(this.g, this.treeSel, this.treeZoom);
+      el.innerHTML = treeMapHtml(this.g, this.treeSel, this.treeZoom, this.treeResetArmed);
       const nb = el.querySelector<HTMLElement>('#dbdTreeMap');
       if (keep && nb) [nb.scrollLeft, nb.scrollTop] = keep;
       else requestAnimationFrame(() => centerTree(el, this.treeSel, this.treeZoom));
@@ -603,7 +603,8 @@ export class GameApp {
       case 'tree': this.treeSel = 'trunk'; this.treeRecenter = true; this.show('tree'); break;
       case 'tree-back': this.show('skills'); break;
       case 'tree-node': this.treeSel = arg; this.render('tree'); break;
-      case 'tree-buy': this.buyTreeNode(arg); break;
+      case 'tree-buy': this.treeResetArmed = false; this.buyTreeNode(arg); break;
+      case 'tree-reset': this.resetTree(); break;
       case 'tree-zoom': this.treeZoom = Math.max(0, Math.min(TREE_ZOOMS.length - 1, this.treeZoom + (Number(arg) || 0))); this.treeRecenter = true; this.render('tree'); break;
       case 'skill-learn': this.learnSkill(arg); break;
       case 'skill-reset': this.resetAllSkills(); break;
@@ -1323,10 +1324,13 @@ export class GameApp {
     };
     const chk = canBuyNode(n, have);
     if (!chk.ok) return;
-    if (!this.spend(chk.cost)) {
+    // tree credit (from a reset) first, then savings and farm cash
+    const credit = Math.min(this.g.treeCredit || 0, chk.cost);
+    if (chk.cost - credit > 0 && !this.spend(chk.cost - credit)) {
       this.toast(t('Not enough money for {name}.', { name: n.name }));
       return;
     }
+    if (credit) this.g.treeCredit = (this.g.treeCredit || 0) - credit;
     const tree = (this.g.tree ||= {});
     tree[id] = have(id) + 1;
     this.applySkills();
@@ -1348,6 +1352,32 @@ export class GameApp {
   private treeSel = 'trunk';
   private treeZoom = 1;
   private treeRecenter = true;
+  /** The tree's reset button asks for a second tap. */
+  private treeResetArmed = false;
+
+  /** A free reset: everything bought in the tree comes back as tree credit, which only buys tree nodes. */
+  private resetTree(): void {
+    const tree = this.g.tree || {};
+    if (!Object.values(tree).some(v => v > 0)) return;
+    if (!this.treeResetArmed) {
+      this.treeResetArmed = true;
+      this.render('tree');
+      return;
+    }
+    this.treeResetArmed = false;
+    const back = treeRefund(tree);
+    this.g.treeCredit = (this.g.treeCredit || 0) + back;
+    this.g.tree = {};
+    this.applySkills();
+    try {
+      engine().refreshStats();
+    } catch {
+      /* engine not ready */
+    }
+    this.saveNow();
+    this.toast(t('Tree reset: {amt} back as tree credit.', { amt: money(back) }));
+    this.render('tree');
+  }
 
   private learnSkill(id: string): void {
     if (!learn(this.g, id)) return;

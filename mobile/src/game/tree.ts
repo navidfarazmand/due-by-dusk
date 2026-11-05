@@ -251,6 +251,16 @@ export function nodeCost(n: TreeNode, level: number): number {
   return n.price[Math.min(level, n.price.length - 1)];
 }
 
+/** What a reset gives back: every level bought in the tree, at what it cost. */
+export function treeRefund(tree: Record<string, number>): number {
+  let sum = 0;
+  for (const [id, lv] of Object.entries(tree)) {
+    const n = NODE[id];
+    if (n) for (let l = 0; l < lv; l++) sum += nodeCost(n, l);
+  }
+  return sum;
+}
+
 export type BuyCheck = { ok: true; cost: number } | { ok: false; why: 'workshop' | 'soon' | 'max' | 'locked' | 'pair' };
 
 /** `have(id)`: the level the player has of a node (bought in the tree, learned as a skill, or a Workshop level). */

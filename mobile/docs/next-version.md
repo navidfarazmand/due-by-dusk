@@ -112,6 +112,8 @@ workflow, run 6):
 - [x] Free coins: half an average day of the farm you're on (one of your own days from any farm gave $710 on
       Austin's first morning, against a $740 seed loan).
 - [ ] Navid to review the 0.13 upgrade tree: https://claude.ai/artifact/7t59cN7bWpBkviWoQnjKLF
+- [x] 0.12.3: the tree in the game (from the skill map): 103 nodes; 22 can be bought with savings (12 of today's
+      skills, 10 new tricks); a free reset gives everything back as tree credit. The rest come in 0.13.
 - [x] 0.12.2 (Navid: option B): the leftover after a deed is banked again as savings (upgrades and tools only,
       never a bill; only above the farm's mark). In 0.13 it becomes the tree's credit.
 

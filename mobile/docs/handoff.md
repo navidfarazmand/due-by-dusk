@@ -9,6 +9,7 @@ game are in `ARCHITECTURE.md`.
 |---|---|---|---|
 | 0.12.0 | 1107 | Bills 2-3-4-5 days, 15 s days, a crop a morning, bills from bots, boss moves, thief crows, late fees, power meter, Arthur, Canada's city looks | 7 |
 | 0.12.1 | 1108 | Navid's test of 0.12: Sundown shows the money and opens Upgrades, late-day row, power meter fills one way and more often, sun dial plate, events in each city's weather, free coins = half a day of this farm | 8 |
+| 0.12.3 | 1110 (check) | The upgrade tree in the game: 22 nodes to buy, a free reset | 10 (started at hand-off) |
 | 0.12.2 | 1109 (check) | Option B: the leftover after a deed is banked as savings (upgrades and tools only, only above the farm's mark) | 9 (started at hand-off; confirm its "Send the bundle to Play Console" step) |
 
 Branch: `claude/loving-albattani-8c25qm` (every release so far is built from it). Release: run the GitHub workflow
@@ -42,7 +43,7 @@ that are today's diamond skills (`TREE_SKILL`; owning either gives the effect) a
 through `window.__DBD_TREEFX` / `tfx(id)` (`TREE_NEW_LIVE`: Power cell, Big power, Chain fuel, Long rush, Spark start,
 Rooster, Keen edge, Golden soil, Deed discount, Scarecrow). A node opens when a neighbour is owned; a keystone is not
 sold if its partner is owned. The other nodes say "Coming in 0.13": to make one work, add its effect in the engine
-with `tfx('<id>')` and its id to `TREE_NEW_LIVE`. Still to do: a tree reset (refund as tree credit), long builds for
+with `tfx('<id>')` and its id to `TREE_NEW_LIVE`. Done: a free reset (two taps) gives everything back as tree credit (`g.treeCredit`, spent first). Still to do: long builds for
 keystones and every fifth level, moving the Workshop tracks and the diamond skills fully into the tree (retire
 diamonds), translations of the node names and effects, bot-tuned prices.
 
