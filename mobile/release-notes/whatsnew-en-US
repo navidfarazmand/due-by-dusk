@@ -1,9 +1,7 @@
-New in 0.12:
-• Bills give 2, 3, 4, then 5 days, and a new crop joins every morning
-• Days start at 15 s and grow with upgrades
-• A power meter fills as you cut: each tool fires its own power
-• The boss eats your best crops, throws bomb seeds and calls a storm
-• Thief crows steal from your jar: swipe them to get it back
-• Late fees instead of "One more day"
-• Arthur the banker watches your day
-• Gatineau has autumn leaves, Leamington and Kelowna clear skies
+New in 0.12.1:
+• Sundown shows the money you have, and a button straight to Upgrades
+• The power meter fires more often and fills one way; the Power booster has 5 levels
+• The time of day is easier to read
+• The late-day button explains what it costs
+• Day events match the weather: no warm showers in the snow
+• Free coins fit the farm you're on

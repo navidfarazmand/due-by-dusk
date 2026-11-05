@@ -98,6 +98,22 @@ workflow, run 6):
 - [x] Docs (README, ARCHITECTURE), release notes, version 0.12.0: rolled out to closed testing on 5 Nov 2026
       (versionCode 1107, Play release workflow run 7).
 
+## 0.12.1 (Navid's test of 0.12, 5 Nov 2026)
+
+- [x] Sundown: the money in the jar is the big number, today's harvest beside it; no city and day line.
+- [x] Sundown: the small button in the row opens Upgrades (over Sundown); the farmhouse is a circle on the card's top.
+- [x] Late day: the button only says "Late day 1 of 3"; a row above it says what it costs ("it" was unclear).
+- [x] Power meter: fills left to right only (the draining bar read as filling the other way); fires more often (at 15,
+      was 22; rush 3 s, was 4); the Power booster has five levels. Bots: the average player earns the same (-1%), the
+      strong one 11% more, the weak one 5% more; the bills stay.
+- [x] The time of day on a cream plate, so it reads over the skyline.
+- [x] Day events fit the city's weather: no warm showers in the snow (a winter thaw), blowing snow instead of an
+      autumn gale, autumn showers in Gatineau, no frost mornings on the summer farms.
+- [x] Free coins: half an average day of the farm you're on (one of your own days from any farm gave $710 on
+      Austin's first morning, against a $740 seed loan).
+- [ ] Navid to review the 0.13 upgrade tree: https://claude.ai/artifact/7t59cN7bWpBkviWoQnjKLF (and whether the
+      leftover after a deed becomes tree credit).
+
 Next version (0.13), to send to Navid before building: one upgrade tree bought with cash (Workshop and skills
 together, six branches, free reset, long builds with an ad); perks with 5 levels (a perk can come back as its next
 level); crop levels that never reset; a tool shop and a seed album; diamonds retired (refunded).
