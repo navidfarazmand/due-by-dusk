@@ -6,8 +6,9 @@
 import type { CountryCode } from './world';
 
 /** snow: falling flakes, a white field that deepens through the day, ice around the crops (the Canadian winter);
- *  leaves: autumn leaves drifting down and piling up on the soil; clear: the plain field. */
-export type Weather = 'snow' | 'leaves' | 'clear';
+ *  leaves: autumn leaves drifting down and piling up on the soil; sun: a summer farm (the plain field, and no frost
+ *  mornings among the day's events); clear: the plain field. */
+export type Weather = 'snow' | 'leaves' | 'sun' | 'clear';
 
 export interface CityLook {
   weather: Weather;
@@ -30,9 +31,9 @@ const CITY_LOOK: Record<string, CityLook> = {
   // Navid, 3 Nov: "Gatineau autumn leaves"
   ca_gatineau: { weather: 'leaves', landmark: 'the Peace Tower across the Ottawa River' },
   ca_toronto: { weather: 'snow', landmark: 'the CN Tower' },
-  ca_leamington: { weather: 'clear', landmark: 'the big tomato and the greenhouses' },
+  ca_leamington: { weather: 'sun', landmark: 'the big tomato and the greenhouses' },
   ca_saskatoon: { weather: 'snow', landmark: 'a prairie grain elevator' },
-  ca_kelowna: { weather: 'clear', landmark: 'Okanagan Lake, with Ogopogo' },
+  ca_kelowna: { weather: 'sun', landmark: 'Okanagan Lake, with Ogopogo' },
 };
 
 export function cityLook(cityId: string, country: CountryCode): CityLook {

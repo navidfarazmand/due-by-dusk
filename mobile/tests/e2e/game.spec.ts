@@ -710,13 +710,13 @@ test('the power meter: a card at half full (once), then the tool\'s power and th
   });
   await page.evaluate(() => (window as any).__DBD_ENGINE.devPower(1));
   const h = await page.evaluate(() => (window as any).__DBD_ENGINE.hud());
-  expect(h.rushT).toBeGreaterThan(3);
+  expect(h.rushT).toBeGreaterThan(2);
   expect(h.rushCharge).toBe(0);
   const got: string[] = await page.evaluate(() => (window as any).__pw);
   expect(got).toContain('power');
   expect(got).toContain('cleave');
   await expect(page.locator('#dbdRush.on')).toBeVisible();
-  await expect(page.locator('#dbdRushLbl')).toHaveText('POWER!');
+  await expect(page.locator('#dbdRushLbl')).toHaveText('RUSH!');
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.peek().today.powers)).toBe(1);
   expect(errors).toEqual([]);
 });
@@ -861,9 +861,15 @@ test('Sundown goes straight to the next day, and the field music plays on (v0.11
   await fast(page);
   await act(page, 'start');
   await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
-  // no bill tonight: Next day is the big button, the farmhouse a small one; the music stays the field's
+  // no bill tonight: Next day is the big button, Upgrades a small one, the farmhouse in the corner; the money you have
+  // is the big number (v0.12.1); the music stays the field's
   await expect(page.locator('.scr-sundown [data-act="next-day"]')).toBeVisible();
   await expect(page.locator('.scr-sundown [data-act="farmhouse"]')).toBeVisible();
+  await expect(page.locator('.scr-sundown .sd-big')).toHaveText(await page.evaluate(() => '$' + Math.round((window as any).__DBD_ENGINE.state().cash).toLocaleString('en-US')));
+  await page.locator('.scr-sundown [data-act="panel"][data-arg="workshop"]').click();
+  await expect(page.locator('.scr-modal')).toBeVisible();
+  await act(page, 'close');
+  await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible();
   expect(await page.evaluate(() => (window as any).__DBD_APP.music.mood)).toBe('field');
   await act(page, 'next-day');
   await expect(page.locator('#dbdHud')).toBeVisible();
@@ -955,7 +961,8 @@ test('late fees: up to three late days, each with an ad; the collector takes 20%
   await page.evaluate(() => { (window as any).__DBD_ENGINE.devDue(); (window as any).__DBD_APP.show('farmhouse'); });
   const lateBtn = page.locator('.scr-farmhouse [data-act="ad-extra"]');
   await expect(lateBtn).toContainText('Late day 1 of 3');
-  await expect(lateBtn).toContainText('20%');
+  // what it costs is on a row of its own, not in the button (v0.12.1)
+  await expect(page.locator('.scr-farmhouse .dc-late')).toContainText('20%');
   await lateBtn.click();
   await expect.poll(() => page.evaluate(() => (window as any).__DBD_ENGINE.state().late)).toBe(1);
   // the late day: earn, and at sunset Grumble & Sons take 20% of it
@@ -970,7 +977,7 @@ test('late fees: up to three late days, each with an ad; the collector takes 20%
   // still short: late days 2 and 3, at 40% and 60%
   for (const [n, p] of [[2, '40%'], [3, '60%']] as const) {
     await expect(lateBtn).toContainText(`Late day ${n} of 3`);
-    await expect(lateBtn).toContainText(p);
+    await expect(page.locator('.scr-farmhouse .dc-late')).toContainText(p);
     await lateBtn.click();
     await expect.poll(() => page.evaluate(() => (window as any).__DBD_ENGINE.state().late)).toBe(n);
     await act(page, 'start');

@@ -64,7 +64,7 @@ const BASE: Omit<ToolStats, 'style'> = {
 
 /** The power booster (v0.12; it was the Charge handle in 0.11, so the id stays 'charge' and testers keep their levels). */
 const chargeMod = (base: number): ModDef => ({
-  id: 'charge', name: 'Power booster', line: 'Your power meter fills 25% faster and your power hits harder.', max: 3, base, growth: 2.6,
+  id: 'charge', name: 'Power booster', line: 'Your power meter fills 25% faster and your power hits harder.', max: 5, base, growth: 2,
   apply: (s, l) => { s.charge = l; },
 });
 

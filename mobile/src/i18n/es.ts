@@ -902,5 +902,15 @@ const dict: Record<string, string> = {
   "SEED STORM!": "¡TORMENTA DE SEMILLAS!",
   "New today: {crop}": "Nuevo hoy: {crop}",
   "You keep your upgrades and your tools.": "Conservas tus mejoras y tus herramientas.",
+  // v0.12.1 (Navid, 5 Nov): Sundown's money, the late-day row, the days in each city's weather
+  "in the jar": "en el tarro",
+  "today": "hoy",
+  "One more day for an ad: Grumble & Sons keep {p}% of what you earn that day. After 3 late days, the bank takes the farm.": "Un día más por un anuncio: Grumble e Hijos se quedan el {p}% de lo que ganes ese día. Tras 3 días de retraso, el banco se queda la granja.",
+  "WINTER THAW": "DESHIELO INVERNAL",
+  "A mild day! Crops sprout 35% faster.": "¡Un día templado! Los cultivos brotan un 35% más rápido.",
+  "BLOWING SNOW": "VENTISCA",
+  "Wild winds! Your power meter fills 2× faster.": "¡Vientos locos! Tu barra de poder se llena 2× más rápido.",
+  "AUTUMN SHOWERS": "CHUBASCOS DE OTOÑO",
+  "Cool rain! Crops sprout 35% faster.": "¡Lluvia fresca! Los cultivos brotan un 35% más rápido.",
 };
 export default dict;

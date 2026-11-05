@@ -3,7 +3,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from '../game/world';
-import { cropName, planFor, toughnessFor, type CityPlan } from '../game/plan';
+import { cropName, planFor, toughnessFor, type CityPlan, avgDay } from '../game/plan';
 import { bestPower } from '../game/power';
 import {
   DEFAULT_TOUCH_LIFT, GAME_SAVE_KEY, RECENT_DAYS, coinsForDays, MAX_TOUCH_LIFT, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, crownCount, newGame, nextCity, paidAfterRun,
@@ -1225,10 +1225,19 @@ export class GameApp {
     this.refresh();
   }
 
+  /** v0.12.1 (Navid: "Free $710" on Austin's first morning, for a $740 seed loan): half an average day of the farm
+   *  you're on, on the day you're on. It used to be one of your own recent days, from any farm. */
   private coinsReward(): number {
     const cityId = this.g.run ? this.g.run.cityId : nextCity(this.g);
     const p = planFor(cityId);
-    return coinsForDays(this.g.recentEarn, p.dayRef * p.billMul * 0.6);
+    let day = 1;
+    try {
+      if (this.g.run) day = engine().state().day;
+    } catch {
+      /* engine not ready */
+    }
+    void coinsForDays;
+    return Math.max(20, Math.round((0.5 * avgDay(p.index, day) * p.billMul) / 10) * 10);
   }
 
   private async adCoins(): Promise<void> {
@@ -1948,7 +1957,7 @@ export class GameApp {
     const late = (st as unknown as { late?: number }).late || 0;
     const short = b.tonight && !b.canPay, extraLeft = short && late < 3;
     if (extraLeft)
-      main = `<button type="button" class="st-btn blue dc-go dc-more ad-btn" data-act="ad-extra">${ICON.play()}<span class="late-two"><span>${t('Late day {n} of 3', { n: late + 1 })}</span><small>${t('Grumble & Sons take {p}% of it', { p: [20, 40, 60][late] })}</small></span></button>`;
+      main = `<button type="button" class="st-btn blue dc-go dc-more ad-btn" data-act="ad-extra">${ICON.play()}<span>${t('Late day {n} of 3', { n: late + 1 })}</span></button>`;
     else if (short) main = `<button type="button" class="st-btn red dc-go" data-act="bank">${t('Face the bank')}</button>`;
     else if (b.tonight) main = `<button type="button" class="st-btn gold dc-go" data-act="pay">${ICON.coin(30)}<span>${t('Pay {amt}', { amt: money(b.amt) })}</span></button>`;
     else
@@ -1983,10 +1992,14 @@ export class GameApp {
         : '';
     // the city's rival and the record to beat for the crown (Navid, 30 Oct: "who is Captain Arsenault?")
     const p = cityProgress(this.g, run.cityId);
-    // v0.12: a new crop every morning; on those days it takes the rival's place on the card
-    const newRow = bossRow ? '' : this.newTodayRow();
+    // v0.12: a new crop every morning; on those days it takes the rival's place on the card. Short on tonight's bill,
+    // the place says what a late day costs (v0.12.1, Navid: not a sentence in a button)
+    const lateRow = extraLeft
+      ? `<p class="dc-late">${t('One more day for an ad: Grumble & Sons keep {p}% of what you earn that day. After 3 late days, the bank takes the farm.', { p: [20, 40, 60][late] })}</p>`
+      : '';
+    const newRow = bossRow || lateRow ? '' : this.newTodayRow();
     const rivalRow =
-      !bossRow && !newRow && !p.crown
+      !bossRow && !newRow && !lateRow && !p.crown
         ? `<div class="dc-rival">${rivalFace(ct.rival, 28)}<span class="dc-rn">${esc(ct.rival)}</span><span class="dc-rec">${ICON.crown('#FFC23D', 18)}<b>${money(plan.record)}</b></span></div>`
         : '';
     // the tiles: what is waiting behind each
@@ -2014,7 +2027,7 @@ export class GameApp {
         <div class="dc-city"><span>${esc(ct.short)}</span>${plan.boss ? `<i class="dc-boss-tag">${t('BOSS')}</i>` : ''}</div>
         <h2 class="dc-day">${t('Day {day}', { day: st.day })}</h2>
         <div class="dc-dots${total > 20 ? ' many' : ''}" role="img" aria-label="${t('Day {day} of {n}', { day: st.day, n: total })}">${dots}</div>
-        ${billRow}${bossRow}${newRow}${rivalRow}
+        ${billRow}${bossRow}${lateRow}${newRow}${rivalRow}
         <div class="dc-go-row">${extra}${main}</div>
       </div></div>
       <div class="grp mr" style="width: 160px; height: 316px"><div class="fh-col">
@@ -2244,13 +2257,17 @@ export class GameApp {
       ? `<button type="button" class="st-btn gold btn-md flex1 sd-next" data-act="next-day">${b.tonight ? `<span class="sn-two"><span>${t('Pay {amt}', { amt: money(b.amt) })}</span><small>${t('Next day')}</small></span>` : t('Next day')}${ICON.next()}</button>`
       : '';
     const crownNow = d.crownToday ? `<div class="sd-crown">👑 ${t('New city crown! You beat {rival}.', { rival: esc(ct.rival) })}</div>` : '';
+    // v0.12.1 (Navid: "it doesn't show how much money i have left"): the money in the jar is the big number, today's
+    // harvest beside it; the city and the day were not worth the space
     return `<div class="grp mc" style="width: 430px; height: 300px"><div class="st-chip sundown-card slim">
-      <div class="sd-head"><h2>${t('Sundown!')}</h2><span class="eyebrow">${esc(ct.short.toUpperCase())} · ${t('DAY {day}', { day: d.day })}</span>
+      <button type="button" class="st-btn sd-home" data-act="farmhouse" aria-label="${t('Farmhouse')}">${ICON.house(22)}</button>
+      <div class="sd-head"><h2>${t('Sundown!')}</h2>
         <button type="button" class="up-info" data-act="info" data-arg="day" aria-label="${t('About today')}"><i class="info-i">i</i></button></div>
-      <div class="sd-hero"><span class="sd-big money">+${money(earned)}</span>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('earned today')}</span></div>
+      <div class="sd-hero"><span class="sd-cash"><span class="sd-big money">${money(cashNow)}</span><span class="sd-lbl">${t('in the jar')}</span></span>
+        <span class="sd-today"><b class="money">+${money(earned)}</b>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('today')}</span></span></div>
       <div class="sd-bill">${ICON.notice(26)}<span class="sb-what"><span class="sb-name">${esc(t(b.name))}</span><span class="sb-due">${dueLine}</span></span><b class="sb-amt">${money(b.amt)}</b>${stamp}</div>
       ${feeLine}${crownNow}${bossLine}
-      <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house" data-act="farmhouse" aria-label="${t('Farmhouse')}">${ICON.house()}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
+      <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house sd-ups" data-act="panel" data-arg="workshop" aria-label="${t('Upgrades')}">${ICON.wrench(28)}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
     </div></div>`;
   }
 

@@ -17742,8 +17742,9 @@ export function startGeminiEngine() {
   let paused = false,
     rushTimer = 0,
     rushCharge = 0;
-  const RUSH_GOAL = 22,
-    RUSH_DURATION = 4;
+  // v0.12.1 (Navid: once a day is not enough): the power meter fills at 15 and the rush is 3 s
+  const RUSH_GOAL = 15,
+    RUSH_DURATION = 3;
   // with a fuller field (FIELD.chain) a chain is easier to keep going, so each tier asks for a longer chain
   const CHAIN_TIERS = [
     { count: 0, mul: 1 },
@@ -17777,18 +17778,35 @@ export function startGeminiEngine() {
     arthurAngerTimer = 0,
     vortexes = /* unused pure expression or super */ null && [];
   let dailyEvent = FarmScene_GAZETTE_EVENTS[0];
+  /* A day's event in the city's weather (v0.12.1, Navid: "why in snowy winter, we have warm harvest showers?"): the
+     same effect under a name and a sky that fit; a summer farm gets no frost morning. */
+  const EVENT_IN_WX = {
+    snow: {
+      rain: { id: 'thaw', title: 'WINTER THAW', desc: 'A mild day! Crops sprout 35% faster.', weather: 'clear' },
+      gale: { id: 'blizzard', title: 'BLOWING SNOW', desc: 'Wild winds! Your power meter fills 2× faster.' },
+    },
+    leaves: { rain: { id: 'autumnrain', title: 'AUTUMN SHOWERS', desc: 'Cool rain! Crops sprout 35% faster.' } },
+  };
+  function eventFits(e) {
+    return !(countryWx() === 'sun' && e.id === 'frost');
+  }
+  function inWeather(e) {
+    const v = (EVENT_IN_WX[countryWx()] || {})[e.id];
+    return v ? Object.assign({}, e, v) : e;
+  }
   function rollDailyEvent() {
     const pl = plan();
     if (pl && pl.signatureEvent && farm.day % 2 === 1) {
       const sig = FarmScene_GAZETTE_EVENTS.find((e) => e.id === pl.signatureEvent);
-      if (sig) {
-        dailyEvent = sig;
+      if (sig && eventFits(sig)) {
+        dailyEvent = inWeather(sig);
         return;
       }
     }
     const L = FarmScene_GAZETTE_EVENTS.length;
     let k = (farm.day * 7 + farm.no * 3 + (meta.biome || 0)) % L;
-    dailyEvent = FarmScene_GAZETTE_EVENTS[k];
+    for (let tries = 0; tries < L && !eventFits(FarmScene_GAZETTE_EVENTS[k]); tries++) k = (k + 1) % L;
+    dailyEvent = inWeather(FarmScene_GAZETTE_EVENTS[k]);
   }
   let combo = 0,
     comboTimer = 0,

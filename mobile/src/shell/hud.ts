@@ -7,7 +7,11 @@ import { ArthurView, type ArthurMood } from './arthur';
 import { engine, type DayEvent, type HudState } from './engine';
 import { rivalFace } from './rival';
 
-const EVENT_ICON: Record<string, string> = { market: '💰', gale: '🍂', rain: '🌧️', frost: '❄️', fair: '🧶', stampede: '🐐' };
+const EVENT_ICON: Record<string, string> = {
+  market: '💰', gale: '🍂', rain: '🌧️', frost: '❄️', fair: '🧶', stampede: '🐐',
+  // the same days in a snowy or an autumn city (v0.12.1)
+  thaw: '🌤️', blizzard: '🌨️', autumnrain: '🌦️',
+};
 // Gemini's and Claude's bill names, shortened to fit the bank chip (the notice keeps the full name)
 const SHORT: Record<string, string> = {
   'Tractor transmission': 'Tractor', 'Pond water rights': 'Pond rights', "Grandma's pie insurance": 'Pie cover',
@@ -59,6 +63,7 @@ export const HUD_HTML = `<div id="dbdHud" hidden>
     </div>
   </div>
   <div class="grp tc">
+    <div class="hb-dialbg" aria-hidden="true"></div>
     <svg class="hb-dial" viewBox="0 0 160 70" aria-hidden="true">
       <path d="M40 60 A40 40 0 0 1 120 60 Z" fill="#FFF4DC" stroke="#2B1708" stroke-width="3" stroke-linejoin="round"/>
       <path d="M30 58 A50 50 0 0 1 130 58" fill="none" stroke="#2B1708" stroke-width="13" stroke-linecap="round"/>
@@ -305,12 +310,13 @@ export class FarmHud {
     E.Sun.setAttribute('fill', late ? '#FF9A3D' : '#FFD45C');
     E.Secs.textContent = Math.ceil(Math.max(0, h.time)) + 's';
     E.Secs.classList.toggle('late', late);
-    // the power meter (v0.12): fills as you cut; when it's full the tool's power fires and the bar drains with the rush
+    // the power meter: fills left to right as you cut; when it's full the tool's power fires, the bar starts again
+    // from empty and the chip glows for the rush (v0.12.1, Navid: the draining bar read as filling the other way)
     const rushing = h.rushT > 0;
-    const pw = rushing ? h.rushT / Math.max(0.01, h.rushDur) : clamp(h.rushCharge / Math.max(1, h.rushGoal), 0, 1);
+    const pw = rushing ? 0 : clamp(h.rushCharge / Math.max(1, h.rushGoal), 0, 1);
     E.Rush.classList.toggle('on', rushing);
     E.Rush.classList.toggle('near', !rushing && pw >= 0.8);
-    const rl = rushing ? t('POWER!') : t('POWER');
+    const rl = rushing ? t('RUSH!') : t('POWER');
     E.RushLbl.textContent = rl;
     E.RushLbl.classList.toggle('long', rl.length > 7);
     E.RushFill.style.width = (pw * 100).toFixed(1) + '%';

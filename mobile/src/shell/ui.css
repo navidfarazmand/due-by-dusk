@@ -66,7 +66,10 @@ header.bar, aside.ledger, #fieldSign, #eventLabel, #hud, .dbd-badge, .dbd-btns, 
 .hb-next { position: absolute; left: 178px; top: 4px; font-weight: 900; font-size: 10px; line-height: 15px; color: #FFE27A; white-space: nowrap; }
 .hb-ctimer { position: absolute; left: 4px; bottom: 1.5px; height: 2px; width: 0; border-radius: 1px; background: rgba(255, 226, 122, .85); }
 .hb-dial { position: absolute; left: 0; top: 4px; width: 150px; height: 66px; overflow: visible; }
-.hb-secs { position: absolute; left: 0; width: 150px; top: 35px; text-align: center; font-family: var(--ui-display); font-size: 21px; line-height: 1; font-variant-numeric: tabular-nums; }
+/* the dial sits on a cream plate hanging from the top edge, so the time reads clearly over the skyline (v0.12.1) */
+.hb-dialbg { position: absolute; left: 6px; top: -3px; width: 138px; height: 72px; box-sizing: border-box; border: 3px solid var(--dbd-ink); border-radius: 0 0 30px 30px;
+  background: var(--dbd-cream); box-shadow: 0 3px 0 var(--dbd-ink); }
+.hb-secs { position: absolute; left: 0; width: 150px; top: 34px; text-align: center; font-family: var(--ui-display); font-size: 23px; line-height: 1; font-variant-numeric: tabular-nums; }
 .hb-secs.late { color: #C9473A; }
 .hb-pause { position: absolute; right: 0; top: 10px; pointer-events: auto; }
 /* the city's rival at the record: today's harvest fills the bar; passing it knocks the face off */
