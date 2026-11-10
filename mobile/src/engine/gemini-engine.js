@@ -24865,6 +24865,8 @@ export function startGeminiEngine() {
           comboTimer = o.combo > 0 ? 5 : 0;
         }
         if (o.rush != null) rushTimer = o.rush;
+        // the chain runs out on the next frame
+        if (o.chainEnd) comboTimer = 0.001;
         if (o.stop != null) clockStopped = !!o.stop;
         if (o.cash != null) farm.cash = o.cash;
         return true;

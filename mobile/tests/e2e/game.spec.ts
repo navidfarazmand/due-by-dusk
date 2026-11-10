@@ -1079,6 +1079,92 @@ test('tree tricks, blade and swing speed: each does what its text says (0.13)', 
   expect(errors).toEqual([]);
 });
 
+test('tree tricks, what crops pay and the field: each does what its text says (0.13)', async ({ page }) => {
+  // day 5: a market day for Market day, and a crop that joined the field this morning
+  const errors = await trickDay(page, 5);
+  const len = (await E(page, 'state')).dayLen;
+  const mid = { time: len / 2 };
+  await E(page, 'devClock', mid);
+  const fresh = await page.evaluate(() => {
+    const p = (window as any).__DBD_PLAN;
+    return (p.crops.find((c: any) => c[2] === p.unlock + 4) || [''])[0];
+  });
+  expect(fresh).not.toBe('');
+  const old = await page.evaluate(() => (window as any).__DBD_PLAN.crops[0][0]);
+  // the plain price of each (the first cut of a kind also marks it as seen today)
+  const base = await cut(page, old);
+  const baseNew = await cut(page, fresh);
+  expect(base).toBeGreaterThan(0);
+  expect(await cut(page, old)).toBeCloseTo(base, 6);
+  // Early bird: the first 4 s pay double. Harvest moon: the last 3 s
+  await fx(page, { f16: 1 });
+  expect(await cut(page, old)).toBeCloseTo(base, 6);
+  await E(page, 'devClock', { time: len - 3 });
+  expect(await cut(page, old)).toBeCloseTo(2 * base, 6);
+  await fx(page, { f15: 1 });
+  expect(await cut(page, old)).toBeCloseTo(base, 6);
+  await E(page, 'devClock', { time: 2 });
+  expect(await cut(page, old)).toBeCloseTo(2 * base, 6);
+  await E(page, 'devClock', mid);
+  // Crop rotation: this morning's new crop pays 25% more; the others do not
+  await fx(page, { f11: 1 });
+  expect(await cut(page, fresh)).toBeCloseTo(1.25 * baseNew, 6);
+  expect(await cut(page, old)).toBeCloseTo(base, 6);
+  // Market day: every fifth day, 30% more
+  await fx(page, { m4: 1 });
+  expect(await cut(page, old)).toBeCloseTo(1.3 * base, 6);
+  // Organic label: twins and crops that sprouted again pay 50% more
+  await fx(page, { x4: 1 });
+  expect(await cut(page, old, { organic: true })).toBeCloseTo(1.5 * base, 6);
+  expect(await cut(page, old)).toBeCloseTo(base, 6);
+  // First of the day: the first crop of a kind pays ×5, the second does not
+  await fx(page, { m6: 1 });
+  const kind = await page.evaluate(([a, b]) => ['radish', 'cabbage', 'onion', 'pumpkin'].find(k => k !== a && k !== b)!, [old, fresh]);
+  const first = await cut(page, kind);
+  expect(first).toBeCloseTo(5 * (await cut(page, kind)), 6);
+  // Bulk order: the tenth crop of a chain pays ×3 (then ×5)
+  await fx(page, {});
+  const tenth = await cut(page, old, {}, 9);
+  await fx(page, { m3: 1 });
+  expect(await cut(page, old, {}, 9)).toBeCloseTo(3 * tenth, 6);
+  expect(await cut(page, old, {}, 8)).toBeLessThan(2 * tenth);
+  await fx(page, { m3: 2 });
+  expect(await cut(page, old, {}, 9)).toBeCloseTo(5 * tenth, 6);
+  // Tip jar: a chain of 20 or more that ends drops 10% of what the chain paid
+  await fx(page, { m11: 1 });
+  const c1 = await cut(page, old); // a new chain
+  const c2 = await cut(page, old, {}, 24); // ... now 25 long
+  const before = (await E(page, 'peek')).today.earned;
+  await E(page, 'devClock', { chainEnd: true });
+  await expect.poll(async () => (await E(page, 'devTree')).combo).toBe(0);
+  expect((await E(page, 'peek')).today.earned - before).toBe(Math.round((c1 + c2) * 0.1));
+  // ... and a short chain drops nothing
+  await cut(page, old);
+  const b2 = (await E(page, 'peek')).today.earned;
+  await E(page, 'devClock', { chainEnd: true });
+  await expect.poll(async () => (await E(page, 'devTree')).combo).toBe(0);
+  expect((await E(page, 'peek')).today.earned).toBe(b2);
+  // Mulch: crops sprout 15% faster (then 30%)
+  await fx(page, {});
+  const spawn = (await E(page, 'devTree')).spawn;
+  await fx(page, { f14: 1 });
+  expect((await E(page, 'devTree')).spawn).toBeCloseTo(spawn / 1.15, 6);
+  await fx(page, { f14: 2 });
+  expect((await E(page, 'devTree')).spawn).toBeCloseTo(spawn / 1.3, 6);
+  // Golden hour: in the last 5 s the sun waits while a chain of 10 or more is kept
+  await fx(page, { f13: 1 });
+  await E(page, 'devClock', { stop: false, time: 4, combo: 12 });
+  await page.waitForTimeout(700);
+  const st = await E(page, 'state');
+  expect(st.time).toBeGreaterThan(3.9);
+  expect((await E(page, 'devTree')).goldenHeld).toBeGreaterThan(0.3);
+  // ... and runs again without the chain
+  await E(page, 'devClock', { combo: 0 });
+  await page.waitForTimeout(500);
+  expect((await E(page, 'state')).time).toBeLessThan(3.9);
+  expect(errors).toEqual([]);
+});
+
 test('menu: the signpost (Design 4), Barn opens the upgrade tree or the Bling Barn, the plank opens the map', async ({ page }) => {
   const errors = await boot(page);
   await expect(page.locator('.scr-menu .sp-play')).toBeVisible();

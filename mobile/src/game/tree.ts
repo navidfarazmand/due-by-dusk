@@ -242,6 +242,8 @@ export const TREE_NEW_LIVE = [
   'p1', 'p2', 'p3', 'p4', 'p6', 'a3', 'b3', 'f5', 'm14', 'a2',
   // 0.13, batch 1: blade and swing speed
   'b5', 'b6', 'b8', 'b9', 'b10', 'b12', 'b16', 'x1', 'x2', 'r14',
+  // batch 2: what crops pay, and the field
+  'f11', 'f13', 'f14', 'f15', 'f16', 'm3', 'm4', 'm6', 'm11', 'x4',
 ];
 
 const NODE: Record<string, TreeNode> = {};
