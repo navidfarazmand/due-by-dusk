@@ -73,6 +73,11 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/^BOUNTY (.+)$/, 'BOUNTY {n}'],
   [/^BOOM! -\$([\d,.]+)$/, 'BOOM! -${n}'],
   [/^COINS BACK \+\$([\d,.]+)$/, 'COINS BACK +${n}'],
+  // the tree's tricks (0.13)
+  [/^CASHBACK \+\$([\d,.]+)$/, 'CASHBACK +${n}'],
+  [/^GOAT MILK \+\$([\d,.]+)$/, 'GOAT MILK +${n}'],
+  [/^TIP \+\$([\d,.]+)$/, 'TIP +${n}'],
+  [/^EGG \+\$([\d,.]+)$/, 'EGG +${n}'],
 ];
 
 export function tx(s: string): string {

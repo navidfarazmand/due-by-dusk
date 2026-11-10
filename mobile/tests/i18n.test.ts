@@ -4,6 +4,13 @@ import fr from '../src/i18n/fr';
 import es from '../src/i18n/es';
 import pt from '../src/i18n/pt';
 import de from '../src/i18n/de';
+import { BRANCHES, TREE } from '../src/game/tree';
+
+/** What the tree's tricks draw on the field (addText in the engine), as the dictionaries key them. */
+const FIELD_WORDS = [
+  'MARKET DAY +30%', 'EARLY BIRD ×2', 'HARVEST MOON ×2', 'PIGEON POST', 'FIRST ×5', 'BULK ×3', 'BULK ×5', 'BATTED AWAY', 'SECOND WIND', 'STREAK ×5',
+  'HOO!', 'WOOF!', 'CASHBACK +${n}', 'GOAT MILK +${n}', 'TIP +${n}', 'EGG +${n}', 'BOUNTY {n}',
+];
 
 const DICTS: Record<string, Record<string, string>> = { fr, es, pt, de };
 
@@ -55,6 +62,37 @@ describe('languages', () => {
       if (d['KNOCKED OUT!']) expect(tx('KNOCKED OUT!')).toBe(d['KNOCKED OUT!']);
       // a boss name is drawn in capitals on the field
       if (d['King Russet']) expect(tx('KING RUSSET')).toBe(d['King Russet'].toUpperCase());
+    }
+  });
+
+  test('the upgrade tree is translated: every node name and effect, the branches, and the words its tricks draw on the field', () => {
+    // node texts reach t() as variables, so `npm run i18n:check` can't see them: this test does
+    expect(TREE).toHaveLength(103);
+    const texts = new Set<string>();
+    for (const n of TREE) {
+      texts.add(n.name);
+      texts.add(n.effect);
+    }
+    for (const b of BRANCHES) texts.add(b.name);
+    for (const w of FIELD_WORDS) texts.add(w);
+    for (const [code, d] of Object.entries(DICTS)) {
+      const missing = [...texts].filter(k => !d[k] || !d[k].trim());
+      expect(`${code}: ${missing.join(' | ')}`).toBe(`${code}: `);
+    }
+    // a number in a field word is kept, and the money patterns are found
+    for (const code of ['fr', 'es', 'pt', 'de'] as Lang[]) {
+      setLang(code);
+      const d = DICTS[code];
+      expect(tx('TIP +$1,250')).toBe(d['TIP +${n}'].replace('{n}', '1,250'));
+      expect(tx('CASHBACK +$17')).toBe(d['CASHBACK +${n}'].replace('{n}', '17'));
+      expect(tx('GOAT MILK +$8')).toBe(d['GOAT MILK +${n}'].replace('{n}', '8'));
+      expect(tx('EGG +$9')).toBe(d['EGG +${n}'].replace('{n}', '9'));
+      expect(tx('BULK ×3')).toBe(d['BULK ×3']);
+      expect(d['BULK ×5']).toContain('×5');
+      expect(d['MARKET DAY +30%']).toContain('+30%');
+      // a node's name and effect come back translated
+      expect(t('Storm rod')).toBe(d['Storm rod']);
+      expect(t('Crits throw lightning at a crop nearby.')).not.toBe('Crits throw lightning at a crop nearby.');
     }
   });
 

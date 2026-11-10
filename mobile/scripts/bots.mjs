@@ -41,7 +41,8 @@ function buildFor(k) {
 function saveFor(k) {
   const cities = {};
   for (let i = 0; i < k; i++) cities[ROUTE[i]] = { won: true, stars: 3, bestDay: 0, crown: false, bestDays: 3, plays: 1, paid: 0 };
-  return { v: 3, econ: 10, createdAt: 1, cities, run: null, wallet: 0,
+  // treeV 1: a 0.13 save (without it the game would turn these wins into tree credit, as for an older save)
+  return { v: 3, econ: 10, treeV: 1, createdAt: 1, cities, run: null, wallet: 0,
     workshop: { levels: buildFor(k), job: null }, tools: { owned: ['sickle'], equipped: 'sickle', mods: {} },
     ads: { date: '', coins: 0, doubles: 0, finishes: 0, lastCoinsAt: 0 },
     settings: { music: false, haptics: false, lang: 'en' }, seen: { intro: true, practice: true, start: true }, totals: { days: 9, crops: 500, earned: 2000 } };

@@ -765,8 +765,10 @@
 .scr-tree { background: radial-gradient(circle at 40% 50%, #2E2449 0%, #221A38 40%, #161126 80%); color: #FFF1D6; }
 .tr-wrap { position: absolute; inset: 0; display: flex; flex-direction: column; padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); gap: 6px; }
 .tr-top { display: flex; align-items: center; gap: 8px; min-height: 44px; }
-.tr-top h2 { margin: 0 2px; font: 400 24px/1 var(--ui-display); color: #FFF1D6; white-space: nowrap; }
-.tr-chips { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; }
+.tr-top > * { flex: none; }
+/* on a narrow phone a long title gives way (it is cut with an ellipsis); the money chips never do */
+.tr-top h2 { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; margin: 0 2px; padding: 3px 0; font: 400 24px/1 var(--ui-display); color: #FFF1D6; white-space: nowrap; }
+.tr-chips { flex: 1 0 auto; display: flex; align-items: center; gap: 6px; }
 .tr-chip { display: inline-flex; align-items: center; gap: 5px; height: 34px; box-sizing: border-box; padding: 0 10px 0 7px; border: 2.5px solid var(--dbd-ink); border-radius: 999px; background: var(--dbd-cream);
   color: var(--dbd-ink); font: 400 17px/1 var(--ui-display); white-space: nowrap; flex: none; }
 .tr-chip svg { flex: none; }
@@ -775,8 +777,10 @@ button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tab
 .tr-zoom { display: flex; gap: 6px; }
 .tr-zoom .st-btn { width: 44px; height: 44px; font: 400 24px/1 var(--ui-display); }
 .tr-body { flex: 1; min-height: 0; display: flex; gap: 10px; }
-.tr-map { flex: 1; min-width: 0; overflow: auto; border-radius: 18px; background: rgba(0, 0, 0, .18); -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
-.tr-map svg { display: block; }
+/* (a grid with margin: auto centres the map in a box bigger than it, on a tablet or a computer, and still lets a
+   bigger map scroll from its top-left corner) */
+.tr-map { flex: 1; min-width: 0; overflow: auto; display: grid; border-radius: 18px; background: rgba(0, 0, 0, .18); -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
+.tr-map svg { display: block; margin: auto; }
 .tr-map svg text { font-family: var(--ui-display); }
 .tr-nd { cursor: pointer; }
 .tr-nd.far .tr-art { opacity: .42; }

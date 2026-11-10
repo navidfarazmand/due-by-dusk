@@ -111,12 +111,30 @@ workflow, run 6):
       autumn gale, autumn showers in Gatineau, no frost mornings on the summer farms.
 - [x] Free coins: half an average day of the farm you're on (one of your own days from any farm gave $710 on
       Austin's first morning, against a $740 seed loan).
-- [ ] Navid to review the 0.13 upgrade tree: https://claude.ai/artifact/7t59cN7bWpBkviWoQnjKLF
+- [x] Navid reviewed the 0.13 upgrade tree ("tree is a yes"): https://claude.ai/artifact/7t59cN7bWpBkviWoQnjKLF
 - [x] 0.12.3: the tree in the game (from the skill map): 103 nodes; 22 can be bought with savings (12 of today's
       skills, 10 new tricks); a free reset gives everything back as tree credit. The rest come in 0.13.
 - [x] 0.12.2 (Navid: option B): the leftover after a deed is banked again as savings (upgrades and tools only,
       never a bill; only above the farm's mark). In 0.13 it becomes the tree's credit.
 
-Next version (0.13), to send to Navid before building: one upgrade tree bought with cash (Workshop and skills
-together, six branches, free reset, long builds with an ad); perks with 5 levels (a perk can come back as its next
-level); crop levels that never reset; a tool shop and a seed album; diamonds retired (refunded).
+## 0.13 (Navid: "tree is a yes"; built 10 Nov 2026 on `claude/tree-013`, to review, then merge and release)
+
+- [x] The Workshop's level tracks are bought in the tree, at the Workshop's prices, caps and build times; old saves
+      keep their levels.
+- [x] The farmhouse's Upgrades tile, the panel's Upgrades tab and Sundown's Upgrades button open the tree: centred on
+      the toolbox, what can be bought now ringed in gold and listed, one big Buy button with the price. The tile's
+      badge counts what can be bought now. Fits 667x375, 800x360 and 914x412.
+- [x] Diamonds retired: learned skills are owned nodes; every other diamond is $1,000 of tree credit; a farm won, a
+      boss farm and a daily gold pay tree credit; no diamond is left on any screen; the skill map is gone and the
+      menu's Barn opens the tree.
+- [x] Long builds: keystones (30 minutes) and every fifth level of a track, with the rewarded "Finish now".
+- [x] Reset stays free and gives back everything, tracks included, as tree credit.
+- [x] 84 of the 102 nodes work (the tracks, the 12 old skills and 64 new tricks); 18 say "Coming soon"
+      (`docs/handoff.md` lists them and why).
+- [x] Everything translated: fr, es, pt (Brazil), de.
+- [ ] Navid to play it and say what to change (the $1,000 a diamond, the 30-minute keystones, the tricks' prices).
+- [ ] Bots with tricks owned, then the tricks' prices.
+- [ ] The other 18 nodes.
+
+Still for a later version: perks with 5 levels (a perk can come back as its next level); crop levels that never
+reset; a tool shop and a seed album.

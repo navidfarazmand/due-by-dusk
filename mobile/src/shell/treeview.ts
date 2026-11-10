@@ -245,7 +245,7 @@ export function treeMapHtml(g: GameSave, ui: TreeUi): string {
     <div class="tr-top"><button type="button" class="st-btn st-sq" data-act="tree-back" aria-label="${t('Back')}">${ICON.back()}</button>
       <h2>${t('Upgrades')}</h2>
       <div class="tr-chips">${credit > 0 ? `<span class="tr-chip tr-credit" aria-label="${esc(t('Tree credit {amt}: it buys upgrades only', { amt: money(credit) }))}">${creditIcon(18)}<span>${short(credit)}</span></span>` : ''}<span class="tr-chip tr-cash" aria-label="${esc(t('Cash for upgrades {amt}', { amt: money(cash) }))}">${ICON.coin(18)}<span>${short(cash)}</span></span>${jobChip}</div>
-      ${treeHasAny(g) ? `<button type="button" class="st-btn btn-sm tr-reset${ui.resetArmed ? ' red' : ''}" data-act="tree-reset">${esc(ui.resetArmed ? t('Tap again to reset') : t('Reset'))}</button>` : ''}
+      ${treeHasAny(g) ? `<button type="button" class="st-btn btn-sm tr-reset${ui.resetArmed ? ' red' : ''}" data-act="tree-reset"${ui.resetArmed ? ` aria-label="${esc(t('Tap again to reset'))}"` : ''}>${esc(ui.resetArmed ? t('Sure?') : t('Reset'))}</button>` : ''}
       <div class="tr-zoom"><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="-1" aria-label="${t('Zoom out')}">−</button><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="1" aria-label="${t('Zoom in')}">+</button></div></div>
     <div class="tr-body">
       <div class="tr-map" id="dbdTreeMap"><svg viewBox="0 0 1000 1000" width="${px}" height="${px}" role="img" aria-label="${t('Upgrade tree')}">${rings}${labels}${links}${nodes}</svg></div>

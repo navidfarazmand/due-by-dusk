@@ -55,8 +55,6 @@ export const ICON = {
   /** A map pin (the next farm on the menu's signpost). */
   pin: (size = 18) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.5C7 15.5 5 12 5 9a7 7 0 0 1 14 0c0 3-2 6.5-7 12.5Z" fill="#E5483D" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="9" r="2.6" fill="#FFF4DC" stroke="${INK}" stroke-width="1.6"/></svg>`,
-  diamond: (size = 16) =>
-    `<svg width="${size}" height="${size}" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6 L6 2.5 H10 L13 6 L8 14 Z" fill="#7FD1F5" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 6 H13 M6 2.5 L8 6 L10 2.5 M8 6 V14" stroke="${INK}" stroke-width="1.1" fill="none"/></svg>`,
   /** A bank notice (the bills tile, the day card's bill). */
   notice: (size = 24) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5Z" fill="#FFFDF4" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/><path d="M15 3v4h4" fill="none" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 11h8M8 14.5h8M8 18h5" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/></svg>`,
