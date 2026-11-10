@@ -16917,7 +16917,8 @@ export function startGeminiEngine() {
   /* The field (v0.11.3): crops drawn 25% bigger than in v0.11.0 (Navid: "I like their size"), as many as the upgrades
      allow (count 1; v0.11.1-0.11.2 doubled it and added bunches, which was too many and slowed phones down), spawning
      one at a time. Kept as knobs for tuning; tests can override them with window.__DBD_FIELD before the game loads. */
-  const FIELD = Object.assign({ size: 1.25, count: 1, spawn: 1, pay: 1, chain: 1 }, window.__DBD_FIELD || {});
+  // v0.12.4: count 0.85 (Navid: "make the vegetables just a bit fewer"); new crops come as fast as before
+  const FIELD = Object.assign({ size: 1.25, count: 0.85, spawn: 1, pay: 1, chain: 1 }, window.__DBD_FIELD || {});
   function cropBaseVal(type) {
     const p = plan();
     return (p && p.cropVal && p.cropVal[type] != null ? p.cropVal[type] : CROP[type].val) * FIELD.pay;

@@ -715,8 +715,10 @@ test('the power meter: a card at half full (once), then the tool\'s power and th
   const got: string[] = await page.evaluate(() => (window as any).__pw);
   expect(got).toContain('power');
   expect(got).toContain('cleave');
-  await expect(page.locator('#dbdRush.on')).toBeVisible();
-  await expect(page.locator('#dbdRushLbl')).toHaveText('RUSH!');
+  // the chip stays the power meter (empty again); the rush shows on the chain strip
+  await expect(page.locator('#dbdRushLbl')).toHaveText('POWER');
+  await expect(page.locator('#dbdRush.on')).toHaveCount(0);
+  await expect(page.locator('#dbdNext')).toHaveText('RUSH!');
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.peek().today.powers)).toBe(1);
   expect(errors).toEqual([]);
 });

@@ -314,9 +314,10 @@ export class FarmHud {
     // from empty and the chip glows for the rush (v0.12.1, Navid: the draining bar read as filling the other way)
     const rushing = h.rushT > 0;
     const pw = rushing ? 0 : clamp(h.rushCharge / Math.max(1, h.rushGoal), 0, 1);
-    E.Rush.classList.toggle('on', rushing);
+    // v0.12.4 (Navid: "why on earth there comes a rush bar exactly on where it should come a power bar"): this chip
+    // is the power meter and nothing else. The rush shows on the chain strip (×1.5 and RUSH!).
     E.Rush.classList.toggle('near', !rushing && pw >= 0.8);
-    const rl = rushing ? t('RUSH!') : t('POWER');
+    const rl = t('POWER');
     E.RushLbl.textContent = rl;
     E.RushLbl.classList.toggle('long', rl.length > 7);
     E.RushFill.style.width = (pw * 100).toFixed(1) + '%';
