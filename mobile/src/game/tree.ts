@@ -98,18 +98,18 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['corn', 'Rush gold', 1, 'During the rush, golden corn comes three times as often.'],
     ['tornado', 'Whirlwind echo', 1, 'Your power leaves a spinning vortex that keeps cutting for 1.8 s.'],
     ['sprout', 'Green thumb', 1, 'Your power ripens the young crops around it.'],
-    ['spark', 'Static', 1, 'Every crit puts a little into the meter.'],
-    ['rings', 'Aftershock', 1, 'A second, smaller power fires a moment later in the same place.'],
+    ['spark', 'Static', 1, 'Every crit that lands fills the meter by half a cut.'],
+    ['rings', 'Aftershock', 1, 'A second power at half strength fires half a second later in the same place.'],
     ['plus', 'Overcharge', 1, 'The meter keeps filling to 150%; an overcharged power fires twice.'],
     ['seed', 'Rush bloom', 1, 'During the rush, crops sprout twice as fast.'],
     ['coin', 'Power payout', 2, 'Crops your power cuts down pay 50% more (then double).'],
     ['tool', 'Tool master', 'K', "Each tool's power doubles: a Cleave twice as wide, a Whirlwind twice as long, a Fire wave twice as far, 24 seeds in a Seed storm."],
-    ['recycle', 'Chain reaction', 'K', 'Every crop your power cuts down puts a little back into the meter.'],
+    ['recycle', 'Chain reaction', 'K', 'Every crop your power cuts down fills the meter by half a cut.'],
   ],
   reach: [
     ['arrows', 'Wider swing', 'T30', '+2% reach a level.'],
     ['chevrons', 'Quicker hands', 'T30', '+2% swing speed a level.'],
-    ['target', 'Sweet spot', 3, 'Crops at the rim of your swing take 35% more (then 50%, 70%).'],
+    ['target', 'Sweet spot', 3, 'Crops in the outer half of your swing take 35% more (then 50%, 70%).'],
     ['wind', 'Wind trail', 2, 'A fast finger stretches the swing by up to 30% (then 50%).'],
     ['boomerang', 'Boomerang', 3, 'Every sixth swing throws the sickle out and back along your path (then every fifth, fourth).'],
     ['fan', 'Sweep', 2, 'A swing that hits 4 or more crops pays 25% more (then 50%).'],
@@ -117,7 +117,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['bounce', 'Ricochet', 1, 'The boomerang bounces once off the edge of the field.'],
     ['pause', 'Second wind', 1, 'After 2 s without a cut, your next 5 swings are twice as fast.'],
     ['arc', 'Wide arc', 2, 'Your swing covers a 25% wider arc (then 50%).'],
-    ['spin', 'Spin cycle', 1, 'Every tenth swing spins twice.'],
+    ['spin', 'Spin cycle', 1, 'Every tenth swing that lands hits twice.'],
     ['eye', 'Afterimage', 1, "The ghost sickle's hits can crit."],
     ['tap', 'Quickdraw', 1, 'A swing starts the moment your finger reaches a crop.'],
     ['feather', 'Featherweight', 2, '+10% swing speed, doubled while the field is nearly full (then +20%).'],
@@ -244,6 +244,8 @@ export const TREE_NEW_LIVE = [
   'b5', 'b6', 'b8', 'b9', 'b10', 'b12', 'b16', 'x1', 'x2', 'r14',
   // batch 2: what crops pay, and the field
   'f11', 'f13', 'f14', 'f15', 'f16', 'm3', 'm4', 'm6', 'm11', 'x4',
+  // batch 3: the power and the swing's reach
+  'p7', 'p10', 'p11', 'p13', 'p14', 'p15', 'p16', 'r3', 'r4', 'r6', 'r9', 'r11', 'r16',
 ];
 
 const NODE: Record<string, TreeNode> = {};

@@ -991,7 +991,8 @@ async function trickDay(page: Page, day = 1): Promise<string[]> {
   }
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
-  await E(page, 'devClock', { stop: true });
+  // the clock stands still and the field is empty: only what a test puts on it is there
+  await E(page, 'devClock', { stop: true, empty: true });
   return errors;
 }
 async function fx(page: Page, tree: Record<string, number>): Promise<void> {
@@ -1005,7 +1006,8 @@ async function E(page: Page, fn: string, ...args: unknown[]): Promise<any> {
 }
 /** Puts one ripe crop on the field and cuts it at once, outside any chain; returns what it paid. */
 async function cut(page: Page, type = 'carrot', patch: Record<string, unknown> = {}, combo = 0): Promise<number> {
-  await E(page, 'devClock', { combo });
+  // (the meter stays empty, so no power and no rush get in the way)
+  await E(page, 'devClock', { combo, meter: 0, rush: 0 });
   const i = await E(page, 'devCrop', type, patch);
   expect(i).toBeGreaterThanOrEqual(0);
   return E(page, 'devCut', i);
@@ -1054,8 +1056,10 @@ test('tree tricks, blade and swing speed: each does what its text says (0.13)', 
   // Featherweight: +10% (then +20%), doubled while the field is at least four fifths full
   await E(page, 'devClock', { combo: 0 });
   await fx(page, { r14: 2 });
-  const full = (await E(page, 'peek')).crops.length >= (await E(page, 'stats')).max * 0.8;
-  expect((await E(page, 'devTree')).swingBoost).toBeCloseTo(full ? 1.4 : 1.2, 5);
+  expect((await E(page, 'devTree')).swingBoost).toBeCloseTo(1.2, 5);
+  const max = (await E(page, 'stats')).max;
+  for (let k = 0; k < Math.ceil(max * 0.8); k++) await E(page, 'devCrop', 'carrot', { x: 60 + 14 * k, y: 300 });
+  expect((await E(page, 'devTree')).swingBoost).toBeCloseTo(1.4, 5);
   // Storm rod: crits throw lightning at one crop; Chain lightning: at a second
   await fx(page, {});
   expect((await E(page, 'devTree')).storm).toBe(false);
@@ -1162,6 +1166,144 @@ test('tree tricks, what crops pay and the field: each does what its text says (0
   await E(page, 'devClock', { combo: 0 });
   await page.waitForTimeout(500);
   expect((await E(page, 'state')).time).toBeLessThan(3.9);
+  expect(errors).toEqual([]);
+});
+
+test('tree tricks, the power and the reach of a swing: each does what its text says (0.13)', async ({ page }) => {
+  const errors = await trickDay(page);
+  const len = (await E(page, 'state')).dayLen;
+  await E(page, 'devClock', { time: len / 2 });
+  const T = () => E(page, 'devTree');
+  const R = (await T()).R, dmg = (await T()).dmg;
+  // a crop that can't be cut down, at a known spot, and what one swing takes off it
+  const spot = await page.evaluate(() => {
+    const p = (window as any).__DBD_ENGINE.peek();
+    return { x: p.worldW * 0.5, y: 300 };
+  });
+  // (found by its health: a swing may cut down the crops around it, which moves it in the list)
+  const hpOf = (_i: number) => page.evaluate(() => (window as any).__DBD_ENGINE.peek().crops.find((c: any) => c.hp > 1e8).hp);
+  const big = await E(page, 'devCrop', 'carrot', { hp: 1e9, maxHp: 1e9, hit1: true, x: spot.x, y: spot.y });
+  const cy = await page.evaluate(k => {
+    const c = (window as any).__DBD_ENGINE.peek().crops[k];
+    return c.y - c.r * c.ds * 0.55;
+  }, big);
+  // one swing at `dx` from the crop with the finger at `speed`; returns the damage in plain cuts (every swing a crit:
+  // Honed start at dawn makes the test the same every time)
+  const cm = 2.8;
+  const swing = async (dx: number, speed = 0): Promise<number> => {
+    const before = await hpOf(big);
+    await E(page, 'devSwing', spot.x + dx, cy, speed);
+    return (before - (await hpOf(big))) / (dmg * cm);
+  };
+  await E(page, 'devClock', { time: len, idle: 0 });
+  await fx(page, { b6: 2 });
+  expect(await swing(0)).toBeCloseTo(1, 4);
+  // Sweet spot: +35% in the outer half of the swing (then 50%, 70%), nothing near the middle
+  await fx(page, { b6: 2, r3: 1 });
+  expect(await swing(R * 0.8)).toBeCloseTo(1.35, 4);
+  expect(await swing(R * 0.3)).toBeCloseTo(1, 4);
+  await fx(page, { b6: 2, r3: 3 });
+  expect(await swing(R * 0.8)).toBeCloseTo(1.7, 4);
+  // Wind trail: a fast finger stretches the swing by up to 30% (then 50%)
+  const edge = await page.evaluate(k => {
+    const c = (window as any).__DBD_ENGINE.peek().crops[k];
+    return c.r * c.ds * 0.65;
+  }, big);
+  await fx(page, { b6: 2 });
+  expect(await swing(R * 1.2 + edge, 1200)).toBe(0);
+  await fx(page, { b6: 2, r4: 1 });
+  expect(await swing(R * 1.2 + edge, 0)).toBe(0);
+  expect(await swing(R * 1.2 + edge, 1200)).toBeCloseTo(1, 4);
+  expect(await swing(R * 1.4 + edge, 1200)).toBe(0);
+  await fx(page, { b6: 2, r4: 2 });
+  expect(await swing(R * 1.4 + edge, 1200)).toBeCloseTo(1, 4);
+  // Dancer: a swing with a fast finger hits twice
+  await fx(page, { b6: 2, r16: 1 });
+  expect(await swing(0, 300)).toBeCloseTo(1, 4);
+  expect(await swing(0, 900)).toBeCloseTo(2, 4);
+  // Spin cycle: every tenth swing that lands hits twice
+  await fx(page, { b6: 2, r11: 1 });
+  const n0 = (await T()).swingN;
+  const got: number[] = [];
+  for (let k = n0 + 1; k <= n0 + 10; k++) got.push(Math.round(await swing(0)) * (k % 10 === 0 ? -1 : 1));
+  expect(got.filter(v => v === -2)).toHaveLength(1);
+  expect(got.filter(v => v === 1)).toHaveLength(9);
+  // Second wind: after 2 s without a cut, the next 5 swings are twice as fast
+  await fx(page, { b6: 2, r9: 1 });
+  await E(page, 'devClock', { idle: 1 });
+  await swing(0);
+  expect((await T()).swingBoost).toBeCloseTo(1, 5);
+  await E(page, 'devClock', { idle: 2.5 });
+  await swing(0);
+  expect(await T()).toMatchObject({ windLeft: 5, swingBoost: 2 });
+  for (let k = 0; k < 5; k++) await swing(0);
+  expect(await T()).toMatchObject({ windLeft: 0, swingBoost: 1 });
+  // Static: a crit that lands fills the meter by half a cut (the meter is 15 cuts)
+  await fx(page, { b6: 2, p10: 1 });
+  await E(page, 'devClock', { meter: 0, rush: 0 });
+  await swing(0);
+  await swing(0);
+  expect((await T()).meter).toBeCloseTo(1 / 15, 6);
+  // Sweep: a swing that hits 4 or more crops pays 25% more (then 50%)
+  await fx(page, {});
+  await E(page, 'devClock', { time: len / 2 });
+  const one = await cut(page, 'carrot');
+  const four = async (): Promise<number> => {
+    await E(page, 'devClock', { combo: 0 });
+    const pos = [[-0.4, -0.3], [0.4, -0.3], [-0.4, 0.4], [0.4, 0.4]];
+    for (const [ax, ay] of pos) await E(page, 'devCrop', 'carrot', { hp: 1e-9, maxHp: 1, x: spot.x - 220 + ax * R, y: spot.y + ay * R });
+    const before = (await E(page, 'peek')).today.earned;
+    await E(page, 'devSwing', spot.x - 220, spot.y - 10, 0);
+    return (await E(page, 'peek')).today.earned - before;
+  };
+  expect(await four()).toBeCloseTo(4 * one, 5);
+  await fx(page, { r6: 1 });
+  expect(await four()).toBeCloseTo(4 * one * 1.25, 5);
+  await fx(page, { r6: 2 });
+  expect(await four()).toBeCloseTo(4 * one * 1.5, 5);
+  // Power payout: a crop the power cuts down pays 50% more (then double). Chain reaction: and half a cut in the meter
+  await fx(page, { p14: 1 });
+  expect(await cut(page, 'carrot')).toBeCloseTo(one, 6);
+  await E(page, 'devClock', { powerKill: true });
+  expect(await cut(page, 'carrot')).toBeCloseTo(1.5 * one, 6);
+  await fx(page, { p14: 2, p16: 1 });
+  expect(await cut(page, 'carrot')).toBeCloseTo(2 * one, 6);
+  // (a cut fills the meter by itself too: one cut and Chain reaction's half)
+  expect((await T()).meter).toBeCloseTo(1.5 / 15, 6);
+  await E(page, 'devClock', { powerKill: false, meter: 0 });
+  // Rush gold and Rush bloom: during the rush, three times the golden corn and crops sprouting twice as fast
+  await fx(page, {});
+  const gold = (await T()).golden;
+  await E(page, 'devClock', { rush: 3 });
+  expect(await T()).toMatchObject({ golden: gold, rushSprout: 1.35 });
+  await fx(page, { p7: 1, p13: 1 });
+  expect((await T()).golden).toBeCloseTo(3 * gold, 8);
+  expect((await T()).rushSprout).toBe(2);
+  await E(page, 'devClock', { rush: 0 });
+  expect(await T()).toMatchObject({ golden: gold, rushSprout: 1 });
+  // Aftershock: the power fires again half a second later
+  await fx(page, { p11: 1 });
+  await E(page, 'devPower', 1);
+  expect((await T()).aftershock).toBe(true);
+  await expect.poll(async () => (await E(page, 'peek')).today.aftershocks || 0, { timeout: 4000 }).toBe(1);
+  expect((await E(page, 'peek')).today.powers).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('Tool master doubles a Whirlwind (0.13)', async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 2), 0, { tools: { owned: ['sickle', 'scythe'], equipped: 'scythe', mods: {} } }));
+  await act(page, 'play');
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  await E(page, 'devClock', { stop: true });
+  await E(page, 'devPower', 1);
+  const t1 = (await E(page, 'devTree')).vortexes[0].t;
+  await fx(page, { p15: 1 });
+  await E(page, 'devClock', { rush: 0 });
+  await E(page, 'devPower', 1);
+  const v = (await E(page, 'devTree')).vortexes;
+  expect(v[v.length - 1].t / t1).toBeGreaterThan(1.9);
+  expect(v[v.length - 1].t / t1).toBeLessThan(2.3);
   expect(errors).toEqual([]);
 });
 

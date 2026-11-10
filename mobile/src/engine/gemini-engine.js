@@ -17876,7 +17876,8 @@ export function startGeminiEngine() {
     R = R || Math.random;
     const paid = unlockLevel();
     const pl = plan();
-    if (R() < cur.gold && (!pl || paid >= (pl.goldAt || 0))) return 'golden';
+    // tree: Rush gold (p7), golden corn three times as often during the rush
+    if (R() < goldChance() && (!pl || paid >= (pl.goldAt || 0))) return 'golden';
     const T =
       pl && pl.crops
         ? pl.crops
@@ -18036,6 +18037,14 @@ export function startGeminiEngine() {
     chainPaid = 0;
     moonRipe = false;
     goldenHeld = 0;
+    devEmptyField = false;
+    powerKill = false;
+    sweepPay = 1;
+    swingN = 0;
+    windLeft = 0;
+    lastCutAt = tNow;
+    pSpeed = 0;
+    aftershock = null;
     paused = false;
     today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0, boss: 0 };
     if (fieldSeed) for (const k in fieldSeq) fieldSeq[k] = 0;
@@ -18192,6 +18201,8 @@ export function startGeminiEngine() {
     if (tfx('b16')) k *= 1 + Math.min(0.4, 0.015 * combo);
     const fw = Math.min(2, tfx('r14'));
     if (fw) k *= 1 + 0.1 * fw * (cur && crops.length >= cur.max * 0.8 ? 2 : 1);
+    // Second wind (r9): five swings at twice the speed after 2 s without a cut
+    if (windLeft > 0) k *= 2;
     return k;
   }
   /** What a crop pays on top of everything else, from the tree's pay tricks. Also shows the word for it. */
@@ -18199,8 +18210,31 @@ export function startGeminiEngine() {
     chainPaid = 0,
     moonRipe = false,
     goldenHeld = 0;
+  /** A crop is being cut down by the tool's power (Power payout, p14; Chain reaction, p16). */
+  let powerKill = false;
+  /** What this swing's crops pay extra (Sweep, r6: a swing that hits 4 or more crops). */
+  let sweepPay = 1;
+  /** Swings that landed today (Spin cycle, r11), fast swings left and the last cut (Second wind, r9), the finger's
+   *  speed in field units a second (Wind trail, r4; Dancer, r16), and the second power to come (Aftershock, p11). */
+  let swingN = 0,
+    windLeft = 0,
+    lastCutAt = 0,
+    pSpeed = 0,
+    pLastX = 0,
+    pLastY = 0,
+    aftershock = null;
+  const FAST_FINGER = 700;
+  /** Tests only (devClock): an empty field where nothing sprouts by itself. */
+  let devEmptyField = false;
   function treePay(c, top) {
-    let k = 1;
+    let k = sweepPay;
+    // Power payout (p14): crops the power cuts down pay 50% more, then double
+    if (powerKill) {
+      const pp = Math.min(2, tfx('p14'));
+      if (pp) k *= pp > 1 ? 2 : 1.5;
+      // Chain reaction (p16): each of them puts half of what a cut gives back into the meter
+      if (tfx('p16')) rushCharge = Math.min(RUSH_GOAL - 1, rushCharge + 0.5);
+    }
     // Early bird (f16): the first 4 s of the day pay double. Harvest moon (f15): the last 3 s.
     if (tfx('f16') && dayLen - time <= 4) k *= 2;
     if (tfx('f15') && time <= 3) k *= 2;
@@ -18225,6 +18259,14 @@ export function startGeminiEngine() {
       addText('BULK ×' + (bulk > 1 ? 5 : 3), c.x, top - 30, '#ffe08a', 22, -34, 0.9);
     }
     return k;
+  }
+  /** The chance that a new crop is golden corn: three times as high during the rush with Rush gold (p7). */
+  function goldChance() {
+    return cur.gold * (rushTimer > 0 && tfx('p7') ? 3 : 1);
+  }
+  /** How much faster crops sprout during the rush: 35%, or twice as fast with Rush bloom (p13). */
+  function rushSprout() {
+    return rushTimer > 0 ? (tfx('p13') ? 2 : 1.35) : 1;
   }
   /** True for the crop that joined the field this morning (the plan's crop table: [type, weight, level]). */
   function isNewToday(type) {
@@ -18289,15 +18331,38 @@ export function startGeminiEngine() {
     hitStopTimer = 0.04;
     shake(8);
     Sound.hit(true);
-    if (style === 'scythe') powerWhirl(at.x, at.y, lv);
-    else if (style === 'flame') powerFireWave(at.x, at.y, lv);
-    else if (style === 'blaster') powerSeedStorm(at.x, at.y, lv);
-    else powerCleave(at.x, at.y, lv);
+    castPower(style, at.x, at.y, lv);
     // Whirlwind Echo: a golden vortex keeps chopping where the power landed (the scythe's power already is one)
     if (hasSkill('reap_vortex') && style !== 'scythe')
       dbdVortexes.push({ x: at.x, y: at.y, r: cur.R * 1.2, t: 1.8, acc: 0, a: 0 });
+    // Aftershock (p11): the same power again at half strength, half a second later, in the same place
+    if (tfx('p11')) aftershock = { t: 0.5, x: at.x, y: at.y, lv, style };
     checkPropsAndCrows(cur.R * 2.2, at.x, at.y);
     dbdEvent('power', { style, x: at.x, y: at.y });
+  }
+  function castPower(style, x, y, lv) {
+    if (style === 'scythe') powerWhirl(x, y, lv);
+    else if (style === 'flame') powerFireWave(x, y, lv);
+    else if (style === 'blaster') powerSeedStorm(x, y, lv);
+    else powerCleave(x, y, lv);
+  }
+  function updateAftershock(dt) {
+    if (!aftershock) return;
+    aftershock.t -= dt;
+    if (aftershock.t > 0) return;
+    const a = aftershock;
+    aftershock = null;
+    if (mode !== 'day') return;
+    powerHit = (1 + 0.2 * Math.min(3, tfx('p2'))) * 0.5;
+    shake(5);
+    Sound.hit(true);
+    castPower(a.style, a.x, a.y, a.lv);
+    today.aftershocks = (today.aftershocks || 0) + 1;
+  }
+  /** Tool master (p15): each tool's power doubles (a Cleave twice as wide, a Whirlwind twice as long, a Fire wave
+   *  twice as far, twice the seeds in a Seed storm). */
+  function toolMaster() {
+    return tfx('p15') ? 2 : 1;
   }
   /** A power that lands on the angry goat calms it (the Charge Cleave's old job). */
   function powerCalmsGoat(x, y, r) {
@@ -18313,12 +18378,13 @@ export function startGeminiEngine() {
   }
   /** Sickle: the Cleave, one big cut all around. */
   function powerCleave(x, y, lv) {
-    const cleaveR = cur.R * (cur.cleaver ? 2.5 : 2.15) * (1 + 0.08 * lv);
+    const cleaveR = cur.R * (cur.cleaver ? 2.5 : 2.15) * (1 + 0.08 * lv) * toolMaster();
     const cleaveDmg = cur.dmg * 2.6 * (1 + 0.2 * lv) * powerHit;
     parts.push({ k: 'ring', x, y, r: cleaveR, life: 0.42, max: 0.42, c: '#38bdf8' });
     parts.push({ k: 'ring', x, y, r: cleaveR * 0.72, life: 0.32, max: 0.32, c: '#fde047' });
     addText('CLEAVE!', x, y - cleaveR * 0.6, '#fde047', 28, -45, 0.85);
     let killed = 0;
+    powerKill = true;
     for (const c of crops) {
       if (c.dead || c.age < 0.04) continue;
       const cy = c.y - c.r * c.ds * 0.55;
@@ -18353,6 +18419,7 @@ export function startGeminiEngine() {
         killed++;
       }
     }
+    powerKill = false;
     if (killed) crops = crops.filter((c) => !c.dead);
     powerCalmsGoat(x, y, cleaveR);
     dbdEvent('cleave', { killed, x, y });
@@ -18360,7 +18427,7 @@ export function startGeminiEngine() {
   /** Scythe: a whirlwind that follows the finger for a couple of seconds, chopping all the way. */
   function powerWhirl(x, y, lv) {
     const r = cur.R * 1.45 * (1 + 0.08 * lv);
-    dbdVortexes.push({ x, y, r, t: 2.4 + 0.3 * lv, acc: 0, a: 0, follow: true, dmg: 0.75 * (1 + 0.2 * lv) * powerHit });
+    dbdVortexes.push({ x, y, r, t: (2.4 + 0.3 * lv) * toolMaster(), acc: 0, a: 0, follow: true, dmg: 0.75 * (1 + 0.2 * lv) * powerHit });
     parts.push({ k: 'ring', x, y, r: r * 1.3, life: 0.4, max: 0.4, c: '#fde047' });
     addText('WHIRLWIND!', x, y - r, '#fde047', 28, -45, 0.9);
     powerCalmsGoat(x, y, r);
@@ -18368,8 +18435,8 @@ export function startGeminiEngine() {
   /** Flame weeder: a ring of fire rolls out from the flame and sets every crop it passes alight. */
   let dbdWaves = [];
   function powerFireWave(x, y, lv) {
-    const R = cur.R * 3.2 * (1 + 0.08 * lv);
-    dbdWaves.push({ x, y, R, t: 0, dur: 0.55, lv, hit: new Set() });
+    const R = cur.R * 3.2 * (1 + 0.08 * lv) * toolMaster();
+    dbdWaves.push({ x, y, R, t: 0, dur: 0.55, lv, hit: new Set(), pw: powerHit });
     parts.push({ k: 'ring', x, y, r: cur.R, life: 0.3, max: 0.3, c: '#fdba74' });
     addText('FIRE WAVE!', x, y - 40, '#fdba74', 28, -45, 0.9);
     powerCalmsGoat(x, y, R);
@@ -18393,7 +18460,8 @@ export function startGeminiEngine() {
           continue;
         }
         c.burnT = Math.max(c.burnT || 0, (cur.burn || 1.4) + 1.2);
-        c.burnD = Math.max(c.burnD || 0, cur.dmg * 2.6 * (1 + 0.2 * w.lv) * powerHit);
+        c.burnD = Math.max(c.burnD || 0, cur.dmg * 2.6 * (1 + 0.2 * w.lv) * (w.pw || 1));
+        c.pwBurn = true;
         c.flash = 1;
         c.hpShow = 1.6;
       }
@@ -18443,7 +18511,7 @@ export function startGeminiEngine() {
       list.push({ c, cy, d: Math.hypot(c.x - x, cy - y) });
     }
     list.sort((p, q) => p.d - q.d);
-    const n = Math.min(list.length, 12 + 2 * lv);
+    const n = Math.min(list.length, 12 * toolMaster() + 2 * lv);
     for (let i = 0; i < n; i++) {
       const tg = list[i];
       seeds.push({
@@ -18780,6 +18848,13 @@ export function startGeminiEngine() {
   }
   function swing() {
     if (!pointer.active) return;
+    // Second wind (r9): after 2 s without a cut, the next 5 swings come twice as fast
+    if (windLeft > 0) windLeft--;
+    else if (tfx('r9') && tNow - lastCutAt >= 2) {
+      windLeft = 5;
+      lastCutAt = tNow;
+      addText('SECOND WIND', pointer.x, pointer.y - cur.R - 30, '#bae6fd', 22, -36, 0.8);
+    }
     const style = cur.style || 'sickle';
     if (style === 'blaster') {
       fireSeeds();
@@ -18794,17 +18869,37 @@ export function startGeminiEngine() {
     const crit = Math.random() < cur.cc || sureCrit(),
       streak = streakNext,
       dmg = cur.dmg * (crit ? cur.cm : 1) * (streak ? 5 : 1);
-    let hits = 0,
-      killed = 0;
+    // tree: Wind trail (r4), a fast finger stretches the swing by up to 30%, then 50%
+    const wt = Math.min(2, tfx('r4')),
+      R = cur.R * (wt ? 1 + [0, 0.3, 0.5][wt] * FarmScene_clamp((pSpeed - 200) / 800, 0, 1) : 1);
+    // Sweet spot (r3): crops in the outer half of the swing take 35% more, then 50%, 70%
+    const rim = [1, 1.35, 1.5, 1.7][Math.min(3, tfx('r3'))],
+      half2 = R * R * 0.25;
+    const inReach = [];
     for (const c of crops) {
       if (c.dead || c.age < 0.04) continue;
       const cy = c.y - c.r * c.ds * 0.55,
         dx = c.x - pointer.x,
         dy = cy - pointer.y,
-        rr = cur.R + c.r * c.ds * 0.65;
-      if (dx * dx + dy * dy > rr * rr) continue;
-      hits++;
-      if (hitCrop(c, cy, dmg, crit, flame ? 'flame' : 'blade') === 2) killed++;
+        rr = R + c.r * c.ds * 0.65,
+        d2 = dx * dx + dy * dy;
+      if (d2 > rr * rr) continue;
+      inReach.push([c, cy, d2 > half2 ? rim : 1]);
+    }
+    let hits = inReach.length,
+      killed = 0;
+    if (hits) {
+      swingN++;
+      // Sweep (r6): a swing that hits 4 or more crops pays 25% more, then 50%
+      sweepPay = hits >= 4 ? 1 + 0.25 * Math.min(2, tfx('r6')) : 1;
+      // Spin cycle (r11): every tenth swing that lands hits twice. Dancer (r16): so does a swing with a fast finger
+      const twice = (tfx('r11') && swingN % 10 === 0) || (tfx('r16') && pSpeed >= FAST_FINGER);
+      for (let pass = 0; pass < (twice ? 2 : 1); pass++)
+        for (const [c, cy, k] of inReach) {
+          if (c.dead) continue;
+          if (hitCrop(c, cy, dmg * k, crit, flame ? 'flame' : 'blade') === 2) killed++;
+        }
+      sweepPay = 1;
     }
     if (hits) {
       // Crit streak (b12): three crits in a row that landed, and the next swing that lands hits ×5
@@ -18829,6 +18924,11 @@ export function startGeminiEngine() {
         }
         spark(pointer.x, pointer.y); // Storm synergy: chain lightning to up to 2 nearby crops!
         if (cur.storm) killed += stormChain(pointer.x, pointer.y);
+        // Static (p10): a crit that lands puts half of what a cut gives into the meter
+        if (tfx('p10') && rushTimer <= 0) {
+          rushCharge += 0.5;
+          if (rushCharge >= RUSH_GOAL) firePower();
+        }
       }
     }
     if (killed) crops = crops.filter((c) => !c.dead);
@@ -18884,7 +18984,9 @@ export function startGeminiEngine() {
       if (sd.t < 1) continue;
       sd.done = true;
       if (c.dead) continue;
+      powerKill = !!sd.pw;
       if (hitCrop(c, ty, cur.dmg * (sd.crit ? cur.cm : 1) * (sd.pw || 1), sd.crit, 'seed') === 2) killed++;
+      powerKill = false;
       Sound.hit(sd.crit);
       if (sd.crit) {
         addText('CRIT', tx, ty - 30, '#ffd34d', 26, -40, 0.7);
@@ -18915,7 +19017,9 @@ export function startGeminiEngine() {
           if (c.dead || c.age < 0.04) continue;
           const cy = c.y - c.r * c.ds * 0.55;
           if (Math.hypot(c.x - v.x, cy - v.y) > v.r + c.r * c.ds * 0.5) continue;
+          powerKill = true;
           if (hitCrop(c, cy, cur.dmg * (v.dmg || 0.6), false, 'flame') === 2) killed++;
+          powerKill = false;
         }
       }
     }
@@ -18950,6 +19054,7 @@ export function startGeminiEngine() {
   function toolUpdate(dt) {
     updateVortexes(dt);
     updateWaves(dt);
+    updateAftershock(dt);
     flameT = Math.max(0, flameT - dt);
     updateSeeds(dt);
     if ((cur.style || 'sickle') === 'flame' && pointer.active) {
@@ -18999,7 +19104,9 @@ export function startGeminiEngine() {
       }
       if (c.boss) bossHit(c, true);
       if (c.hp <= 1e-6) {
+        powerKill = !!c.pwBurn;
         harvest(c);
+        powerKill = false;
         killed++;
       }
     }
@@ -19903,6 +20010,7 @@ export function startGeminiEngine() {
         : 1);
     const baseValue = cropBaseVal(c.type) * cur.vm * gazetteMul * (c.type === 'radish' ? cur.radishBonus : 1);
     if (combo === 1) chainPaid = 0;
+    lastCutAt = tNow;
     const v = baseValue * multiplier * lucky * treePay(c, c.y - def.top * c.ds);
     chainPaid += v;
     farm.cash += v;
@@ -20597,6 +20705,13 @@ export function startGeminiEngine() {
           pointer.active = true;
         }
       }
+      // how fast the finger moves, smoothed (field units a second)
+      if (pointer.active) {
+        const pd = Math.hypot(pointer.x - pLastX, pointer.y - pLastY) / Math.max(dt, 1e-3);
+        pSpeed += (Math.min(4000, pd) - pSpeed) * Math.min(1, dt * 8);
+      } else pSpeed = 0;
+      pLastX = pointer.x;
+      pLastY = pointer.y;
       comboTimer = Math.max(0, comboTimer - dt);
       if (comboTimer <= 0 && combo) {
         chainEnds();
@@ -20626,12 +20741,13 @@ export function startGeminiEngine() {
         spawnCrow();
       }
       const spawnInterval =
-        cur.spawn / ((rushTimer > 0 ? 1.35 : 1) * (dailyEvent && dailyEvent.spawnFast ? dailyEvent.spawnFast : 1));
+        // (tree: Rush bloom, p13, crops sprout twice as fast during the rush instead of 35% faster)
+        cur.spawn / (rushSprout() * (dailyEvent && dailyEvent.spawnFast ? dailyEvent.spawnFast : 1));
       // one crop at a time, up to what the field's upgrades allow (v0.11.3: the doubled field and the bunches of
       // v0.11.1-0.11.2 are gone; Navid: the number of crops should come from the upgrades)
       let spawned = 0;
       while (spawnAcc >= spawnInterval && spawned < 4) {
-        if (crops.length >= cur.max) {
+        if (crops.length >= cur.max || devEmptyField) {
           spawnAcc = Math.min(spawnAcc, spawnInterval);
           break;
         }
@@ -24867,6 +24983,15 @@ export function startGeminiEngine() {
         if (o.rush != null) rushTimer = o.rush;
         // the chain runs out on the next frame
         if (o.chainEnd) comboTimer = 0.001;
+        if (o.meter != null) rushCharge = o.meter * RUSH_GOAL;
+        if (o.powerKill != null) powerKill = !!o.powerKill;
+        if (o.idle != null) lastCutAt = tNow - o.idle;
+        if (o.empty) {
+          devEmptyField = true;
+          crops = crops.filter((c) => c.boss);
+          fieldProps = [];
+          propTimer = crowTimer = goatTimer = 1e9;
+        }
         if (o.stop != null) clockStopped = !!o.stop;
         if (o.cash != null) farm.cash = o.cash;
         return true;
@@ -24903,6 +25028,19 @@ export function startGeminiEngine() {
         crops = crops.filter((x) => !x.dead);
         return lost;
       };
+      /** Tests only: one swing of the tool at a field point, with the finger moving at `speed`. */
+      engineApi.devSwing = (x, y, speed) => {
+        if (!window.__DBD_DEV_HOOKS || mode !== 'day') return false;
+        pointer.x = pLastX = x;
+        pointer.y = pLastY = y;
+        pointer.active = true;
+        pointer.placed = true;
+        pSpeed = speed || 0;
+        swing();
+        pointer.active = false;
+        crops = crops.filter((c) => !c.dead);
+        return true;
+      };
       /** Tests only: what the tree's tricks come to right now. */
       engineApi.devTree = () => ({
         sureCrit: sureCrit(),
@@ -24918,6 +25056,16 @@ export function startGeminiEngine() {
         props: fieldProps.map((p) => p.kind),
         crows: crows.length,
         combo,
+        pSpeed,
+        windLeft,
+        swingN,
+        aftershock: !!aftershock,
+        vortexes: dbdVortexes.map((v) => ({ r: v.r, t: v.t })),
+        waves: dbdWaves.map((w) => ({ R: w.R, pw: w.pw })),
+        seeds: seeds.length,
+        golden: goldChance(),
+        rushSprout: rushSprout(),
+        R: cur.R,
       });
       window.__DBD_ENGINE = engineApi;
       const dbdTestApi = {
