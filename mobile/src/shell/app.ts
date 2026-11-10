@@ -1,5 +1,5 @@
 // The game around the field: menu, world and country maps, the farmhouse between days, sundown,
-// won and lost screens, the workshop, settings. Gemini's engine runs the days; this file runs the game.
+// won and lost screens, the upgrade tree, settings. Gemini's engine runs the days; this file runs the game.
 
 import { Capacitor } from '@capacitor/core';
 import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from '../game/world';
@@ -9,10 +9,9 @@ import {
   DEFAULT_TOUCH_LIFT, GAME_SAVE_KEY, RECENT_DAYS, coinsForDays, MAX_TOUCH_LIFT, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, crownCount, newGame, nextCity, paidAfterRun,
   parseGame, spendableFarmCash, starGate, starsFor, todayKey, toolLock, totalStars, type GameSave, type RunInfo,
 } from '../game/progress';
-import { diamondsLeft, learn, resetSkills, skillDef } from '../game/skills';
 import { FLAIR, buyFlair, equipFlair, flairById, lookFor, ribbonsForWin, type FlairKind } from '../game/flair';
 import { DAILY_AD_TRIES, MEDAL_NAME, MEDAL_RIBBONS, dailyFor, duelFor, medalOf, newDaily, sidePlan, triesLeft, type SideDef } from '../game/daily';
-import { SHED_FX, UPGRADES, emptyLevels, formatDuration, settleJob, startUpgrade, upgradeCost, upgradeDuration, type UpgradeId } from '../game/workshop';
+import { SHED_FX, emptyLevels, formatDuration, type Levels, type UpgradeId } from '../game/workshop';
 import { TOOLS, isToolId, modCost, modLevel, newTools, toolDef, toolStats, toolSummary, type ToolId } from '../game/tools';
 import { ART, BAND, MAP, NODES, PREVIEW, SPRITE, bandFor, spriteImg } from './art';
 import { $, ICON, TOOL_ICON, cap, clamp, esc, money, stars } from './dom';
@@ -29,15 +28,15 @@ import { adsAvailable, canOffer, coinsWait, onAdsChanged, watch } from './offers
 import { PINS } from './pins';
 import { DEFAULT_VOLUME, LICENCE_URL, Music, TRACKS, trackById, volGain, type Mood } from './music';
 import {
-  barnHtml, calendarIcon, dailyHtml, duelCities, duelHtml, duelIcon, firstSkill, sideResultHtml, skillMapHtml,
+  barnHtml, calendarIcon, dailyHtml, duelCities, duelHtml, duelIcon, sideResultHtml,
   type DuelSetup, type SideOutcome,
 } from './extras';
 import { ribbonIcon } from './looks';
 import { arthurOnCard } from './arthur';
-import { TREE_ZOOMS, centerTree, treeHave, treeMapHtml } from './treeview';
-import { TREE_SKILL, canBuyNode, treeNode, treeRefund } from '../game/tree';
+import { TREE_ZOOMS, centerTree, creditIcon, treeMapHtml } from './treeview';
+import { DIAMOND_CREDIT, TREE_SKILL, buildingNode, buyNode, resetTree, settleTree, treeHasAny, treeNode, treeReady } from '../game/tree';
 
-type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'skills' | 'tree' | 'barn' | 'daily' | 'duel' | 'side';
+type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'tree' | 'barn' | 'daily' | 'duel' | 'side';
 
 /** A side farm in progress (the daily farm or one duel turn): the real farm waits in a snapshot. */
 interface SideRun {
@@ -77,7 +76,8 @@ interface CityResult {
   spare: boolean;
   crown: boolean;
   firstWin: boolean;
-  diamonds: number;
+  /** Tree credit for a first win (a boss farm pays twice). */
+  credit: number;
   ribbons?: number;
   days: number;
   earned: number;
@@ -115,7 +115,7 @@ export class GameApp {
   private worldSel: CountryCode = 'CA';
   private countrySel: CountryCode = 'CA';
   private citySel = ROUTE[0].id;
-  private fhTab: 'workshop' | 'tools' | 'perks' | 'bills' = 'workshop';
+  private fhTab: 'tools' | 'perks' | 'bills' = 'tools';
   private toolSel: ToolId = 'sickle';
   /** The language list was opened from Settings (it then offers Back as well as Done). */
   private langFromSettings = false;
@@ -136,7 +136,6 @@ export class GameApp {
   private busy = false;
   private saveT = 0;
   private music: Music;
-  private skillSel = '';
   private barnTab: FlairKind = 'finish';
   private barnSel = '';
   private side: SideRun | null = null;
@@ -154,7 +153,7 @@ export class GameApp {
   /** The update pop-up was shown this launch, and what it offered. */
   private updateAsked = false;
   private updateOffer: UpdateOffer | null = null;
-  /** Where the skill map and the Bling Barn go back to. */
+  /** Where the upgrade tree and the Bling Barn go back to. */
   private backTo: Screen = 'menu';
   private sideOut: SideOutcome | null = null;
   private duel: DuelState | null = null;
@@ -185,7 +184,7 @@ export class GameApp {
     this.root = document.createElement('div');
     this.root.id = 'dbdScreens';
     document.body.append(this.root);
-    for (const s of ['menu', 'world', 'country', 'farmhouse', 'sundown', 'won', 'lost', 'skills', 'tree', 'barn', 'daily', 'duel', 'side']) {
+    for (const s of ['menu', 'world', 'country', 'farmhouse', 'sundown', 'won', 'lost', 'tree', 'barn', 'daily', 'duel', 'side']) {
       const el = document.createElement('section');
       el.className = 'scr scr-' + s;
       el.dataset.scr = s;
@@ -249,6 +248,14 @@ export class GameApp {
       e.setShed(this.g.workshop.levels);
       this.saveNow();
       if (back > 0) setTimeout(() => this.toast(t('New workshop and longer farms: {amt} back in your savings.', { amt: money(back) })), 900);
+    }
+    // 0.13: learned skills are tree nodes now and diamonds became tree credit (progress.ts); say so once
+    if (this.g.migratedTree) {
+      const m = this.g.migratedTree;
+      delete this.g.migratedTree;
+      this.saveNow();
+      if (m.credit > 0) setTimeout(() => this.toast(t('Skills moved to the upgrade tree. Your diamonds became {amt} of tree credit.', { amt: money(m.credit) }), 4200), 1400);
+      else setTimeout(() => this.toast(t('Your skills moved to the upgrade tree.'), 3200), 1400);
     }
     const run = this.g.run;
     if (run) {
@@ -320,19 +327,24 @@ export class GameApp {
     return this.g.wallet + spendableFarmCash(this.g.run, this.farmCash());
   }
 
-  private tick(): void {
-    if (this.settleWorkshop() && (this.scr === 'farmhouse' || this.modal.dataset.kind === 'workshop')) this.refresh();
-    else if (this.g.workshop.job && this.scr === 'farmhouse') this.updateJobBar();
+  /** Everything a tree node can be bought with: tree credit, then savings, then the farm's cash above its mark. */
+  private treeMoney(): number {
+    return (this.g.treeCredit || 0) + this.wallet();
   }
 
-  /** Finishes a workshop job whose time is up; returns true when one finished. */
+  private tick(): void {
+    if (this.settleWorkshop() && (this.scr === 'farmhouse' || this.scr === 'tree')) this.refresh();
+    else if (this.g.workshop.job && (this.scr === 'farmhouse' || this.scr === 'tree')) this.updateJobBar();
+  }
+
+  /** Finishes the tree's build when its time is up (or `force`: a rewarded ad); returns true when one finished. */
   private settleWorkshop(force = false): boolean {
-    const job = settleJob(this.g.workshop, Date.now(), force);
-    if (!job) return false;
+    const done = settleTree(this.g, Date.now(), force);
+    if (!done) return false;
     engine().setShed(this.g.workshop.levels);
+    this.applySkills();
     this.save();
-    const def = UPGRADES.find(u => u.id === job.id);
-    if (def) this.toast(t('{name} {level} is ready.', { name: t(def.name), level: job.level }));
+    this.toast(done.node.kind === 'track' ? t('{name} {level} is ready.', { name: t(done.node.name), level: done.level }) : t('{name}: yours.', { name: t(done.node.name) }));
     return true;
   }
 
@@ -416,9 +428,9 @@ export class GameApp {
     p.won = true;
     p.stars = Math.max(p.stars, res.stars);
     p.bestDays = p.bestDays ? Math.min(p.bestDays, d.days) : d.days;
-    let diamonds = 0;
-    if (firstWin) diamonds = plan.boss ? 2 : 1;
-    if (diamonds) engine().addDiamonds(diamonds);
+    // a first win pays tree credit (what a diamond was worth until 0.12; a boss farm pays twice)
+    const credit = firstWin ? (plan.boss ? 2 : 1) * DIAMOND_CREDIT : 0;
+    if (credit) this.g.treeCredit = (this.g.treeCredit || 0) + credit;
     // v0.12.2 (Navid, 5 Nov: option B): what is left after the deed becomes savings that buy upgrades and tools, never
     // a bill (the tree credit of 0.13). Only above what this farm has already paid you (its mark), so a replay of an
     // easy farm can't be farmed for money; the next farm still starts its bills at $0.
@@ -427,7 +439,7 @@ export class GameApp {
     p.paid = paidAfterRun(run, banked);
     this.g.run = null;
     this.result = {
-      kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.spare, crown: p.crown, firstWin, diamonds, ribbons,
+      kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.spare, crown: p.crown, firstWin, credit, ribbons,
       days: d.days, earned: d.earned, harvested: d.harvested, wallet: this.g.wallet, banked, mark: run.mark, kept: Math.round(d.cash),
     };
     this.saveNow();
@@ -443,7 +455,7 @@ export class GameApp {
     p.paid = paidAfterRun(run, 0);
     this.g.run = null;
     this.result = {
-      kind: 'lost', cityId: run.cityId, stars: 0, spare: false, crown: false, firstWin: false, diamonds: 0,
+      kind: 'lost', cityId: run.cityId, stars: 0, spare: false, crown: false, firstWin: false, credit: 0,
       days: d.days, earned: 0, harvested: 0, wallet: left, banked: 0, mark: run.mark, short: d.short, bill: d.bill, bossKept: !!d.bossKept,
     };
     this.saveNow();
@@ -460,7 +472,8 @@ export class GameApp {
     this.root.style.display = s === 'farm' ? 'none' : '';
     document.body.classList.toggle('dbd-onscr', s !== 'farm');
     this.hud.show(s === 'farm');
-    this.music.setMood(s === 'farm' || s === 'sundown' ? 'field' : 'menu');
+    // the tree opened from Sundown keeps the field music (only the farmhouse and the menus bring the menu track)
+    this.music.setMood(s === 'farm' || s === 'sundown' || (s === 'tree' && this.backTo === 'sundown') ? 'field' : 'menu');
     if (s !== 'farm') this.render(s);
     layout(this.root);
     if (s === 'farmhouse' && this.g.run) {
@@ -476,8 +489,8 @@ export class GameApp {
       }
       if (!chest) this.pointAtStart();
     }
-    // the first ribbons and diamond: where they go
-    if (s === 'won' && this.result && (this.result.ribbons || this.result.diamonds) && !this.g.seen.gains && this.coachOn) {
+    // the first ribbons and tree credit: where they go
+    if (s === 'won' && this.result && (this.result.ribbons || this.result.credit) && !this.g.seen.gains && this.coachOn) {
       this.g.seen.gains = true;
       this.save();
       // after the stars have landed
@@ -490,7 +503,6 @@ export class GameApp {
 
   private refresh(): void {
     if (this.scr !== 'farm') this.render(this.scr);
-    if (!this.modal.hidden && this.modal.dataset.kind === 'workshop') this.renderWorkshopModal();
     if (!this.modal.hidden && this.modal.dataset.kind === 'panel') this.renderPanel();
     layout(this.root);
   }
@@ -507,12 +519,13 @@ export class GameApp {
       el.innerHTML = this.resultHtml();
       if (s === 'won') arthurOnCard(el.querySelector<HTMLCanvasElement>('.r-arthur'), 'won');
     }
-    else if (s === 'skills') el.innerHTML = skillMapHtml(this.g, this.skillSel || firstSkill(this.g));
     else if (s === 'tree') {
-      // the 0.13 tree (a preview): keep the map where it was scrolled, unless it was just opened or zoomed
+      // keep the map where it was scrolled, unless it was just opened or zoomed, or a node was picked from a list
       const box = el.querySelector<HTMLElement>('#dbdTreeMap');
       const keep = box && !this.treeRecenter ? [box.scrollLeft, box.scrollTop] : null;
-      el.innerHTML = treeMapHtml(this.g, this.treeSel, this.treeZoom, this.treeResetArmed);
+      el.innerHTML = treeMapHtml(this.g, {
+        sel: this.treeSel, zoom: this.treeZoom, resetArmed: this.treeResetArmed, money: this.treeMoney(), ad: canOffer(this.g, 'finish'), now: Date.now(),
+      });
       const nb = el.querySelector<HTMLElement>('#dbdTreeMap');
       if (keep && nb) [nb.scrollLeft, nb.scrollTop] = keep;
       else requestAnimationFrame(() => centerTree(el, this.treeSel, this.treeZoom));
@@ -555,7 +568,6 @@ export class GameApp {
       case 'bank': this.faceBank(); break;
       case 'tab':
       case 'panel': this.openPanel(arg); break;
-      case 'buy': this.buy(arg as UpgradeId); break;
       case 'tool': if (isToolId(arg)) { this.toolSel = arg; this.refresh(); } break;
       case 'equip': this.equip(arg); break;
       case 'buy-tool': this.buyTool(arg); break;
@@ -588,7 +600,6 @@ export class GameApp {
       case 'update-now': this.closeModal(); if (this.updateOffer) void startUpdate(this.updateOffer); break;
       case 'replay-practice': this.closeModal(); void this.playPractice(true); break;
       case 'replay-intro': this.closeModal(); void this.playIntro(true); break;
-      case 'workshop': this.openWorkshopModal(); break;
       case 'sound': this.toggleEffects(); break;
       case 'music': this.g.settings.music = !this.g.settings.music; this.save(); this.music.setEnabled(this.g.settings.music); this.openSettings(); break;
       case 'haptics': this.g.settings.haptics = !this.g.settings.haptics; this.save(); this.openSettings(); window.dispatchEvent(new CustomEvent('dbd:haptics', { detail: this.g.settings.haptics })); break;
@@ -597,18 +608,16 @@ export class GameApp {
       case 'reset-yes': this.resetGame(); break;
       case 'leave-yes': this.leaveRunAndStart(arg); break;
       case 'barn-menu': this.openBarnMenu(); break;
-      case 'skills': if (!this.modal.hidden) this.closeModal(); this.backTo = this.scr === 'skills' || this.scr === 'barn' ? this.backTo : this.scr; this.skillSel = firstSkill(this.g); this.show('skills'); break;
       case 'back': this.show(this.backTo); break;
-      case 'skill': this.skillSel = arg; this.render('skills'); break;
-      case 'tree': this.treeSel = 'trunk'; this.treeRecenter = true; this.show('tree'); break;
-      case 'tree-back': this.show('skills'); break;
-      case 'tree-node': this.treeSel = arg; this.render('tree'); break;
+      case 'tree': this.openTree(); break;
+      case 'tree-back': this.treeResetArmed = false; this.show(this.backTo === 'tree' ? 'menu' : this.backTo); break;
+      case 'tree-node': this.treeResetArmed = false; this.treeSel = arg; this.render('tree'); break;
+      // from a list (what is ready to buy, the build in progress): the map goes to the node
+      case 'tree-pick': this.treeResetArmed = false; this.treeSel = arg; this.treeRecenter = true; this.render('tree'); break;
       case 'tree-buy': this.treeResetArmed = false; this.buyTreeNode(arg); break;
       case 'tree-reset': this.resetTree(); break;
       case 'tree-zoom': this.treeZoom = Math.max(0, Math.min(TREE_ZOOMS.length - 1, this.treeZoom + (Number(arg) || 0))); this.treeRecenter = true; this.render('tree'); break;
-      case 'skill-learn': this.learnSkill(arg); break;
-      case 'skill-reset': this.resetAllSkills(); break;
-      case 'barn': if (!this.modal.hidden) this.closeModal(); this.backTo = this.scr === 'skills' || this.scr === 'barn' ? this.backTo : this.scr; this.barnSel = this.g.flair.equipped[this.barnTab]; this.show('barn'); break;
+      case 'barn': if (!this.modal.hidden) this.closeModal(); this.backTo = this.scr === 'tree' || this.scr === 'barn' ? this.backTo : this.scr; this.barnSel = this.g.flair.equipped[this.barnTab]; this.show('barn'); break;
       case 'barn-tab': this.barnTab = arg as FlairKind; this.barnSel = this.g.flair.equipped[this.barnTab]; this.render('barn'); break;
       case 'barn-pick': this.barnSel = arg; this.render('barn'); break;
       case 'barn-buy': this.barnBuy(arg); break;
@@ -691,7 +700,8 @@ export class GameApp {
   private beginRun(cityId: string): void {
     const tools = this.g.tools.owned.map(id => toolStats(this.g.tools, id));
     // crops are tougher for a build ahead of the route and softer for one behind it (set once, when the farm starts)
-    const tough = toughnessFor(routeIndex(cityId), bestPower(this.g.workshop.levels, tools, this.g.skills));
+    // (by the highest track levels the player has had, so a reset just before a farm can't soften its crops)
+    const tough = toughnessFor(routeIndex(cityId), bestPower(this.peakLevels(), tools, []));
     const p = (this.g.cities[cityId] ||= { ...cityProgress(this.g, cityId) });
     const run: RunInfo = { cityId, startCash: 0, startedAt: Date.now(), bestDay: 0, mark: p.paid || 0, spent: 0, tough };
     const plan = this.farmPlan(run);
@@ -701,7 +711,7 @@ export class GameApp {
     this.g.run = run;
     p.plays++;
     this.citySel = cityId;
-    this.fhTab = 'workshop';
+    this.fhTab = 'tools';
     this.saveNow();
     this.show('farmhouse');
   }
@@ -782,6 +792,7 @@ export class GameApp {
     e.setSaving(false);
     e.setFieldSeed(20261103);
     e.setSkills([]);
+    this.clearTreeFx();
     e.setTool(tool);
     if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: emptyLevels(), plan, tools: [tool] })) {
       this.restoreFarm(snap, sound);
@@ -842,6 +853,7 @@ export class GameApp {
     e.setSaving(false);
     e.setFieldSeed(20261030);
     e.setSkills([]);
+    this.clearTreeFx();
     e.setTool(tool);
     if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: levels, plan, tools: [tool] })) {
       this.restoreFarm(snap, sound);
@@ -998,7 +1010,8 @@ export class GameApp {
       return void card('mRadish', img('radish'), t('Runaway Radish'), t('It runs from your sickle. Corner it against the edge.'));
     if (!seen.mGolden && (p.lucky || []).length)
       return void card('mGolden', img('golden'), t('A golden crop'), t('Worth far more than the others. Cut it before it goes back into the ground.'));
-    const treaty = st.perks.includes('treaty') || this.g.skills.includes('gold_treaty') || this.g.skills.includes('gold_herd');
+    const tr = this.g.tree || {};
+    const treaty = st.perks.includes('treaty') || tr.a1 > 0 || tr.a14 > 0;
     if (!seen.mGoat && !treaty && p.goat) return void card('mGoat', '🐐', t('The goat'), t("Don't touch it! A bumped goat gets angry and costs you daylight."));
     if (!seen.mGoatPet && treaty && p.goat) return void card('mGoatPet', '🐐', t('A friendly goat'), t('Touch it with your sickle: it tips you cash.'));
     if (!seen.mThief && (p.crows || []).length) return void card('mThief', '🐦', t('A thief crow'), t('It steals coins from your jar. Swipe it before it flies off and you get them back.'));
@@ -1164,16 +1177,6 @@ export class GameApp {
     return true;
   }
 
-  private buy(id: UpgradeId): void {
-    const e = engine();
-    const res = startUpgrade(this.g.workshop, id, Date.now(), cost => this.spend(cost));
-    if (res.ok) {
-      if (res.instant) e.setShed(this.g.workshop.levels);
-      this.saveNow();
-    }
-    this.refresh();
-  }
-
   private applyTool(): void {
     try {
       engine().setTool(toolStats(this.g.tools));
@@ -1274,6 +1277,7 @@ export class GameApp {
     this.refresh();
   }
 
+  /** "Finish now": a rewarded ad finishes the tree's build (offered only while an ad is loaded). */
   private async adFinish(): Promise<void> {
     if (!this.g.workshop.job || this.busy) return;
     this.busy = true;
@@ -1301,46 +1305,69 @@ export class GameApp {
 
   // ------------------------------------------------------------------ skills and looks
 
+  /** The tree reaches the engine two ways: every node's level as window.__DBD_TREEFX (`tfx(id)`), and the tricks that
+   *  were diamond skills by their old names (`hasSkill`). */
   private applySkills(): void {
-    // the upgrade tree (0.13 preview): its nodes that are today's skills count as learned; its new tricks go to the
-    // engine as levels (window.__DBD_TREEFX)
     const tree = this.g.tree || {};
     (window as any).__DBD_TREEFX = { ...tree };
-    const fromTree = Object.keys(tree).filter(id => tree[id] > 0 && TREE_SKILL[id]).map(id => TREE_SKILL[id]);
+    const skills = Object.keys(tree).filter(id => tree[id] > 0 && TREE_SKILL[id]).map(id => TREE_SKILL[id]);
     try {
-      engine().setSkills([...new Set([...this.g.skills, ...fromTree])]);
+      engine().setSkills(skills);
     } catch {
       /* engine not ready yet; start() applies them */
     }
   }
 
-  /** Buy a node's next level in the tree: savings first, then farm cash above the farm's mark (as upgrades do). */
+  /** Side farms (the daily farm, duels, practice, the intro) run without the player's tree. */
+  private clearTreeFx(): void {
+    (window as any).__DBD_TREEFX = {};
+  }
+
+  /** The highest track levels the player has had (kept in the save). */
+  private peakLevels(): Levels {
+    const lv = this.g.workshop.levels, pk = (this.g.peak ||= { ...lv });
+    for (const k of Object.keys(lv) as UpgradeId[]) pk[k] = Math.max(pk[k] || 0, lv[k]);
+    return pk;
+  }
+
+  /** Opens the tree centred on the trunk, whose card lists what can be bought now. */
+  private openTree(): void {
+    if (!this.modal.hidden) this.closeModal();
+    if (this.scr !== 'tree') this.backTo = this.scr === 'barn' ? this.backTo : this.scr;
+    this.treeSel = 'trunk';
+    this.treeRecenter = true;
+    this.treeResetArmed = false;
+    this.show('tree');
+  }
+
+  /** Pays for a tree node: tree credit first, then savings, then the farm's cash above its mark (`spend`). */
+  private payTree(cost: number): boolean {
+    const credit = Math.min(this.g.treeCredit || 0, cost);
+    if (cost - credit > 0 && !this.spend(cost - credit)) return false;
+    if (credit) this.g.treeCredit = (this.g.treeCredit || 0) - credit;
+    return true;
+  }
+
+  /** Buy a node's next level in the tree, or start building it (a keystone, every fifth level of a track). */
   private buyTreeNode(id: string): void {
     const n = treeNode(id);
     if (!n) return;
-    const have = (x: string) => {
-      const m = treeNode(x);
-      return m ? treeHave(this.g, m) : 0;
-    };
-    const chk = canBuyNode(n, have);
-    if (!chk.ok) return;
-    // tree credit (from a reset) first, then savings and farm cash
-    const credit = Math.min(this.g.treeCredit || 0, chk.cost);
-    if (chk.cost - credit > 0 && !this.spend(chk.cost - credit)) {
-      this.toast(t('Not enough money for {name}.', { name: n.name }));
+    const res = buyNode(this.g, n, Date.now(), cost => this.payTree(cost));
+    if (!res.ok) {
+      // 'cash' with the veil up: the tonight's-bill question is being asked (spend)
+      if (res.why === 'cash' && !document.querySelector('.dbd-veil')) this.toast(t('Not enough money for {name}.', { name: t(n.name) }));
+      this.render('tree');
       return;
     }
-    if (credit) this.g.treeCredit = (this.g.treeCredit || 0) - credit;
-    const tree = (this.g.tree ||= {});
-    tree[id] = have(id) + 1;
+    this.peakLevels();
     this.applySkills();
     try {
-      engine().refreshStats();
+      engine().setShed(this.g.workshop.levels);
     } catch {
       /* engine not ready */
     }
     this.saveNow();
-    this.toast(t('{name}: yours.', { name: n.name }));
+    if (!res.instant) this.toast(t('Building {name}.', { name: t(n.name) }));
     this.render('tree');
   }
 
@@ -1348,54 +1375,35 @@ export class GameApp {
     (window as any).__DBD_LOOK = lookFor(this.g.flair);
   }
 
-  /** The 0.13 tree preview: the chosen node and the zoom step. */
+  /** The tree screen: the chosen node and the zoom step. */
   private treeSel = 'trunk';
   private treeZoom = 1;
   private treeRecenter = true;
   /** The tree's reset button asks for a second tap. */
   private treeResetArmed = false;
 
-  /** A free reset: everything bought in the tree comes back as tree credit, which only buys tree nodes. */
+  /** A free reset: every node and track level comes back as tree credit, which only buys tree nodes. */
   private resetTree(): void {
-    const tree = this.g.tree || {};
-    if (!Object.values(tree).some(v => v > 0)) return;
+    if (!treeHasAny(this.g)) return;
     if (!this.treeResetArmed) {
       this.treeResetArmed = true;
       this.render('tree');
       return;
     }
     this.treeResetArmed = false;
-    const back = treeRefund(tree);
-    this.g.treeCredit = (this.g.treeCredit || 0) + back;
-    this.g.tree = {};
+    this.peakLevels();
+    const back = resetTree(this.g);
     this.applySkills();
     try {
-      engine().refreshStats();
+      engine().setShed(this.g.workshop.levels);
     } catch {
       /* engine not ready */
     }
     this.saveNow();
     this.toast(t('Tree reset: {amt} back as tree credit.', { amt: money(back) }));
+    this.treeSel = 'trunk';
+    this.treeRecenter = true;
     this.render('tree');
-  }
-
-  private learnSkill(id: string): void {
-    if (!learn(this.g, id)) return;
-    this.applySkills();
-    this.saveNow();
-    const d = skillDef(id);
-    if (d) this.toast(`${d.name} learned.`);
-    this.render('skills');
-  }
-
-  private resetAllSkills(): void {
-    if (!this.g.skills.length) return;
-    resetSkills(this.g);
-    this.applySkills();
-    this.saveNow();
-    this.toast(t('Skills reset. Every diamond is back.'));
-    this.skillSel = firstSkill(this.g);
-    this.render('skills');
   }
 
   private barnBuy(id: string): void {
@@ -1518,6 +1526,7 @@ export class GameApp {
     e.setSaving(false);
     e.setFieldSeed(def.seed);
     e.setSkills([]);
+    this.clearTreeFx();
     const tool = toolStats({ owned: [def.tool], equipped: def.tool, mods: {} }, def.tool);
     e.setTool(tool);
     const plan = sidePlan(def.cityId, def.tool, def.levels);
@@ -1574,7 +1583,7 @@ export class GameApp {
     const score = sr.score;
     if (sr.kind === 'daily' && this.dailyState().date !== sr.date) {
       // the try started on another day: show the score, but today's medals start fresh
-      this.sideOut = { kind: 'daily', score, def: sr.def, medal: 0, newMedal: false, ribbons: 0, diamond: false, tries: triesLeft(this.g.daily), adTry: false };
+      this.sideOut = { kind: 'daily', score, def: sr.def, medal: 0, newMedal: false, ribbons: 0, credit: 0, tries: triesLeft(this.g.daily), adTry: false };
     } else if (sr.kind === 'daily') {
       const st = this.dailyState();
       const before = st.medal;
@@ -1583,14 +1592,15 @@ export class GameApp {
       const ribbons = Math.max(0, MEDAL_RIBBONS[medal] - MEDAL_RIBBONS[before]);
       st.medal = medal;
       this.g.ribbons += ribbons;
-      let diamond = false;
-      if (medal >= 3 && !st.goldDiamond) {
-        st.goldDiamond = true;
-        this.g.bonusDiamonds += 1;
-        diamond = true;
+      // the day's first gold medal pays tree credit (a diamond until 0.12)
+      let credit = 0;
+      if (medal >= 3 && !st.goldPaid) {
+        st.goldPaid = true;
+        credit = DIAMOND_CREDIT;
+        this.g.treeCredit = (this.g.treeCredit || 0) + credit;
       }
       this.sideOut = {
-        kind: 'daily', score, def: sr.def, medal, newMedal: medal > before, ribbons, diamond,
+        kind: 'daily', score, def: sr.def, medal, newMedal: medal > before, ribbons, credit,
         tries: triesLeft(st), adTry: st.adPlays < DAILY_AD_TRIES && canOffer(this.g, 'daily'),
       };
     } else {
@@ -1814,10 +1824,10 @@ export class GameApp {
     return c.trio.map((ty, i) => spriteImg(ty, h - (i ? 2 : 0), t(c.trioNames[i]))).join('');
   }
 
-  /** A shortcut to the skill map while diamonds are waiting to be spent. */
+  /** A shortcut to the upgrade tree while something there can be bought. */
   private gemChip(): string {
-    const n = diamondsLeft(this.g);
-    return n ? `<button type="button" class="st-chip chip-row gem-chip" data-act="skills" aria-label="${n} diamonds to spend on the skill map">${ICON.diamond(20)}<span>${n}</span><small>${t('Skills')}</small></button>` : '';
+    const n = this.upgradesReady();
+    return n ? `<button type="button" class="st-chip chip-row gem-chip" data-act="tree" aria-label="${tn(n, '{n} upgrade ready to buy', '{n} upgrades ready to buy')}">${ICON.wrench(20)}<span>${n}</span><small>${t('Upgrades')}</small></button>` : '';
   }
 
   private walletChip(): string {
@@ -1835,12 +1845,12 @@ export class GameApp {
     const n = routeIndex(next.id) + 1;
     const dl = this.dailyState();
     const dailyMark = dl.medal ? `<i class="side-mark medal">${t(MEDAL_NAME[dl.medal]).charAt(0)}</i>` : dl.plays ? '' : `<i class="side-mark">${t('NEW')}</i>`;
-    const gems = diamondsLeft(this.g);
+    const gems = this.upgradesReady();
     const plank = this.g.run
       ? t('{farm} · Day {day}', { farm: esc(next.short), day: engine().state().day })
       : t('Farm {n} · {farm}', { n, farm: esc(next.short) });
     // Design 4, the signpost (Navid picked it, 3 Nov): Play is the big board; the plank above it is the next farm and
-    // opens the world map; three arrow signs go to the daily farm, duels and the barn (skills and the Bling Barn).
+    // opens the world map; three arrow signs go to the daily farm, duels and the barn (upgrades and the Bling Barn).
     // Language and sound live in Settings (the gear).
     const shape = (d: string) =>
       `<svg class="sp-shape" viewBox="0 0 100 50" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" vector-effect="non-scaling-stroke"/></svg>`;
@@ -1856,16 +1866,16 @@ export class GameApp {
         <button type="button" class="st-btn gold sp-play" data-act="play">${ICON.play()}<span>${t('Play')}</span><i class="nail a"></i><i class="nail b"></i><i class="nail c"></i><i class="nail d"></i></button>
         <button type="button" class="sp-sign sp-l sp-daily" data-act="daily">${leftArrow}${calendarIcon(26)}<span>${t('Daily farm')}</span>${dailyMark}</button>
         <button type="button" class="sp-sign sp-r sp-duel" data-act="duel">${rightArrow}${duelIcon(26)}<span>${t('Duel')}</span></button>
-        <button type="button" class="sp-sign sp-l sp-barn" data-act="barn-menu">${leftArrow}${ICON.diamond(20)}${ribbonIcon(22)}<span class="sp-two"><b>${t('Barn')}</b><small>${t('Skills · Bling Barn')}</small></span>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
+        <button type="button" class="sp-sign sp-l sp-barn" data-act="barn-menu">${leftArrow}${ICON.wrench(22)}${ribbonIcon(22)}<span class="sp-two"><b>${t('Barn')}</b><small>${t('Upgrades · Bling Barn')}</small></span>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
       </div></div>`;
   }
 
-  /** The signpost's Barn sign: the skill map or the Bling Barn. */
+  /** The signpost's Barn sign: the upgrade tree or the Bling Barn. */
   private openBarnMenu(): void {
-    const gems = diamondsLeft(this.g);
+    const gems = this.upgradesReady();
     this.openModal('barn-menu', `<h2 class="m-title">${t('Barn')}</h2>
       <div class="m-row barn-pick">
-        <button type="button" class="st-btn bp-btn" data-act="skills">${ICON.diamond(34)}<b>${t('Skills')}</b><small>${t('Spend diamonds on skills that last')}</small>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
+        <button type="button" class="st-btn bp-btn" data-act="tree">${ICON.wrench(36)}<b>${t('Upgrades')}</b><small>${t('One tree of upgrades that last')}</small>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
         <button type="button" class="st-btn bp-btn" data-act="barn">${ribbonIcon(36)}<b>${t('Bling Barn')}</b><small>${t('Looks for your farm, bought with ribbons')}</small></button>
       </div>
       <button type="button" class="st-btn btn-md" data-act="close">${t('Back')}</button>`, 460);
@@ -2115,26 +2125,26 @@ export class GameApp {
         <div class="dc-go-row">${extra}${main}</div>
       </div></div>
       <div class="grp mr" style="width: 160px; height: 316px"><div class="fh-col">
-        <button type="button" class="st-btn fh-tile big" data-act="panel" data-arg="workshop">${ICON.wrench(54)}<b>${t('Upgrades')}</b>${jobLine}${ups ? `<i class="ft-badge" aria-label="${tn(ups, '{n} upgrade ready to buy', '{n} upgrades ready to buy')}">${ups}</i>` : ''}</button>
+        <button type="button" class="st-btn fh-tile big" data-act="tree">${ICON.wrench(54)}<b>${t('Upgrades')}</b>${jobLine}${ups ? `<i class="ft-badge" aria-label="${tn(ups, '{n} upgrade ready to buy', '{n} upgrades ready to buy')}">${ups}</i>` : ''}</button>
         <button type="button" class="st-btn fh-tile" data-act="panel" data-arg="tools">${tool ? tool(46) : ''}<b>${t('Tools')}</b></button>
       </div></div>`;
   }
 
-  /** Upgrades the player could buy right now (the badge on the upgrades tile). */
+  /** Tree nodes the player could buy right now (the badge on the Upgrades tile and the Barn sign). */
   private upgradesReady(): number {
-    const lv = this.g.workshop.levels,
-      job = this.g.workshop.job,
-      cash = this.wallet();
-    return UPGRADES.filter(u => {
-      const c = upgradeCost(u.id, lv[u.id]);
-      if (c == null || cash < c) return false;
-      return !(upgradeDuration(u.id, lv[u.id]) > 0 && job);
-    }).length;
+    let money = this.g.treeCredit || 0;
+    try {
+      money = this.treeMoney();
+    } catch {
+      /* engine not ready: credit and nothing else */
+    }
+    return treeReady(this.g, money).length;
   }
 
-  /** The panel behind the farmhouse tiles: upgrades, tools, perks and bills, one tab each. */
+  /** The panel behind the farmhouse tiles: tools, perks and bills, one tab each. Its Upgrades tab is the tree. */
   private openPanel(tab: string): void {
-    if (tab !== 'workshop' && tab !== 'tools' && tab !== 'perks' && tab !== 'bills') return;
+    if (tab === 'workshop') return this.openTree();
+    if (tab !== 'tools' && tab !== 'perks' && tab !== 'bills') return;
     this.fhTab = tab;
     if (this.modal.hidden || this.modal.dataset.kind !== 'panel') this.openModal('panel', '', 560);
     this.renderPanel();
@@ -2144,9 +2154,8 @@ export class GameApp {
     const card = this.modal.querySelector('.modal-card');
     if (!card || !this.g.run) return;
     const st = engine().state();
-    const tabs = (
+    const tabs = `<button type="button" data-act="tree">${t('Upgrades')}</button>` + (
       [
-        ['workshop', t('Upgrades')],
         ['tools', t('Tools')],
         ['perks', t('Perks')],
         ['bills', t('Bills')],
@@ -2155,8 +2164,7 @@ export class GameApp {
       .map(([id, label]) => `<button type="button" class="${this.fhTab === id ? 'on' : ''}" data-act="panel" data-arg="${id}">${label}</button>`)
       .join('');
     let body = '';
-    if (this.fhTab === 'workshop') body = this.workshopGrid();
-    else if (this.fhTab === 'tools') body = this.toolsTab();
+    if (this.fhTab === 'tools') body = this.toolsTab();
     else if (this.fhTab === 'perks') body = this.perksList(st.perks);
     else body = this.billsList();
     // the payout note lives behind an "i" next to the cash so it no longer pushes the cards down (Navid, 3 Nov)
@@ -2209,54 +2217,21 @@ export class GameApp {
         <div class="mod-list">${mods}</div></div></div>`;
   }
 
+  /** The build in progress, once a second: the farmhouse tile, the tree's chip and the bar on its card. */
   private updateJobBar(): void {
-    const bar = document.getElementById('dbdJob');
     const job = this.g.workshop.job;
     if (!job) return;
     const left = job.endsAt - Date.now();
     const tile = document.getElementById('dbdJobTile');
     if (tile) tile.innerHTML = `${ICON.clock(12)} ${formatDuration(left)}`;
+    const chip = document.getElementById('dbdTreeJob');
+    if (chip) chip.textContent = formatDuration(left);
+    const bar = document.getElementById('dbdJob');
     if (!bar) return;
     const pct = clamp(1 - left / Math.max(1, job.endsAt - job.startedAt), 0, 1);
     const i = bar.querySelector<HTMLElement>('.jb-track i'), l = bar.querySelector<HTMLElement>('.jb-left');
     if (i) i.style.width = (pct * 100).toFixed(1) + '%';
-    if (l) l.innerHTML = `${ICON.clock(11)} ${formatDuration(left)}`;
-  }
-
-  private workshopGrid(): string {
-    const lv = this.g.workshop.levels;
-    const job = this.g.workshop.job;
-    const cash = this.wallet();
-    const cards = UPGRADES.map(u => {
-      const l = lv[u.id];
-      const cost = upgradeCost(u.id, l);
-      const dur = upgradeDuration(u.id, l);
-      const building = job && job.id === u.id;
-      let btn: string;
-      if (cost == null) btn = `<button type="button" class="st-btn btn-buy off" disabled>${t('Maxed')}</button>`;
-      else if (building) btn = `<button type="button" class="st-btn btn-buy off" disabled>${t('Building…')}</button>`;
-      else {
-        const blocked = (dur > 0 && !!job) || cash < cost;
-        btn = `<button type="button" class="st-btn btn-buy${blocked ? ' off' : ' gold'}" data-act="buy" data-arg="${u.id}" ${blocked ? 'disabled' : ''}>${money(cost)}${dur ? `<small>${ICON.clock(11)}${formatDuration(dur)}</small>` : ''}</button>`;
-      }
-      const eff = cost != null ? `${esc(u.value(l))} → <b>${esc(u.value(l + 1))}</b> ${esc(t(u.unit))}` : `<b>${esc(u.value(l))}</b> ${esc(t(u.unit))}`;
-      return `<div class="up-card"><div class="up-name">${esc(t(u.name))}</div>
-        <div class="up-eff"><span class="up-lv" aria-label="${t('Level {n}', { n: l })}">${t('Lv {n}', { n: l })}</span> ${eff}</div>${btn}</div>`;
-    }).join('');
-    return `<div class="up-grid">${cards}${this.jobCellHtml()}</div>`;
-  }
-
-  /** The eighth cell of the workshop grid: the upgrade being built, or how building works. */
-  private jobCellHtml(): string {
-    const job = this.g.workshop.job;
-    // nothing to say while no job is running (v0.11: the clock on a price shows which levels take time)
-    if (!job) return '';
-    const def = UPGRADES.find(u => u.id === job.id)!;
-    const left = job.endsAt - Date.now();
-    const pct = clamp(1 - left / Math.max(1, job.endsAt - job.startedAt), 0, 1);
-    const ad = canOffer(this.g, 'finish') ? `<button type="button" class="ad-chip sm" data-act="ad-finish">${ICON.play()}<span>${t('Finish now')}</span></button>` : '';
-    return `<div class="up-card job-cell" id="dbdJob"><div class="up-name">${esc(t(def.name))} ${job.level}</div>
-      <span class="jb-track"><i style="width: ${(pct * 100).toFixed(1)}%"></i></span><span class="jb-left">${ICON.clock(11)} ${formatDuration(left)}</span>${ad}</div>`;
+    if (l) l.innerHTML = `${ICON.clock(13)} ${formatDuration(left)}`;
   }
 
   private perksList(ids: string[]): string {
@@ -2351,7 +2326,7 @@ export class GameApp {
         <span class="sd-today"><b class="money">+${money(earned)}</b>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('today')}</span></span></div>
       <div class="sd-bill">${ICON.notice(26)}<span class="sb-what"><span class="sb-name">${esc(t(b.name))}</span><span class="sb-due">${dueLine}</span></span><b class="sb-amt">${money(b.amt)}</b>${stamp}</div>
       ${feeLine}${crownNow}${bossLine}
-      <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house sd-ups" data-act="panel" data-arg="workshop" aria-label="${t('Upgrades')}">${ICON.wrench(28)}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
+      <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house sd-ups" data-act="tree" aria-label="${t('Upgrades')}">${ICON.wrench(28)}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
     </div></div>`;
   }
 
@@ -2379,7 +2354,7 @@ export class GameApp {
       ].join('');
       const gains =
         (r.ribbons ? `<button type="button" class="dia dia-btn" data-act="barn" aria-label="${t('Spend ribbons in the Bling Barn')}">${ribbonIcon(18)} +${r.ribbons}</button>` : '') +
-        (r.diamonds ? `<button type="button" class="dia dia-btn" data-act="skills" aria-label="${t('Spend it on the skill map')}">${ICON.diamond(16)} +${r.diamonds}</button>` : '');
+        (r.credit ? `<button type="button" class="dia dia-btn" data-act="tree" aria-label="${t('Tree credit {amt}: it buys upgrades only', { amt: money(r.credit) })}">${creditIcon(18)} +${money(r.credit)}</button>` : '');
       return `<div class="grp mc" style="width: 470px; height: 350px"><div class="st-chip result-card">
         <div class="letter-head"><span class="eyebrow">${t('GRUMBLE &amp; SONS SAVINGS &amp; LOAN')}</span><span class="stamp ok big">${t('PAID IN FULL')}</span></div>
         <h2 class="r-title">${t('The {farm} farm is yours.', { farm: esc(ct.short) })}<button type="button" class="up-info" data-act="info" data-arg="farm" aria-label="${t('About this farm')}"><i class="info-i">i</i></button></h2>
@@ -2747,16 +2722,6 @@ export class GameApp {
       <p class="m-text">${t("Every farm has a rival who holds the city's record: their best day. Earn more than that in a single day on that farm and the crown is yours, with ribbons for the Bling Barn.")}</p>
       <p class="m-text"><b>${t('Your crowns: {n} of {total}', { n: crownCount(this.g), total: ROUTE.length })}</b></p>
       <div class="crown-grid">${rows}</div><button type="button" class="st-btn gold btn-md" data-act="close">${t('Done')}</button>`, 400);
-  }
-
-  private openWorkshopModal(): void {
-    this.openModal('workshop', '', 520);
-    this.renderWorkshopModal();
-  }
-
-  private renderWorkshopModal(): void {
-    const card = this.modal.querySelector('.modal-card');
-    if (card) card.innerHTML = `<h2 class="m-title">${t('Workshop')}</h2>${this.workshopGrid()}<button type="button" class="st-btn gold btn-md" data-act="close">${t('Done')}</button>`;
   }
 
   private confirmReset(): void {

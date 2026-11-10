@@ -8,7 +8,10 @@ import {
 } from '../src/game/progress';
 import { MAX_LEVEL, SHED_FX, UPGRADES, emptyLevels, oldWorkshopRefund, settleJob, startUpgrade, upgradeCost, upgradeDuration } from '../src/game/workshop';
 import { TOOLS, modCost, newTools, parseTools, toolStats, toolSummary } from '../src/game/tools';
-import { TREE, canBuyNode, nodeCost, treeNode } from '../src/game/tree';
+import {
+  KEY_BUILD_MS, TREE, TREE_WORKSHOP, buildingNode, buyNode, canBuyNode, nodeCost, nodeDuration, nodeLive, resetTree, settleTree, treeHasAny, treeLevel,
+  treeListValue, treeNode, treeReady, treeRefund, type TreeHolder,
+} from '../src/game/tree';
 
 function winAll(g: GameSave, ids: string[], stars = 3): void {
   for (const id of ids) g.cities[id] = { won: true, stars, bestDay: 100, crown: stars === 3, bestDays: 2, plays: 1, paid: 0 };
@@ -379,23 +382,161 @@ describe('the Power booster (the Charge handle until 0.11)', () => {
   });
 });
 
-describe('the upgrade tree (0.13 preview)', () => {
+describe('the upgrade tree (0.13: the one upgrade system)', () => {
+  const holder = (): TreeHolder => ({ workshop: { levels: emptyLevels(), job: null }, tree: {}, treeCredit: 0, treeSpent: 0 });
+  const rich = () => true;
+
   it('has at least 100 nodes, each opening from one that exists', () => {
     expect(TREE.length).toBeGreaterThanOrEqual(100);
     const ids = new Set(TREE.map(n => n.id));
     for (const n of TREE) for (const p of n.parents) expect(ids.has(p)).toBe(true);
   });
-  it('sells a node next to one you have, one level at a time; the Workshop tracks stay in the farmhouse', () => {
-    const owned: Record<string, number> = {};
-    const have = (id: string) => owned[id] || 0;
-    expect(canBuyNode(treeNode('p1')!, have).ok).toBe(true);
-    expect(canBuyNode(treeNode('p2')!, have)).toEqual({ ok: false, why: 'locked' });
-    owned.p1 = 1;
-    expect(canBuyNode(treeNode('p2')!, have).ok).toBe(true);
-    expect(canBuyNode(treeNode('b1')!, have)).toEqual({ ok: false, why: 'workshop' });
-    expect(canBuyNode(treeNode('b4')!, have)).toEqual({ ok: false, why: 'soon' });
+
+  it("sells the Workshop's level tracks at the Workshop's own prices, caps and build times", () => {
+    expect(Object.values(TREE_WORKSHOP).sort()).toEqual(UPGRADES.map(u => u.id).sort());
+    for (const [id, w] of Object.entries(TREE_WORKSHOP)) {
+      const n = treeNode(id)!, u = UPGRADES.find(x => x.id === w)!;
+      expect(n.kind).toBe('track');
+      expect(n.levels).toBe(u.max);
+      for (const l of [0, 1, 4, 9, 17, u.max - 1]) {
+        expect(nodeCost(n, l)).toBe(upgradeCost(w, l));
+        expect(nodeDuration(n, l)).toBe(upgradeDuration(w, l));
+      }
+      expect(nodeLive(id)).toBe(true);
+    }
+    // the first track levels cost what they did in the farmhouse
+    expect(nodeCost(treeNode('b1')!, 0)).toBe(70);
+    expect(nodeCost(treeNode('f2')!, 0)).toBe(75);
+  });
+
+  it('a track level bought in the tree is the Workshop level: one state, no double counting', () => {
+    const g = holder();
+    g.workshop.levels.scythe = 3;
+    expect(treeLevel(g, 'b1')).toBe(3);
+    let paid = 0;
+    expect(buyNode(g, treeNode('b1')!, 0, c => ((paid += c), true))).toEqual({ ok: true, instant: true, cost: upgradeCost('scythe', 3) });
+    expect(g.workshop.levels.scythe).toBe(4);
+    expect(g.tree).toEqual({});
+    expect(paid).toBe(upgradeCost('scythe', 3));
+    expect(g.treeSpent).toBe(paid);
+  });
+
+  it('sells a node next to one you have, one level at a time', () => {
+    const g = holder();
+    expect(canBuyNode(g, treeNode('p1')!).ok).toBe(true);
+    expect(canBuyNode(g, treeNode('p2')!)).toEqual({ ok: false, why: 'locked' });
+    expect(buyNode(g, treeNode('p1')!, 0, rich).ok).toBe(true);
+    expect(g.tree!.p1).toBe(1);
+    expect(canBuyNode(g, treeNode('p2')!).ok).toBe(true);
     expect(nodeCost(treeNode('p1')!, 1)).toBe(Math.round(treeNode('p1')!.price[0] * 1.12));
-    owned.p2 = 3;
-    expect(canBuyNode(treeNode('p2')!, have)).toEqual({ ok: false, why: 'max' });
+    g.tree!.p2 = 3;
+    expect(canBuyNode(g, treeNode('p2')!)).toEqual({ ok: false, why: 'max' });
+    // no money, no node
+    expect(buyNode(g, treeNode('p3')!, 0, () => false)).toEqual({ ok: false, why: 'cash' });
+    expect(g.tree!.p3).toBeUndefined();
+    // a node that is not built yet is not for sale
+    const soon = TREE.find(n => n.kind !== 'trunk' && !nodeLive(n.id));
+    if (soon) expect(canBuyNode(g, soon)).toEqual({ ok: false, why: 'soon' });
+  });
+
+  it('builds every fifth level of a track and every keystone over time, one build at a time', () => {
+    const g = holder();
+    g.workshop.levels.scythe = 4;
+    g.workshop.levels.hands = 9;
+    // Quicker hands opens from Wider swing, the track before it on the branch; an older save's levels stay open
+    expect(canBuyNode(g, treeNode('f2')!)).toEqual({ ok: false, why: 'locked' });
+    expect(canBuyNode(g, treeNode('r2')!)).toMatchObject({ ok: true });
+    const b1 = treeNode('b1')!;
+    expect(canBuyNode(g, b1)).toMatchObject({ ok: true, dur: 120_000 });
+    expect(buyNode(g, b1, 1000, rich)).toMatchObject({ ok: true, instant: false });
+    expect(g.workshop.job).toEqual({ id: 'scythe', level: 5, startedAt: 1000, endsAt: 121_000 });
+    expect(treeLevel(g, 'b1')).toBe(4);
+    expect(buildingNode(g)).toBe('b1');
+    // the blade waits for its own build; another timed build waits too; an instant level elsewhere does not
+    expect(canBuyNode(g, b1)).toEqual({ ok: false, why: 'building' });
+    expect(canBuyNode(g, treeNode('r2')!)).toMatchObject({ ok: false, why: 'busy' });
+    expect(buyNode(g, treeNode('r1')!, 1000, rich)).toMatchObject({ ok: true, instant: true });
+    expect(settleTree(g, 120_999)).toBeNull();
+    expect(settleTree(g, 121_000)).toMatchObject({ level: 5 });
+    expect(g.workshop.levels.scythe).toBe(5);
+    expect(g.workshop.job).toBeNull();
+    // Power cell is the tree's own track: its fifth level is a build kept in the same job
+    g.tree = { p1: 4 };
+    expect(buyNode(g, treeNode('p1')!, 5000, rich)).toMatchObject({ ok: true, instant: false });
+    expect(g.workshop.job!.id).toBe('p1');
+    expect(g.tree.p1).toBe(4);
+    // a rewarded ad finishes it now
+    expect(settleTree(g, 5001, true)).toMatchObject({ level: 5 });
+    expect(g.tree.p1).toBe(5);
+    // a keystone takes the Workshop's longest build
+    for (const n of TREE.filter(x => x.kind === 'key')) expect(nodeDuration(n, 0)).toBe(KEY_BUILD_MS);
+    expect(KEY_BUILD_MS).toBe(upgradeDuration('scythe', 99));
+    for (const n of TREE.filter(x => x.kind === 'trick' || x.kind === 'bridge')) expect(nodeDuration(n, 0)).toBe(0);
+  });
+
+  it('a keystone is not sold while its partner is owned or being built', () => {
+    const key = TREE.find(n => n.kind === 'key' && nodeLive(n.id) && nodeLive(n.pair!));
+    if (!key) return;
+    const g = holder();
+    for (const p of key.parents) g.tree![p] = 1;
+    for (const p of treeNode(key.pair!)!.parents) g.tree![p] = 1;
+    expect(buyNode(g, key, 0, rich)).toMatchObject({ ok: true, instant: false });
+    expect(canBuyNode(g, treeNode(key.pair!)!)).toEqual({ ok: false, why: 'pair' });
+    settleTree(g, 0, true);
+    expect(g.tree![key.id]).toBe(1);
+    expect(canBuyNode(g, treeNode(key.pair!)!)).toEqual({ ok: false, why: 'pair' });
+  });
+
+  it('a reset is free and gives back everything paid, tracks and a build in progress included', () => {
+    const g = holder();
+    let paid = 0;
+    const pay = (c: number) => ((paid += c), true);
+    for (let i = 0; i < 5; i++) expect(buyNode(g, treeNode('b1')!, 0, pay).ok).toBe(true); // four levels and a build
+    expect(buyNode(g, treeNode('p1')!, 0, pay).ok).toBe(true);
+    expect(buyNode(g, treeNode('p2')!, 0, pay).ok).toBe(true);
+    expect(g.workshop.job).not.toBeNull();
+    expect(treeHasAny(g)).toBe(true);
+    expect(treeRefund(g)).toBe(paid);
+    expect(paid).toBe(treeListValue(g));
+    g.treeCredit = 40;
+    expect(resetTree(g)).toBe(paid);
+    expect(g.treeCredit).toBe(40 + paid);
+    expect(g.workshop.levels).toEqual(emptyLevels());
+    expect(g.workshop.job).toBeNull();
+    expect(g.tree).toEqual({});
+    expect(treeRefund(g)).toBe(0);
+    expect(treeHasAny(g)).toBe(false);
+  });
+
+  it('counts the nodes that can be bought now with the money at hand (the badge on the Upgrades tile)', () => {
+    const g = holder();
+    // nothing owned: the first node of each branch that is built is open
+    const open = TREE.filter(n => canBuyNode(g, n).ok);
+    expect(open.every(n => n.d === 1)).toBe(true);
+    expect(treeReady(g, 0)).toHaveLength(0);
+    expect(treeReady(g, 20).map(n => n.id).sort()).toEqual(open.filter(n => nodeCost(n, 0) <= 20).map(n => n.id).sort());
+    expect(treeReady(g, 1e9)).toHaveLength(open.length);
+  });
+
+  it('a save keeps the tree, its build, the credit and the ledger; bad values are dropped', () => {
+    const g = newGame();
+    g.tree = { p1: 3, m2: 2 };
+    g.treeCredit = 500;
+    g.treeSpent = 1234;
+    g.workshop.job = { id: 'p1', level: 5, startedAt: 10, endsAt: 20 };
+    const raw = JSON.parse(JSON.stringify(g));
+    raw.tree.zz9 = 4;
+    raw.tree.trunk = 1;
+    raw.tree.m2 = 99;
+    const back = parseGame(JSON.stringify(raw));
+    expect(back.tree).toEqual({ p1: 3, m2: 3 });
+    expect(back.treeCredit).toBe(500);
+    expect(back.treeSpent).toBe(1234);
+    expect(back.workshop.job).toEqual({ id: 'p1', level: 5, startedAt: 10, endsAt: 20 });
+    raw.workshop.job.id = 'nonsense';
+    expect(parseGame(JSON.stringify(raw)).workshop.job).toBeNull();
+    // a track level above its top is cut back
+    raw.workshop.levels.swing = 77;
+    expect(parseGame(JSON.stringify(raw)).workshop.levels.swing).toBe(30);
   });
 });

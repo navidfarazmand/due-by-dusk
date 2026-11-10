@@ -2,8 +2,9 @@
 // The farm being played (day, bills, cash in hand) lives in the engine's own save; this one is the game's.
 
 import { isLang, t } from '../i18n/i18n';
-import { COUNTRIES, ROUTE, type CountryCode, countryOf, cityById } from './world';
-import { MAX_LEVEL, emptyLevels, oldWorkshopRefund, type WorkshopState } from './workshop';
+import { COUNTRIES, ROUTE, type CountryCode, countryOf, cityById, isBossCity } from './world';
+import { MAX_LEVEL, emptyLevels, oldWorkshopRefund, upgradeDef, type Levels, type UpgradeId, type WorkshopState } from './workshop';
+import { migrateSkills, treeListValue, treeNode } from './tree';
 import { newTools, parseTools, toolDef, type ToolId, type ToolsState } from './tools';
 import { newFlair, parseFlair, type FlairState } from './flair';
 import { newDaily, type DailyState } from './daily';
@@ -89,6 +90,8 @@ export const MAX_TOUCH_LIFT = 80;
 
 /** Economy version. 10: v0.10's longer farms and small-step workshop (older workshop levels are refunded). */
 export const ECONOMY = 10;
+/** 1: the 0.13 tree is the one upgrade system (diamond skills are its nodes, diamonds its credit). */
+export const TREE_V = 1;
 
 export interface GameSave {
   v: 3;
@@ -105,14 +108,21 @@ export interface GameSave {
   splitWallet: boolean;
   workshop: WorkshopState;
   tools: ToolsState;
-  /** Skills learned on the skill map (diamonds come from wins; see skills.ts). */
-  skills: string[];
-  /** The upgrade tree (0.13 preview): node id -> level bought there. */
+  /** The upgrade tree (0.13; src/game/tree.ts): node id -> level. The level tracks that were the Workshop's keep
+   *  their levels in `workshop.levels`, and the one build in progress is `workshop.job`. */
   tree?: Record<string, number>;
-  /** What a tree reset gave back: it only buys tree nodes (never a bill). */
+  /** Tree credit: it only buys tree nodes (never a bill, never a tool). From a reset, a farm won, a daily gold medal
+   *  and the diamonds of saves older than 0.13. Spent before savings. */
   treeCredit?: number;
-  /** Diamonds from outside the route (daily gold medals). */
-  bonusDiamonds: number;
+  /** Everything paid for what is in the tree now: what a reset gives back. */
+  treeSpent?: number;
+  /** 1 once the save has moved into the 0.13 tree (skills became nodes, diamonds became credit). */
+  treeV?: number;
+  /** The highest track levels this player has had: a farm's crop toughness follows them, so a reset just before a
+   *  farm starts can't make its crops softer. */
+  peak?: Levels;
+  /** Set by the 0.13 migration for one message; not saved again once shown. */
+  migratedTree?: { credit: number; nodes: number };
   /** County-fair ribbons for the Bling Barn, and what's bought there. */
   ribbons: number;
   flair: FlairState;
@@ -139,8 +149,10 @@ export function newGame(now = Date.now()): GameSave {
     splitWallet: true,
     workshop: { levels: emptyLevels(), job: null },
     tools: newTools(),
-    skills: [],
-    bonusDiamonds: 0,
+    tree: {},
+    treeCredit: 0,
+    treeSpent: 0,
+    treeV: TREE_V,
     ribbons: 0,
     flair: newFlair(),
     daily: newDaily(),
@@ -203,9 +215,12 @@ export function parseGame(raw: string | null): GameSave {
     for (const k of Object.keys(g.workshop.levels) as Array<keyof typeof g.workshop.levels>) {
       g.workshop.levels[k] = Math.max(0, Math.min(MAX_LEVEL, Math.floor(num(lv[k]))));
     }
+    // no level above its track's top
+    for (const k of Object.keys(g.workshop.levels) as UpgradeId[]) g.workshop.levels[k] = Math.min(upgradeDef(k).max, g.workshop.levels[k]);
     const j = o.workshop.job;
-    if (j && typeof j === 'object' && j.id in g.workshop.levels) {
-      g.workshop.job = { id: j.id, level: Math.floor(num(j.level)), startedAt: num(j.startedAt), endsAt: num(j.endsAt) };
+    // the build in progress: a Workshop track, or (0.13) a tree node of its own (a keystone, Power cell)
+    if (j && typeof j === 'object' && typeof j.id === 'string' && (j.id in g.workshop.levels || (treeNode(j.id) && treeNode(j.id)!.kind !== 'trunk'))) {
+      g.workshop.job = { id: j.id, level: Math.max(1, Math.floor(num(j.level))), startedAt: num(j.startedAt), endsAt: num(j.endsAt) };
     }
   }
   // v0.10 rebuilt the workshop (small steps, new prices) and the farms (longer, with a crop ladder): older
@@ -222,14 +237,32 @@ export function parseGame(raw: string | null): GameSave {
   }
   g.econ = ECONOMY;
   g.tools = parseTools(o.tools);
-  if (Array.isArray(o.skills)) g.skills = o.skills.filter((s: unknown) => typeof s === 'string' && /^[a-z_]{3,30}$/.test(s as string)).slice(0, 40);
+  const tr: Record<string, number> = {};
   if (o.tree && typeof o.tree === 'object') {
-    const tr: Record<string, number> = {};
-    for (const [k, v] of Object.entries(o.tree as Record<string, unknown>)) if (/^[a-z]\d{1,2}$/.test(k) && Number.isFinite(v as number)) tr[k] = Math.max(0, Math.min(60, Math.floor(v as number)));
-    g.tree = tr;
+    for (const [k, v] of Object.entries(o.tree as Record<string, unknown>)) {
+      const n = treeNode(k);
+      if (n && n.kind !== 'trunk' && Number.isFinite(v as number)) tr[k] = Math.max(0, Math.min(n.levels, Math.floor(v as number)));
+    }
   }
-  if (Number.isFinite(o.treeCredit)) g.treeCredit = Math.max(0, Math.round(o.treeCredit));
-  g.bonusDiamonds = Math.max(0, Math.floor(num(o.bonusDiamonds)));
+  g.tree = tr;
+  g.treeCredit = Number.isFinite(o.treeCredit) ? Math.max(0, Math.round(o.treeCredit)) : 0;
+  if (o.peak && typeof o.peak === 'object') {
+    const pk = emptyLevels();
+    for (const k of Object.keys(pk) as UpgradeId[]) pk[k] = Math.max(0, Math.min(upgradeDef(k).max, Math.floor(num(o.peak[k]))));
+    g.peak = pk;
+  }
+  if (o.treeV === TREE_V) g.treeSpent = Number.isFinite(o.treeSpent) ? Math.max(0, Math.round(o.treeSpent)) : treeListValue(g);
+  else {
+    // 0.13: the tree is the one upgrade system. A skill learned with diamonds becomes its node; every other diamond
+    // (one per farm won, two per boss farm, one per daily gold medal) becomes tree credit; the ledger of what the
+    // tree cost starts here. Diamonds and the skill map are gone.
+    const skills: string[] = Array.isArray(o.skills) ? o.skills.filter((s: unknown) => typeof s === 'string' && /^[a-z_]{3,30}$/.test(s as string)).slice(0, 40) : [];
+    let earned = Math.max(0, Math.floor(num(o.bonusDiamonds)));
+    for (const c of ROUTE) if (g.cities[c.id] && g.cities[c.id].won) earned += isBossCity(c.id) ? 2 : 1;
+    const m = migrateSkills(g, skills, earned);
+    if (m.credit > 0 || m.nodes.length) g.migratedTree = { credit: m.credit, nodes: m.nodes.length };
+  }
+  g.treeV = TREE_V;
   if (Array.isArray(o.recentEarn)) g.recentEarn = o.recentEarn.map(num).filter((v: number) => v >= 0).slice(-RECENT_DAYS);
   g.flair = parseFlair(o.flair);
   if (o.daily && typeof o.daily === 'object' && typeof o.daily.date === 'string') {
@@ -239,7 +272,7 @@ export function parseGame(raw: string | null): GameSave {
       adPlays: Math.max(0, Math.floor(num(o.daily.adPlays))),
       best: Math.max(0, num(o.daily.best)),
       medal: Math.max(0, Math.min(3, Math.floor(num(o.daily.medal)))),
-      goldDiamond: !!o.daily.goldDiamond,
+      goldPaid: !!(o.daily.goldPaid ?? o.daily.goldDiamond),
     };
   }
   if (o.duelDay && typeof o.duelDay === 'object') g.duelDay = { date: String(o.duelDay.date || ''), rewarded: Math.max(0, Math.floor(num(o.duelDay.rewarded))) };

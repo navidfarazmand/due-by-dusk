@@ -1,84 +1,89 @@
 import { describe, expect, it } from 'vitest';
 import { ROUTE, isBossCity } from '../src/game/world';
 import { newGame, parseGame, type GameSave } from '../src/game/progress';
-import { SKILLS, canLearn, diamondsEarned, diamondsLeft, learn, resetSkills, revealed, skillDef } from '../src/game/skills';
+import { DIAMOND_CREDIT, OLD_SKILLS, TREE_SKILL, resetTree, treeListValue, treeNode } from '../src/game/tree';
 import { FLAIR, FLAIR_KINDS, buyFlair, equipFlair, lookFor, newFlair, parseFlair, ribbonsForWin } from '../src/game/flair';
 import { DAILY_AD_TRIES, MEDAL_RIBBONS, dailyFor, duelFor, hash32, medalOf, newDaily, sidePlan, triesLeft } from '../src/game/daily';
 
-function won(g: GameSave, n: number): void {
-  for (const c of ROUTE.slice(0, n)) g.cities[c.id] = { won: true, stars: 1, bestDay: 10, crown: false, bestDays: 3, plays: 1 };
-}
+describe('diamonds are retired: an older save moves into the upgrade tree (0.13)', () => {
+  /** A save as 0.12.4 wrote it. */
+  function oldSave(extra: Record<string, unknown> = {}): string {
+    const cities: Record<string, unknown> = {};
+    for (const c of ROUTE.slice(0, 6)) cities[c.id] = { won: true, stars: 2, bestDay: 200, crown: false, bestDays: 19, plays: 1, paid: 0 };
+    return JSON.stringify({
+      v: 3, econ: 10, createdAt: 1, cities, run: null, wallet: 1338, splitWallet: true,
+      workshop: { levels: { scythe: 6, swing: 2, hands: 2, days: 2, soil: 2, market: 2, clover: 1 }, job: null },
+      tools: { owned: ['sickle'], equipped: 'sickle', mods: {} },
+      skills: ['core_awakening', 'gold_root', 'gold_lawyer', 'reap_root', 'reap_cleave'],
+      bonusDiamonds: 5, ribbons: 4,
+      ...extra,
+    });
+  }
 
-describe('skill map', () => {
-  it('pays one diamond per farm won and two per boss farm, plus bonus diamonds', () => {
-    const g = newGame();
-    expect(diamondsEarned(g)).toBe(0);
-    won(g, 6); // Canada, the sixth farm is a boss farm
+  it('derives the rate from the 12 skill nodes: the middle of first-level price over diamonds is $1,000', () => {
+    const ratios = Object.entries(TREE_SKILL).map(([node, skill]) => treeNode(node)!.price[0] / OLD_SKILLS[skill].cost).sort((a, b) => a - b);
+    expect(ratios).toHaveLength(12);
+    expect((ratios[5] + ratios[6]) / 2).toBe(DIAMOND_CREDIT);
+    // every skill of the old map is accounted for: 19 skills, 55 diamonds
+    expect(Object.keys(OLD_SKILLS)).toHaveLength(19);
+    expect(Object.values(OLD_SKILLS).reduce((a, s) => a + s.cost, 0)).toBe(55);
+    for (const [node, skill] of Object.entries(TREE_SKILL)) expect(OLD_SKILLS[skill].nodes!.some(([id]) => id === node)).toBe(true);
+  });
+
+  it('turns learned skills into owned nodes and every other diamond into tree credit, once', () => {
+    // Canada won: 5 farms and a boss farm = 7 diamonds, plus 5 from daily golds = 12 earned; 11 spent on five skills
     expect(isBossCity(ROUTE[5].id)).toBe(true);
-    expect(diamondsEarned(g)).toBe(7);
-    g.bonusDiamonds = 2;
-    expect(diamondsEarned(g)).toBe(9);
+    const g = parseGame(oldSave());
+    // the skills that are tree nodes: Retained counsel at the level that gives its old 12%, Sundering cleave
+    expect(g.tree).toEqual({ m2: 3, p5: 1 });
+    // 6 diamonds stay in those two nodes; the other 6 (1 unspent, 5 in plain stat skills) come back as credit
+    expect(g.treeCredit).toBe(6 * DIAMOND_CREDIT);
+    expect(g.migratedTree).toEqual({ credit: 6000, nodes: 2 });
+    // nothing else moves: track levels, savings, ribbons
+    expect(g.workshop.levels.scythe).toBe(6);
+    expect(g.wallet).toBe(1338);
+    expect(g.ribbons).toBe(4);
+    expect('skills' in g).toBe(false);
+    expect('bonusDiamonds' in g).toBe(false);
+    // the ledger: track levels at the Workshop's prices, the skills' nodes at what their diamonds are worth
+    const tracks = treeListValue({ workshop: g.workshop, tree: {} });
+    expect(g.treeSpent).toBe(tracks + 6 * DIAMOND_CREDIT);
+    // a reset pays every diamond back at the same rate, spent or not
+    const copy = parseGame(JSON.stringify(g));
+    expect(resetTree(copy)).toBe(tracks + 6000);
+    expect(copy.treeCredit).toBe(12 * DIAMOND_CREDIT + tracks);
+    // loading the migrated save again changes nothing (no second credit)
+    delete g.migratedTree;
+    const again = parseGame(JSON.stringify(g));
+    expect(again.treeCredit).toBe(6000);
+    expect(again.tree).toEqual({ m2: 3, p5: 1 });
+    expect(again.treeSpent).toBe(g.treeSpent);
+    expect(again.migratedTree).toBeUndefined();
   });
 
-  it('needs daily gold medals as well as the route to learn the whole map', () => {
-    const g = newGame();
-    won(g, ROUTE.length);
-    const total = SKILLS.reduce((a, s) => a + s.cost, 0);
-    expect(diamondsEarned(g)).toBe(37);
-    expect(total).toBe(55);
-    // the core and the three branch roots are within reach by the end of Canada (7 diamonds)
-    const base = SKILLS.filter(s => !s.reqs.length || (s.reqs.length === 1 && s.reqs[0] === 'core_awakening'));
-    expect(base.reduce((a, s) => a + s.cost, 0)).toBe(7);
+  it("gives Reaper's verdict its lightning too (Storm rod), and keeps nodes bought in the 0.12.3 tree", () => {
+    const g = parseGame(oldSave({ skills: ['reap_exec', 'soil_dew', 'gold_interest'], bonusDiamonds: 3, tree: { p1: 2, f4: 2 }, treeCredit: 250 }));
+    expect(g.tree).toEqual({ p1: 2, f4: 2, b11: 1, b5: 1, m7: 3 });
+    // 10 earned; Dawn abundance was already bought with cash at a higher level, so its 3 diamonds come back:
+    // 4 + 3 stay in nodes, 3 are credit, on top of the credit the save had
+    expect(g.treeCredit).toBe(250 + 3 * DIAMOND_CREDIT);
+    const cash = treeListValue({ workshop: g.workshop, tree: { p1: 2, f4: 2 } });
+    expect(g.treeSpent).toBe(cash + 7 * DIAMOND_CREDIT);
   });
 
-  it('only teaches a skill next to one already learned, and only with enough diamonds', () => {
-    const g = newGame();
-    expect(canLearn(g, 'core_awakening').ok).toBe(false); // no diamonds yet
-    won(g, 3);
-    expect(canLearn(g, 'reap_root').ok).toBe(false); // needs the core first
-    expect(learn(g, 'core_awakening')).toBe(true);
-    expect(learn(g, 'reap_root')).toBe(true);
-    expect(diamondsLeft(g)).toBe(0);
-    expect(learn(g, 'soil_root')).toBe(false);
-    expect(canLearn(g, 'reap_swift').reason).toMatch(/Needs 3/);
+  it('a save with nothing learned gets its diamonds as credit; a new game gets none', () => {
+    const g = parseGame(oldSave({ skills: [], bonusDiamonds: 0 }));
+    expect(g.treeCredit).toBe(7 * DIAMOND_CREDIT);
+    expect(g.tree).toEqual({});
+    const n = parseGame(JSON.stringify(newGame()));
+    expect(n.treeCredit).toBe(0);
+    expect(n.migratedTree).toBeUndefined();
+    expect(parseGame(null).treeCredit).toBe(0);
   });
 
-  it('lets a capstone open from either neighbour', () => {
-    const g = newGame();
-    won(g, 12);
-    for (const id of ['core_awakening', 'reap_root', 'reap_swift', 'reap_dash']) expect(learn(g, id)).toBe(true);
-    expect(canLearn(g, 'reap_exec').ok).toBe(true);
-  });
-
-  it('hides skills in the clouds until a neighbour is learned', () => {
-    const g = newGame();
-    expect(revealed(g, skillDef('core_awakening')!)).toBe(true);
-    expect(revealed(g, skillDef('reap_root')!)).toBe(false);
-    won(g, 1);
-    learn(g, 'core_awakening');
-    expect(revealed(g, skillDef('reap_root')!)).toBe(true);
-    expect(revealed(g, skillDef('reap_swift')!)).toBe(false);
-  });
-
-  it('resets for free', () => {
-    const g = newGame();
-    won(g, 3);
-    learn(g, 'core_awakening');
-    learn(g, 'gold_root');
-    resetSkills(g);
-    expect(g.skills).toEqual([]);
-    expect(diamondsLeft(g)).toBe(3);
-  });
-
-  it('places every node on the 844 by 390 map with known prerequisites', () => {
-    const ids = new Set(SKILLS.map(s => s.id));
-    for (const s of SKILLS) {
-      expect(s.x).toBeGreaterThan(20);
-      expect(s.x).toBeLessThan(540);
-      expect(s.y).toBeGreaterThan(60);
-      expect(s.y).toBeLessThan(380);
-      for (const r of s.reqs) expect(ids.has(r)).toBe(true);
-    }
+  it('keeps a daily gold already paid today, under its old name', () => {
+    const g = parseGame(oldSave({ daily: { date: '2026-11-09', plays: 1, adPlays: 0, best: 900, medal: 3, goldDiamond: true } }));
+    expect(g.daily.goldPaid).toBe(true);
   });
 });
 

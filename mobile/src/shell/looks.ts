@@ -110,33 +110,3 @@ export function barnPreview(finish: FlairItem, trail: FlairItem, bird: FlairItem
     <g transform="translate(26 100)">${strip(coinIcon(cn, 24))}</g><g transform="translate(44 106)">${strip(coinIcon(cn, 20))}</g>
   </svg>`;
 }
-
-// ------------------------------------------------------------------ skill map glyphs (24 × 24)
-
-const S = `fill="none" stroke="${INK}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"`;
-const GLYPH: Record<string, string> = {
-  core_awakening: `<path d="M8.5 20.5 L15 12" stroke="${INK}" stroke-width="4.2" stroke-linecap="round"/><path d="M8.5 20.5 L15 12" stroke="#C27838" stroke-width="2" stroke-linecap="round"/><path d="M14.4 12.6 C21 12.6 23 5 18 2.4 C19.4 7 16.6 9.6 12.4 9.2 Z" fill="#E2E8F0" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/>`,
-  reap_root: `<path d="M4 18 C9 18 16 12 19 4 C13 7 7 12 4 18 Z" fill="#E2E8F0" stroke="${INK}" stroke-width="1.9" stroke-linejoin="round"/><path d="M17.5 13.5 l1 2.2 2.2 1-2.2 1-1 2.2-1-2.2-2.2-1 2.2-1z" fill="#FFC23D" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>`,
-  reap_swift: `<path d="M3 8 H10 M2 12 H8 M3 16 H10" ${S}/><path d="M12 5 L19 12 L12 19" ${S} stroke-width="2.8"/>`,
-  reap_dash: `<path d="M4 12 H20" ${S}/><path d="M8 7.5 L3.5 12 L8 16.5 M16 7.5 L20.5 12 L16 16.5" ${S}/>`,
-  reap_cleave: `<path d="M3 17 Q12 2 21 9" ${S} stroke-width="3"/><path d="M6 20 Q13 9 21 14" ${S} stroke="#C27838" stroke-width="2.4"/>`,
-  reap_vortex: `<path d="M12 12 m0-1.5 a1.5 1.5 0 1 1 -1.5 1.5 a3.5 3.5 0 0 1 3.5-3.5 a5.5 5.5 0 0 1 5.5 5.5 a7.5 7.5 0 0 1 -7.5 7.5 a8.5 8.5 0 0 1 -8.5-8.5" ${S}/>`,
-  reap_exec: `<path d="M13.5 2.5 L5.5 13.5 H11 L9.5 21.5 L18.5 9.5 H12.8 Z" fill="#FFC23D" stroke="${INK}" stroke-width="1.9" stroke-linejoin="round"/>`,
-  soil_root: `<path d="M12 21 V11" ${S}/><path d="M12 12 C12 7 8 5 4 6 C4 10 7 12.5 12 12 Z" fill="#6DBE45" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 14 C12 9 16 7.5 20 8.5 C20 12.5 17 14.5 12 14 Z" fill="#8FD86A" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 21 H18" ${S}/>`,
-  soil_twin: `<path d="M7.5 21 V14 M16.5 21 V14" ${S}/><path d="M7.5 14.5 C7.5 10.5 5 9 2.5 9.5 C2.5 12.5 4.5 14.5 7.5 14.5 Z M16.5 14.5 C16.5 10.5 19 9 21.5 9.5 C21.5 12.5 19.5 14.5 16.5 14.5 Z" fill="#6DBE45" stroke="${INK}" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 4 l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9z" fill="#FFC23D" stroke="${INK}" stroke-width="1.1"/>`,
-  soil_dew: `<path d="M4 17 A8 8 0 0 1 20 17 Z" fill="#FFD45C" stroke="${INK}" stroke-width="1.9" stroke-linejoin="round"/><path d="M2 20.5 H22" ${S}/><path d="M12 3 v2.4 M5 6.5 l1.6 1.6 M19 6.5 l-1.6 1.6" ${S}/>`,
-  soil_sun: `<circle cx="12" cy="12" r="4.6" fill="#FFD45C" stroke="${INK}" stroke-width="1.9"/><path d="M12 2.5 v2.6 M12 18.9 v2.6 M2.5 12 h2.6 M18.9 12 h2.6 M5.3 5.3 l1.8 1.8 M16.9 16.9 l1.8 1.8 M5.3 18.7 l1.8-1.8 M16.9 7.1 l1.8-1.8" ${S}/>`,
-  soil_bounty: `<path d="M7 8 C5 11 4.5 16 6 19.5 C9 21.5 15 21.5 18 19.5 C19.5 16 19 11 17 8 Z" fill="#D9A066" stroke="${INK}" stroke-width="1.9" stroke-linejoin="round"/><path d="M8 8 C9 6 10 4.5 12 4.5 C14 4.5 15 6 16 8" ${S}/><path d="M9 14 l2 2 4-4.5" fill="none" stroke="#2F7A3A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  soil_eden: `${[0, 72, 144, 216, 288].map(a => `<ellipse cx="12" cy="6.6" rx="3" ry="4" fill="#FF9CCF" stroke="${INK}" stroke-width="1.5" transform="rotate(${a} 12 11)"/>`).join('')}<circle cx="12" cy="11" r="2.6" fill="#FFC23D" stroke="${INK}" stroke-width="1.5"/><path d="M12 15.5 V22" ${S}/>`,
-  gold_root: `<circle cx="12" cy="12" r="8.6" fill="#FFC23D" stroke="${INK}" stroke-width="2"/><path d="M14.6 8.8 C13.6 7.8 10 7.6 9.6 9.6 C9.2 12 14.8 11.6 14.4 14.2 C14 16.4 10.4 16.2 9.2 15 M12 6.4 V17.6" fill="none" stroke="${INK}" stroke-width="1.7" stroke-linecap="round"/>`,
-  gold_lawyer: `<path d="M6 3 H15 L19 7 V21 H6 Z" fill="#FFFDF4" stroke="${INK}" stroke-width="1.9" stroke-linejoin="round"/><path d="M9 10 H16 M9 13.5 H16 M9 17 H13" ${S} stroke-width="1.7"/><circle cx="16.5" cy="18" r="3" fill="#E5484D" stroke="${INK}" stroke-width="1.6"/>`,
-  gold_interest: `<path d="M5 9 H19 L18 20 Q12 22.5 6 20 Z" fill="#DDF2FA" stroke="${INK}" stroke-width="1.9" stroke-linejoin="round"/><rect x="7" y="5" width="10" height="4" rx="1.4" fill="#B9824B" stroke="${INK}" stroke-width="1.7"/><path d="M6.6 14 H17.4 L17 19 Q12 21 7 19 Z" fill="#FFC23D"/><path d="M12 17 V12 M9.8 14 L12 11.8 L14.2 14" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`,
-  gold_treaty: `<path d="M7 8 C3.5 6 3 2.5 5 2 C6.5 3.5 7.5 5 9 6.5 M17 8 C20.5 6 21 2.5 19 2 C17.5 3.5 16.5 5 15 6.5" ${S}/><path d="M7.5 7 Q12 4.5 16.5 7 L16 15 Q12 20.5 8 15 Z" fill="#F1F5F9" stroke="${INK}" stroke-width="1.9" stroke-linejoin="round"/><circle cx="10" cy="10.5" r="1.2" fill="${INK}"/><circle cx="14" cy="10.5" r="1.2" fill="${INK}"/><path d="M10.8 15.5 H13.2" ${S} stroke-width="1.6"/><path d="M12 18 V22" ${S} stroke-width="1.6"/>`,
-  gold_herd: `<path d="M6 8.5 C3 7 2.6 4 4.4 3.5 C5.6 4.7 6.4 6 7.6 7.2 M14 8.5 C17 7 17.4 4 15.6 3.5 C14.4 4.7 13.6 6 12.4 7.2" ${S} stroke-width="1.9"/><path d="M6.4 7.8 Q10 5.8 13.6 7.8 L13.2 14 Q10 18.5 6.8 14 Z" fill="#F1F5F9" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><circle cx="8.6" cy="10.6" r="1" fill="${INK}"/><circle cx="11.4" cy="10.6" r="1" fill="${INK}"/><path d="M18.5 22 V15" ${S} stroke-width="1.8"/><path d="M18.5 16 C18.5 12.5 16 11.5 14.5 12 C14.5 14.5 16.2 16 18.5 16 Z" fill="#6DBE45" stroke="${INK}" stroke-width="1.5" stroke-linejoin="round"/>`,
-  gold_midas: `<path d="M2.5 8 L7.5 12.5 L12 4 L16.5 12.5 L21.5 8 L19.5 19 H4.5 Z" fill="#FFC23D" stroke="${INK}" stroke-width="1.9" stroke-linejoin="round"/><circle cx="12" cy="15.5" r="1.8" fill="#E5484D" stroke="${INK}" stroke-width="1.2"/>`,
-};
-
-export function skillGlyph(id: string, size = 22): string {
-  const g = GLYPH[id];
-  return g ? `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${g}</svg>` : '';
-}

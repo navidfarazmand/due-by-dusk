@@ -1,7 +1,6 @@
-// Screens around the route: the skill map, the Bling Barn (looks only), the daily farm and the duel.
+// Screens around the route: the Bling Barn (looks only), the daily farm and the duel.
 // Pure render functions; GameApp owns the state and the clicks.
 
-import { SKILLS, BRANCH_NAME, diamondsEarned, diamondsLeft, reqsMet, revealed, canLearn, skillDef, type Branch, type SkillDef } from '../game/skills';
 import { FLAIR, FLAIR_KINDS, flairById, type FlairItem, type FlairKind } from '../game/flair';
 import { MEDAL_NAME, MEDAL_RIBBONS, medalOf, type SideDef, type DailyState } from '../game/daily';
 import { ROUTE, cityById, countryOf } from '../game/world';
@@ -9,107 +8,12 @@ import { toolDef, type ToolId } from '../game/tools';
 import type { GameSave } from '../game/progress';
 import { ART, PREVIEW, bandFor } from './art';
 import { ICON, TOOL_ICON, INK, esc, money } from './dom';
-import { barnPreview, flairIcon, ribbonIcon, skillGlyph } from './looks';
+import { barnPreview, flairIcon, ribbonIcon } from './looks';
+import { creditIcon } from './treeview';
+import { DIAMOND_CREDIT } from '../game/tree';
 import { inner, lang, t, tn } from '../i18n/i18n';
 
 const LOCALE = { en: 'en-US', fr: 'fr-FR', es: 'es-ES', pt: 'pt-BR', de: 'de-DE' } as const;
-
-export const BRANCH_COL: Record<Branch, string> = { core: '#FFF4DC', reap: '#F07A62', soil: '#6DBE45', gold: '#FFC23D' };
-
-/** Node size on the map: the core is biggest, the three-diamond capstones next. */
-function radius(d: SkillDef): number {
-  if (!d.reqs.length) return 26;
-  return d.cost >= 3 ? 23 : d.cost === 1 ? 20 : 18;
-}
-
-// a fixed sprinkle of stars behind the map
-const STARS = (() => {
-  let s = 7;
-  const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  let out = '';
-  for (let i = 0; i < 90; i++)
-    out += `<circle cx="${(r() * 844).toFixed(0)}" cy="${(r() * 390).toFixed(0)}" r="${(0.7 + r() * 1).toFixed(1)}" fill="#FFF4DC" opacity="${(0.25 + r() * 0.55).toFixed(2)}"/>`;
-  return out;
-})();
-
-export function skillMapHtml(g: GameSave, sel: string): string {
-  const learned = (id: string) => g.skills.includes(id);
-  let links = '';
-  for (const d of SKILLS) {
-    if (!revealed(g, d)) continue;
-    for (const r of d.reqs) {
-      const a = skillDef(r)!;
-      const both = learned(r) && learned(d.id);
-      const open = learned(r) && !learned(d.id);
-      if (!both && !open && !revealed(g, a)) continue;
-      const st = both
-        ? `stroke="${BRANCH_COL[d.branch]}" stroke-width="5"`
-        : open
-          ? `stroke="#FFF4DC" stroke-width="3" stroke-dasharray="2 7" opacity=".9"`
-          : `stroke="#7D6FB8" stroke-width="2.5" opacity=".55"`;
-      links += `<line x1="${a.x}" y1="${a.y}" x2="${d.x}" y2="${d.y}" ${st} stroke-linecap="round"/>`;
-    }
-  }
-  let nodes = '';
-  let clouds = '';
-  for (const d of SKILLS) {
-    const r = radius(d);
-    if (!revealed(g, d)) {
-      clouds += `<img class="sk-cloud" src="${ART.cloud}" alt="" style="left: ${d.x - 36}px; top: ${d.y - 21}px; width: 72px">`;
-      continue;
-    }
-    const own = learned(d.id);
-    const ready = !own && reqsMet(g, d);
-    const state = own ? 'own' : ready ? 'ready' : 'dim';
-    const label = `${t(d.name)}, ${own ? t('learned') : ready ? `${t('ready')}, ${tn(d.cost, '{n} diamond', '{n} diamonds')}` : t('locked')}`;
-    nodes += `<button type="button" class="sk-node ${state}${sel === d.id ? ' sel' : ''}" data-act="skill" data-arg="${d.id}" aria-label="${esc(label)}" aria-pressed="${sel === d.id}"
-      style="left: ${d.x - r}px; top: ${d.y - r}px; width: ${2 * r}px; height: ${2 * r}px; --c: ${BRANCH_COL[d.branch]}">${skillGlyph(d.id, Math.round(r * 1.08))}</button>`;
-  }
-  const labels = `<span class="sk-lbl" style="left: 92px; top: 221px; color: ${BRANCH_COL.reap}">${t('REAP')}</span>
-    <span class="sk-lbl" style="left: 391px; top: 184px; color: ${BRANCH_COL.soil}">${t('SOIL')}</span>
-    <span class="sk-lbl" style="left: 397px; top: 232px; color: ${BRANCH_COL.gold}">${t('FORTUNE')}</span>`;
-  const left = diamondsLeft(g), earned = diamondsEarned(g);
-  return `<div class="bg fit sk-map"><svg class="sk-sky" viewBox="0 0 844 390" width="844" height="390" aria-hidden="true">${STARS}${links}</svg>${labels}${nodes}${clouds}</div>
-    <div class="grp tl" style="width: 330px; height: 64px"><button type="button" class="st-btn st-sq top-btn" data-act="back" aria-label="${t('Back')}">${ICON.back()}</button>
-      <div class="sk-titles"><h2>${t('Skill map')}</h2><p>${t('Win a farm, earn a diamond. Boss farms give two.')}</p></div>
-      <button type="button" class="st-btn gold btn-sm sk-tree-btn" data-act="tree">${t('See the 0.13 tree')}</button></div>
-    <div class="grp tr" style="width: 250px; height: 390px">
-      <p class="sk-gems">${ICON.diamond(18)}<b>${left}</b> ${t('to spend · {n} earned', { n: earned })}</p>
-      <div class="st-chip sk-card">${skillCardHtml(g, sel)}</div></div>`;
-}
-
-function skillCardHtml(g: GameSave, id: string): string {
-  const d = skillDef(id) || SKILLS[0];
-  const own = g.skills.includes(d.id);
-  const chk = canLearn(g, d.id);
-  const status = own ? 'Learned' : chk.ok ? 'Ready' : reqsMet(g, d) ? 'Ready' : 'Locked';
-  const statusTxt = status === 'Learned' ? t('Learned') : status === 'Ready' ? t('Ready') : t('Locked');
-  const kids = SKILLS.filter(s => s.reqs.includes(d.id));
-  const kidNames = kids.map(k => (revealed(g, k) || own ? t(k.name) : '?')).join(', ');
-  const needs = d.reqs.map(r => t(skillDef(r)!.name)).join(d.reqMode === 'any' ? ` ${t('or')} ` : ', ');
-  const rel = !d.reqs.length
-    ? `<b>${t('Leads to:')}</b> ${esc(kidNames)}`
-    : kids.length
-      ? `<b>${t('Needs:')}</b> ${esc(needs)}<br><b>${t('Leads to:')}</b> ${esc(kidNames)}`
-      : `<b>${t('Needs:')}</b> ${esc(needs)}`;
-  let foot: string;
-  if (own) foot = `<p class="sk-why">${t('Learned. Reset any time to move your diamonds.')}</p>`;
-  else if (chk.ok)
-    foot = `<button type="button" class="st-btn gold sk-learn" data-act="skill-learn" data-arg="${d.id}">${t('Learn · {n}', { n: d.cost })} ${ICON.diamond(18)}</button>`;
-  else foot = `<p class="sk-why">${esc(t(chk.reason || 'Not yet.'))}</p>`;
-  const reset = g.skills.length ? `<button type="button" class="linkish sk-reset" data-act="skill-reset">${t('Reset all skills · diamonds back')}</button>` : '';
-  return `<div class="sk-head"><span class="sk-dot" style="background: ${BRANCH_COL[d.branch]}"></span><span class="eyebrow">${esc(t(BRANCH_NAME[d.branch]).toUpperCase())} · ${d.cost} ◆</span>
-      <span class="sk-pill ${status.toLowerCase()}">${statusTxt}</span></div>
-    <div class="sk-name"><span class="sk-ic" style="background: ${BRANCH_COL[d.branch]}">${skillGlyph(d.id, 26)}</span><h3>${esc(t(d.name))}</h3></div>
-    <p class="sk-desc">${esc(t(d.effect))}</p><p class="sk-rel">${rel}</p>
-    <div class="sk-foot">${foot}${reset}</div>`;
-}
-
-/** The first skill worth looking at: one ready to learn, else the core. */
-export function firstSkill(g: GameSave): string {
-  const ready = SKILLS.find(d => !g.skills.includes(d.id) && reqsMet(g, d));
-  return ready ? ready.id : SKILLS[0].id;
-}
 
 // ------------------------------------------------------------------ Bling Barn
 
@@ -212,7 +116,7 @@ export function dailyHtml(def: SideDef & { date: string }, d: DailyState, tries:
     <p class="dl-text">${t("One day, no bills. Everyone gets the same field and the same upgrades, so it's all down to your swipes.")}</p>
     ${targetsRow(def.targets, d.best)}
     <p class="dl-best">${bestTxt}</p>
-    <p class="dl-rew">${medalIcon(1, 16)} ${MEDAL_RIBBONS[1]} ${ribbonIcon(14)} · ${medalIcon(2, 16)} ${MEDAL_RIBBONS[2]} ${ribbonIcon(14)} · ${medalIcon(3, 16)} ${MEDAL_RIBBONS[3]} ${ribbonIcon(14)} ${t('and a {gem} once a day', { gem: ICON.diamond(14) })}</p>
+    <p class="dl-rew">${medalIcon(1, 16)} ${MEDAL_RIBBONS[1]} ${ribbonIcon(14)} · ${medalIcon(2, 16)} ${MEDAL_RIBBONS[2]} ${ribbonIcon(14)} · ${medalIcon(3, 16)} ${MEDAL_RIBBONS[3]} ${ribbonIcon(14)} · ${creditIcon(15)} +${money(DIAMOND_CREDIT)}</p>
     <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="go" data-arg="menu">${t('Back')}</button>${play}</div>
   </div></div>`;
 }
@@ -248,11 +152,11 @@ export interface SideOutcome {
   kind: 'daily' | 'duel-pass' | 'duel-end';
   score: number;
   def: SideDef;
-  /** Daily: the medal now held today, whether it improved, ribbons and diamond won. */
+  /** Daily: the medal now held today, whether it improved, ribbons and tree credit won. */
   medal?: number;
   newMedal?: boolean;
   ribbons?: number;
-  diamond?: boolean;
+  credit?: number;
   tries?: number;
   adTry?: boolean;
   /** Duel: both scores and names. */
@@ -269,7 +173,7 @@ export function sideResultHtml(o: SideOutcome): string {
     const next = got < 3 ? t('{medal} needs {amt}.', { medal: t(MEDAL_NAME[got + 1]), amt: money(o.def.targets[got]) }) : t('The best a farmer can do. Come back tomorrow.');
     const rew = [
       o.ribbons ? `<span class="dia">+${o.ribbons} ${ribbonIcon(18)}</span>` : '',
-      o.diamond ? `<span class="dia">+1 ${ICON.diamond(16)}</span>` : '',
+      o.credit ? `<span class="dia">${creditIcon(18)} +${money(o.credit)}</span>` : '',
     ].join('');
     let again = '';
     if (o.tries && o.tries > 0) again = `<button type="button" class="st-btn gold btn-md flex1" data-act="daily-play">${t('Again · {n} left', { n: o.tries })}</button>`;

@@ -16484,7 +16484,7 @@ export function startGeminiEngine() {
       name: 'Storm scythe',
       line: 'Crits throw lightning at 2 nearby crops.',
       once: true,
-      req: () => !hasSkill('reap_exec') && !(window.__DBD_TOOL && window.__DBD_TOOL.storm),
+      req: () => !tfx('b5') && !(window.__DBD_TOOL && window.__DBD_TOOL.storm),
     },
     {
       id: 'cleaver',
@@ -16870,7 +16870,8 @@ export function startGeminiEngine() {
       radishSlow: n('whisper') || T.frost ? 0.5 : 1,
       radishBonus: n('whisper') ? 1.3 : 1,
       treaty: n('treaty') > 0 || hasSkill('gold_treaty') || hasSkill('gold_herd'),
-      storm: n('storm') > 0 || hasSkill('reap_exec') || !!T.storm,
+      // 0.13: the lightning is its own tree node (Storm rod, b5); Reaper's verdict (b11) only fells weak crops
+      storm: n('storm') > 0 || tfx('b5') > 0 || !!T.storm,
       cleaver: n('cleaver') > 0 || hasSkill('reap_cleave'),
       // v0.11.1: the Charge Cleave comes with a tool attachment (Navid, 3 Nov: an upgrade, not a perk)
       chargeLv: T.charge || 0,
@@ -16944,7 +16945,7 @@ export function startGeminiEngine() {
   function billObj(idx) {
     const list = billList();
     const raw = list[FarmScene_clamp(idx, 0, list.length - 1)];
-    const m = (list === FarmScene_BILLS ? curBiome().mul : 1) * (hasSkill('gold_lawyer') ? 0.88 : 1.0) * (tfx('m14') && idx >= list.length - 1 ? 0.9 : 1);
+    const m = (list === FarmScene_BILLS ? curBiome().mul : 1) * (1 - 0.04 * Math.min(3, tfx('m2'))) * (tfx('m14') && idx >= list.length - 1 ? 0.9 : 1);
     return { name: raw.name, days: raw.days, note: raw.note, amt: Math.max(10, Math.round(raw.amt * m)) };
   }
   function billStatus() {
@@ -18028,7 +18029,7 @@ export function startGeminiEngine() {
     if (fieldSeed) for (const k in fieldSeq) fieldSeq[k] = 0;
     goatTimer = unlockLevel() >= 2 ? 3 + fieldRng('timer')() * 5 : Infinity;
     goat = null;
-    const initCount = Math.min(cur.max, 4 + Math.floor(cur.max * 0.35) + (hasSkill('soil_dew') ? 3 : 0));
+    const initCount = Math.min(cur.max, 4 + Math.floor(cur.max * 0.35) + [0, 3, 5, 8][Math.min(3, tfx('f4'))]);
     for (let i = 0; i < initCount; i++) spawnCrop(0.08 + i * 0.04);
     seeds = [];
     dbdVortexes = [];
@@ -18089,9 +18090,13 @@ export function startGeminiEngine() {
     keys.clear();
     pointer.active = false;
     pointer.down = false;
-    if (hasSkill('gold_interest') && farm.cash > 0) {
+    // Compound reserve (m7): 4% a level on the cash held, up to 40% of a good day here
+    if (tfx('m7') && farm.cash > 0) {
       const pl = plan();
-      const interest = Math.min(Math.max(300, Math.round(0.4 * ((pl && pl.dayRef) || 0))), Math.floor(farm.cash * 0.12));
+      const interest = Math.min(
+        Math.max(300, Math.round(0.4 * ((pl && pl.dayRef) || 0))),
+        Math.floor(farm.cash * 0.04 * Math.min(3, tfx('m7'))),
+      );
       if (interest > 0) {
         farm.cash += interest;
         farm.earned += interest;

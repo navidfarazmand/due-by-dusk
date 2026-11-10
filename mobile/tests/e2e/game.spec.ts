@@ -8,7 +8,8 @@ function seeded(won: string[], wallet: number, extra: Save = {}): Save {
   const cities: Record<string, unknown> = {};
   for (const id of won) cities[id] = { won: true, stars: 2, bestDay: 200, crown: false, bestDays: 3, plays: 1, paid: 0 };
   return {
-    v: 3, econ: 10, createdAt: 1, cities, run: null, wallet,
+    // treeV 1: a save of 0.13 (the tree is the one upgrade system); a test of the migration leaves it out
+    v: 3, econ: 10, treeV: 1, createdAt: 1, cities, run: null, wallet,
     workshop: { levels: { scythe: 6, swing: 2, hands: 2, days: 2, soil: 2, market: 2, clover: 1 }, job: null },
     tools: { owned: ['sickle'], equipped: 'sickle', mods: {} },
     ads: { date: '', coins: 0, doubles: 0, finishes: 0, lastCoinsAt: 0 },
@@ -101,8 +102,8 @@ test('the farmhouse fits the screen: the day card between the tiles, and every p
     expect(b.b).toBeLessThanOrEqual(L.vh);
   }
   expect(go.b).toBeLessThanOrEqual(card.b);
-  await act(page, 'panel', 'workshop');
-  for (const tab of ['workshop', 'tools', 'perks', 'bills']) {
+  await act(page, 'panel', 'tools');
+  for (const tab of ['tools', 'perks', 'bills']) {
     // the panel's own tabs (the tiles behind it are covered)
     await page.locator(`.scr-modal .pn-head [data-act="panel"][data-arg="${tab}"]`).click();
     await expect(page.locator(`.scr-modal .pn-head [data-arg="${tab}"].on`)).toBeVisible();
@@ -113,6 +114,12 @@ test('the farmhouse fits the screen: the day card between the tiles, and every p
     expect(m.b).toBeLessThanOrEqual(P.vh + 1);
     expect(done.b).toBeLessThanOrEqual(m.b);
   }
+  // the panel's Upgrades tab is the upgrade tree (0.13), and its back button returns to the farmhouse
+  await page.locator('.scr-modal .pn-head [data-act="tree"]').click();
+  await expect(page.locator('.scr-tree .tr-map')).toBeVisible();
+  await expect(page.locator('.scr-modal')).toBeHidden();
+  await page.locator('.scr-tree [data-act="tree-back"]').click();
+  await expect(page.locator('.scr-farmhouse .day-card')).toBeVisible();
 });
 
 test('tools: buy the scythe, put it in hand and add an attachment', async ({ page }) => {
@@ -270,27 +277,48 @@ async function boxes(page: Page, sels: string[]): Promise<{ vw: number; vh: numb
 const inside = (x: Box, vw: number, vh: number) => x.l >= -1 && x.t >= -1 && x.r <= vw + 1 && x.b <= vh + 1;
 const apart = (a: Box, c: Box) => a.r <= c.l + 1 || c.r <= a.l + 1 || a.b <= c.t + 1 || c.b <= a.t + 1;
 
-test('skill map: learn a skill, the farm uses it, reset gives the diamonds back', async ({ page }) => {
-  const errors = await boot(page, seeded(CA.slice(0, 3), 0));
+test('an older save: learned skills become owned tree nodes, diamonds become tree credit, and no diamond is left on screen', async ({ page }) => {
+  // a 0.12 save: three farms won (3 diamonds) and 4 from daily golds; Pasture accord (3) and Harvester's Awakening (1) learned
+  const errors = await boot(page, seeded(CA.slice(0, 3), 0, { treeV: undefined, skills: ['core_awakening', 'gold_root', 'gold_treaty'], bonusDiamonds: 3 }));
+  const g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  // Pasture accord is its node; the other 3 diamonds (two plain stat skills) are $1,000 of tree credit each
+  expect(g.tree).toEqual({ a1: 1 });
+  expect(g.treeCredit).toBe(3000);
+  expect(g.treeV).toBe(1);
+  expect(g.skills).toBeUndefined();
+  expect(g.bonusDiamonds).toBeUndefined();
+  await expect(page.locator('.shell-toast')).toContainText('$3,000', { timeout: 6000 });
+  // the engine has the skill by its old name, and nothing else
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().learnedSkills)).toEqual(['gold_treaty']);
+  // the menu's Barn opens the tree (the skill map is gone): the node is owned, the credit shows, and it buys a node
   await act(page, 'barn-menu');
-  await page.locator('.scr-modal [data-act="skills"]').click();
-  await expect(page.locator('.scr-skills .sk-card')).toContainText("Harvester's Awakening");
-  await expect(page.locator('.scr-skills .sk-gems')).toContainText('3 to spend');
-  const L = await boxes(page, ['.scr-skills .sk-node', '.scr-skills .sk-card', '.scr-skills .sk-gems', '.scr-skills .top-btn']);
-  const card = L.b['.scr-skills .sk-card'][0];
-  for (const n of L.b['.scr-skills .sk-node']) {
-    expect(inside(n, L.vw, L.vh)).toBe(true);
-    expect(apart(n, card)).toBe(true);
+  await expect(page.locator('.scr-modal [data-act="skills"]')).toHaveCount(0);
+  await page.locator('.scr-modal [data-act="tree"]').click();
+  await expect(page.locator('.scr-tree .tr-nd')).toHaveCount(103);
+  await expect(page.locator('.scr-tree .tr-credit')).toContainText('$3,000');
+  await expect(page.locator('.scr-tree .tr-nd[data-arg="a1"]')).toHaveClass(/\bown\b/);
+  await page.locator('.scr-tree .tr-nd[data-arg="a1"]').click();
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Pasture accord');
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Yours');
+  await page.locator('.scr-tree .tr-nd[data-arg="a2"]').click();
+  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="a2"]').click();
+  const g2 = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g2.tree.a2).toBe(1);
+  expect(g2.treeCredit).toBe(3000 - 200);
+  expect(g2.wallet).toBe(0);
+  // no diamond anywhere: not on the tree, the menu, the Barn card or the daily farm
+  for (const scr of ['menu', 'daily']) {
+    await page.evaluate(sc => (window as any).__DBD_APP.show(sc), scr);
+    expect(await page.evaluate(() => document.getElementById('dbdScreens')!.innerHTML.includes('#7FD1F5'))).toBe(false);
+    expect(await page.locator('#dbdScreens').innerText()).not.toMatch(/diamond|◆/i);
   }
-  expect(inside(card, L.vw, L.vh)).toBe(true);
-  await act(page, 'skill-learn', 'core_awakening');
-  await act(page, 'skill', 'reap_root');
-  await act(page, 'skill-learn', 'reap_root');
-  await expect(page.locator('.scr-skills .sk-gems')).toContainText('0 to spend');
-  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().learnedSkills)).toEqual(['core_awakening', 'reap_root']);
-  await act(page, 'skill-reset');
-  await expect(page.locator('.scr-skills .sk-gems')).toContainText('3 to spend');
-  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().learnedSkills)).toEqual([]);
+  // after a reload the save stays as it is (no second credit)
+  await page.evaluate(() => (window as any).__DBD_APP.saveNow());
+  await page.reload();
+  await page.waitForFunction(() => !!(window as any).__DBD_APP);
+  const g3 = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g3.treeCredit).toBe(2800);
+  expect(g3.tree).toEqual({ a1: 1, a2: 1 });
   expect(errors).toEqual([]);
 });
 
@@ -578,22 +606,29 @@ test('a farm pays out once: a replay keeps its cash for the bills and banks only
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
   await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(300));
   await page.evaluate(() => (window as any).__DBD_APP.refresh());
-  await act(page, 'panel', 'workshop');
+  await act(page, 'panel', 'tools');
   // the payout note sits behind an "i" next to the cash (Navid, 3 Nov), not above the cards
   await page.locator('.scr-modal .up-info').click();
   await expect(page.locator('.scr-modal .info-text')).toContainText('$500');
   await act(page, 'close');
-  await act(page, 'panel', 'workshop');
-  // $300 on the farm is below the $500 mark: no upgrade can be bought with it
-  await expect(page.locator('.scr-modal .btn-buy.gold')).toHaveCount(0);
+  // $300 on the farm is below the $500 mark: no upgrade can be bought with it (the tree shows $0 to spend)
   await expect(page.locator('.scr-farmhouse .ft-badge')).toHaveCount(0);
+  await act(page, 'tree');
+  await expect(page.locator('.scr-tree .tr-cash')).toContainText('$0');
+  await expect(page.locator('.scr-tree .tr-nd.ready')).toHaveCount(0);
+  await page.locator('.scr-tree .tr-nd[data-arg="r2"]').click();
+  await expect(page.locator('.scr-tree [data-act="tree-buy"][data-arg="r2"]')).toBeDisabled();
+  await page.locator('.scr-tree [data-act="tree-back"]').click();
   await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(300));
   await page.evaluate(() => (window as any).__DBD_APP.refresh());
   // $600 on the farm: $100 above the mark buys the cheapest upgrades
-  await expect(page.locator('.scr-modal .btn-buy.gold').first()).toBeVisible();
   await expect(page.locator('.scr-farmhouse .ft-badge')).toBeVisible();
+  await act(page, 'tree');
+  await expect(page.locator('.scr-tree .tr-cash')).toContainText('$100');
+  await expect(page.locator('.scr-tree .tr-nd.ready').first()).toBeVisible();
   const cost = await page.evaluate(() => (window as any).__DBD_WORKSHOP.upgradeCost('hands', 2));
-  await act(page, 'buy', 'hands');
+  await page.locator('.scr-tree .tr-nd[data-arg="r2"]').click();
+  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="r2"]').click();
   const g = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g.workshop.levels.hands).toBe(3);
   expect(cost).toBeLessThanOrEqual(100);
@@ -758,53 +793,200 @@ test('the day\'s event badge holds the field until the next tap', async ({ page 
   expect(errors).toEqual([]);
 });
 
-test('the 0.13 upgrade tree (a preview): 103 nodes from the skill map, the Workshop and learned skills on it', async ({ page }) => {
-  const errors = await boot(page, seeded(CA.slice(0, 2), 0, { skills: ['core_awakening', 'gold_root', 'gold_lawyer'] }));
-  await page.evaluate(() => (window as any).__DBD_APP.show('skills'));
-  await act(page, 'tree');
+test('the upgrade tree from the farmhouse: opens on the trunk, a track level is bought with one big button, the badge counts what can be bought', async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 2), 400));
+  await act(page, 'play');
+  await expect(page.locator('.scr-farmhouse .dc-day')).toBeVisible();
+  // the tile's badge: tree nodes that can be bought now with the $400 of savings
+  const ready = await page.evaluate(() => {
+    const w = window as any;
+    return w.__DBD_TREE.treeReady(w.__DBD_APP.g, 400).map((n: any) => n.id);
+  });
+  expect(ready.length).toBeGreaterThan(3);
+  await expect(page.locator('.scr-farmhouse .fh-tile.big .ft-badge')).toHaveText(String(ready.length));
+  await page.locator('.scr-farmhouse .fh-tile.big').click();
   await expect(page.locator('.scr-tree .tr-nd')).toHaveCount(103);
-  await page.locator('.scr-tree [data-act="tree-node"][data-arg="m2"]').click();
-  await expect(page.locator('.scr-tree .tr-card')).toContainText('Retained counsel');
-  // the skill learned with diamonds is its first level; the next one can be bought in the tree
-  await expect(page.locator('.scr-tree .tr-card')).toContainText('Level 1 of 3');
-  await page.locator('.scr-tree [data-act="tree-node"][data-arg="b9"]').click();
-  await expect(page.locator('.scr-tree .tr-card')).toContainText('Coming in 0.13');
+  // every node that can be bought now is ringed, and the trunk's card lists them
+  await expect(page.locator('.scr-tree .tr-nd.ready')).toHaveCount(ready.length);
+  await expect(page.locator('.scr-tree .tr-list .tr-row.ready')).toHaveCount(ready.length);
+  // it opens centred on the trunk
+  const mid = await page.evaluate(() => {
+    const box = document.getElementById('dbdTreeMap')!.getBoundingClientRect();
+    const t = document.querySelector('.scr-tree .tr-nd[data-arg="trunk"] circle')!.getBoundingClientRect();
+    return { dx: (t.left + t.right) / 2 - (box.left + box.right) / 2, dy: (t.top + t.bottom) / 2 - (box.top + box.bottom) / 2 };
+  });
+  expect(Math.abs(mid.dx)).toBeLessThan(12);
+  expect(Math.abs(mid.dy)).toBeLessThan(12);
+  // the whole screen fits, and what gets tapped is big enough for a thumb
+  const L = await boxes(page, ['.scr-tree .tr-top > *', '.scr-tree .tr-map', '.scr-tree .tr-card', '.scr-tree .tr-row', '.scr-tree .tr-top button']);
+  // (the list of what is ready scrolls inside its card)
+  for (const sel of ['.scr-tree .tr-top > *', '.scr-tree .tr-map', '.scr-tree .tr-card']) for (const b of L.b[sel]) expect(inside(b, L.vw, L.vh)).toBe(true);
+  expect(inside(L.b['.scr-tree .tr-row'][0], L.vw, L.vh)).toBe(true);
+  for (const b of [...L.b['.scr-tree .tr-row'], ...L.b['.scr-tree .tr-top button']]) expect(b.b - b.t).toBeGreaterThanOrEqual(40);
+  // a node's own hit area on the map
+  const hit = await page.evaluate(() => document.querySelector('.scr-tree .tr-nd[data-arg="b1"] circle')!.getBoundingClientRect().width);
+  expect(hit).toBeGreaterThanOrEqual(40);
+  // Sharper blade: the Workshop's level 6, its price, and one big Buy button
+  await page.locator('.scr-tree .tr-nd[data-arg="b1"]').click();
+  const card = page.locator('.scr-tree .tr-card');
+  await expect(card).toContainText('Sharper blade');
+  await expect(card).toContainText('Lv 6');
+  const cost = await page.evaluate(() => (window as any).__DBD_WORKSHOP.upgradeCost('scythe', 6));
+  const buy = page.locator('.scr-tree [data-act="tree-buy"][data-arg="b1"]');
+  await expect(buy).toContainText('$' + cost);
+  const B = await boxes(page, ['.scr-tree .tr-buy', '.scr-tree .tr-card']);
+  const bb = B.b['.scr-tree .tr-buy'][0];
+  expect(bb.b - bb.t).toBeGreaterThanOrEqual(48);
+  expect(bb.r - bb.l).toBeGreaterThanOrEqual(150);
+  expect(inside(bb, B.vw, B.vh)).toBe(true);
+  await buy.click();
+  // one state: the Workshop's level went up, the engine has it, savings paid, nothing was written twice
+  const g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g.workshop.levels.scythe).toBe(7);
+  expect(g.tree.b1).toBeUndefined();
+  expect(g.wallet).toBe(400 - cost);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().shed.scythe)).toBe(7);
+  await expect(card).toContainText('Lv 7');
+  // a node that is not built yet says so, without a version number, and has no Buy button
+  const soon = await page.evaluate(() => {
+    const T = (window as any).__DBD_TREE;
+    const n = T.TREE.find((x: any) => x.kind !== 'trunk' && !T.nodeLive(x.id));
+    return n ? n.id : '';
+  });
+  if (soon) {
+    await page.locator(`.scr-tree .tr-nd[data-arg="${soon}"]`).click({ force: true });
+    await expect(card).toContainText('Coming soon');
+    await expect(card).not.toContainText('0.13');
+    await expect(page.locator('.scr-tree [data-act="tree-buy"]')).toHaveCount(0);
+  }
   await page.locator('.scr-tree [data-act="tree-zoom"][data-arg="1"]').click();
   await page.locator('.scr-tree [data-act="tree-back"]').click();
-  await expect(page.locator('.scr-skills')).toBeVisible();
+  await expect(page.locator('.scr-farmhouse .day-card')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test('the upgrade tree sells a node with savings, and the next one opens (0.13 preview)', async ({ page }) => {
+test('a long build: the fifth level of a track takes time, one build at a time, and the test ad finishes it', async ({ page }) => {
+  const save = seeded(CA.slice(0, 2), 5000);
+  (save.workshop as any).levels.scythe = 9;
+  const errors = await boot(page, save);
+  await act(page, 'play');
+  await page.locator('.scr-farmhouse .fh-tile.big').click();
+  await page.locator('.scr-tree .tr-nd[data-arg="b1"]').click();
+  const buy = page.locator('.scr-tree [data-act="tree-buy"][data-arg="b1"]');
+  // level 10 is a build: the button shows how long
+  await expect(buy.locator('small')).toContainText('2m 30s');
+  await buy.click();
+  let g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g.workshop.levels.scythe).toBe(9);
+  expect(g.workshop.job).toMatchObject({ id: 'scythe', level: 10 });
+  expect(g.workshop.job.endsAt - g.workshop.job.startedAt).toBe(150_000);
+  // the card shows the build and the rewarded ad that finishes it (never forced: a button)
+  await expect(page.locator('.scr-tree .tr-card .tr-build')).toBeVisible();
+  await expect(page.locator('.scr-tree [data-act="tree-buy"][data-arg="b1"]')).toHaveCount(0);
+  const fin = page.locator('.scr-tree .tr-card [data-act="ad-finish"]');
+  await expect(fin).toBeVisible();
+  // one build at a time: another fifth level waits, an ordinary level does not
+  await page.evaluate(() => {
+    const a = (window as any).__DBD_APP;
+    a.g.workshop.levels.hands = 4;
+    a.refresh();
+  });
+  await page.locator('.scr-tree .tr-nd[data-arg="r2"]').click();
+  await expect(page.locator('.scr-tree .tr-card .tr-buy')).toBeDisabled();
+  await page.locator('.scr-tree .tr-nd[data-arg="r1"]').click();
+  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="r1"]').click();
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.workshop.levels.swing)).toBe(3);
+  // the farmhouse tile shows the clock too
+  await page.locator('.scr-tree [data-act="tree-back"]').click();
+  await expect(page.locator('.scr-farmhouse #dbdJobTile')).toBeVisible();
+  await page.locator('.scr-farmhouse .fh-tile.big').click();
+  // the chip in the top bar goes to the node being built; the test ad finishes it
+  await page.locator('.scr-tree .tr-jobchip').click();
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Sharper blade');
+  await fin.click();
+  await expect(page.locator('.test-ad')).toBeVisible();
+  await expect.poll(async () => (await page.evaluate(() => (window as any).__DBD_APP.g.workshop)).levels.scythe, { timeout: 8000 }).toBe(10);
+  g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g.workshop.job).toBeNull();
+  expect(g.ads.finishes).toBe(1);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().shed.scythe)).toBe(10);
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Lv 10');
+  // with no ad loaded the offer is not shown at all
+  await page.evaluate(() => {
+    const a = (window as any).__DBD_APP;
+    a.g.workshop.levels.scythe = 14;
+    a.refresh();
+  });
+  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="b1"]').click();
+  await expect(page.locator('.scr-tree .tr-card .tr-build')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('the tree: a node opens the next one, a keystone is a long build, and a free reset gives everything back as tree credit', async ({ page }) => {
   const errors = await boot(page, seeded(CA.slice(0, 2), 5000));
-  await page.evaluate(() => (window as any).__DBD_APP.show('skills'));
-  await act(page, 'tree');
-  await page.locator('.scr-tree [data-act="tree-node"][data-arg="p1"]').click();
+  await act(page, 'barn-menu');
+  await page.locator('.scr-modal [data-act="tree"]').click();
+  // Power cell from the trunk's list of what is ready, then Big power opens
+  await page.locator('.scr-tree .tr-row[data-arg="p1"]').click();
   await page.locator('.scr-tree [data-act="tree-buy"][data-arg="p1"]').click();
-  const g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  let g = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g.tree.p1).toBe(1);
-  expect(g.wallet).toBeLessThan(5000);
+  expect(g.wallet).toBe(5000 - 20);
   expect(await page.evaluate(() => (window as any).__DBD_TREEFX.p1)).toBe(1);
-  await page.locator('.scr-tree [data-act="tree-node"][data-arg="p2"]').click();
-  await expect(page.locator('.scr-tree [data-act="tree-buy"][data-arg="p2"]')).toBeVisible();
-  // a free reset: two taps, and what it cost comes back as tree credit
-  const spent = 5000 - g.wallet;
+  await page.locator('.scr-tree .tr-nd[data-arg="p2"]').click();
+  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="p2"]').click();
+  // a track level too: the reset gives tracks back as well
+  await page.locator('.scr-tree .tr-nd[data-arg="b1"]').click();
+  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="b1"]').click();
+  g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g.workshop.levels.scythe).toBe(7);
+  const paid = 5000 - g.wallet;
+  const before = await page.evaluate(() => {
+    const w = window as any;
+    return w.__DBD_TREE.treeRefund(w.__DBD_APP.g);
+  });
+  // what the save's track levels cost at the Workshop's prices, plus what was just paid
+  const seedValue = await page.evaluate(() => {
+    const W = (window as any).__DBD_WORKSHOP, lv = { scythe: 6, swing: 2, hands: 2, days: 2, soil: 2, market: 2, clover: 1 } as Record<string, number>;
+    let sum = 0;
+    for (const [id, n] of Object.entries(lv)) for (let l = 0; l < n; l++) sum += W.upgradeCost(id, l);
+    return sum;
+  });
+  expect(before).toBe(seedValue + paid);
+  // a free reset: two taps
   await page.locator('.scr-tree [data-act="tree-reset"]').click();
+  await expect(page.locator('.scr-tree [data-act="tree-reset"]')).toHaveClass(/\bred\b/);
+  expect((await page.evaluate(() => (window as any).__DBD_APP.g)).tree.p1).toBe(1);
   await page.locator('.scr-tree [data-act="tree-reset"]').click();
   const g2 = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(Object.values(g2.tree).filter((v: any) => v > 0)).toHaveLength(0);
-  expect(g2.treeCredit).toBe(spent);
+  expect(Object.values(g2.workshop.levels).every((v: any) => v === 0)).toBe(true);
+  expect(g2.treeCredit).toBe(before);
+  expect(g2.treeSpent).toBe(0);
+  expect(g2.wallet).toBe(g.wallet);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().shed.scythe)).toBe(0);
+  expect(await page.evaluate(() => (window as any).__DBD_TREEFX.p1 || 0)).toBe(0);
+  await expect(page.locator('.scr-tree .tr-credit')).toBeVisible();
+  // tree credit is spent first: savings stay where they are
+  await page.locator('.scr-tree .tr-row[data-arg="b1"]').click();
+  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="b1"]').click();
+  const g3 = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g3.workshop.levels.scythe).toBe(1);
+  expect(g3.treeCredit).toBe(before - 70);
+  expect(g3.wallet).toBe(g.wallet);
   expect(errors).toEqual([]);
 });
 
-test('menu: the signpost (Design 4), Barn opens skills or the Bling Barn, the plank opens the map', async ({ page }) => {
+test('menu: the signpost (Design 4), Barn opens the upgrade tree or the Bling Barn, the plank opens the map', async ({ page }) => {
   const errors = await boot(page);
   await expect(page.locator('.scr-menu .sp-play')).toBeVisible();
   await expect(page.locator('.scr-menu [data-act="crowns"]')).toHaveCount(0);
   await act(page, 'barn-menu');
-  await page.locator('.scr-modal [data-act="skills"]').click();
-  await expect(page.locator('.scr-skills')).toBeVisible();
-  await page.evaluate(() => (window as any).__DBD_APP.show('menu'));
+  await page.locator('.scr-modal [data-act="tree"]').click();
+  await expect(page.locator('.scr-tree .tr-map')).toBeVisible();
+  // back from the tree is the menu it was opened from
+  await page.locator('.scr-tree [data-act="tree-back"]').click();
+  await expect(page.locator('.scr-menu .sp-play')).toBeVisible();
   await act(page, 'continue');
   await expect(page.locator('.scr-world')).toBeVisible();
   expect(errors).toEqual([]);
@@ -907,9 +1089,11 @@ test('Sundown goes straight to the next day, and the field music plays on (v0.11
   await expect(page.locator('.scr-sundown [data-act="next-day"]')).toBeVisible();
   await expect(page.locator('.scr-sundown [data-act="farmhouse"]')).toBeVisible();
   await expect(page.locator('.scr-sundown .sd-big')).toHaveText(await page.evaluate(() => '$' + Math.round((window as any).__DBD_ENGINE.state().cash).toLocaleString('en-US')));
-  await page.locator('.scr-sundown [data-act="panel"][data-arg="workshop"]').click();
-  await expect(page.locator('.scr-modal')).toBeVisible();
-  await act(page, 'close');
+  // Sundown's Upgrades button opens the upgrade tree (0.13), and its back button returns to Sundown
+  await page.locator('.scr-sundown .sd-ups').click();
+  await expect(page.locator('.scr-tree .tr-map')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__DBD_APP.music.mood)).toBe('field');
+  await page.locator('.scr-tree [data-act="tree-back"]').click();
   await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible();
   expect(await page.evaluate(() => (window as any).__DBD_APP.music.mood)).toBe('field');
   await act(page, 'next-day');
@@ -951,8 +1135,9 @@ test("a purchase that leaves too little for tonight's bill asks on a card over a
     e.addCash(e.bill().amt + 20);
     (window as any).__DBD_APP.show('farmhouse');
   });
-  await page.locator('#dbdScreens [data-act="panel"][data-arg="workshop"], #dbdScreens [data-act="workshop"]').first().click();
-  const buy = page.locator('.scr-modal [data-act="buy"]:not([disabled])').first();
+  await page.locator('.scr-farmhouse .fh-tile.big').click();
+  await page.locator('.scr-tree .tr-nd[data-arg="b1"]').click();
+  const buy = page.locator('.scr-tree [data-act="tree-buy"]:not([disabled])').first();
   await expect(buy).toBeVisible();
   const before = await page.evaluate(() => JSON.stringify((window as any).__DBD_APP.g.workshop.levels));
   await buy.click();

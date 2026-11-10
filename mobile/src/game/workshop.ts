@@ -64,7 +64,8 @@ export const TIMED_EVERY = 5;
 export type Levels = Record<UpgradeId, number>;
 
 export interface WorkshopJob {
-  id: UpgradeId;
+  /** A Workshop upgrade, or (0.13) the id of a tree node that is not a Workshop track: a keystone, Power cell. */
+  id: UpgradeId | string;
   /** The level being built. */
   level: number;
   startedAt: number;
@@ -132,7 +133,10 @@ export function settleJob(ws: WorkshopState, now: number, force = false): Worksh
   const job = ws.job;
   if (!job) return null;
   if (!force && now < job.endsAt) return null;
-  ws.levels[job.id] = Math.max(ws.levels[job.id], job.level);
+  if (job.id in ws.levels) {
+    const id = job.id as UpgradeId;
+    ws.levels[id] = Math.max(ws.levels[id], Math.min(upgradeDef(id).max, job.level));
+  }
   ws.job = null;
   return job;
 }

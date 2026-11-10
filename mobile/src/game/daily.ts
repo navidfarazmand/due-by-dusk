@@ -117,11 +117,12 @@ export interface DailyState {
   adPlays: number;
   best: number;
   medal: number;
-  goldDiamond: boolean;
+  /** Today's gold medal has paid its tree credit (saves before 0.13 called it goldDiamond). */
+  goldPaid: boolean;
 }
 
 export function newDaily(date = ''): DailyState {
-  return { date, plays: 0, adPlays: 0, best: 0, medal: 0, goldDiamond: false };
+  return { date, plays: 0, adPlays: 0, best: 0, medal: 0, goldPaid: false };
 }
 
 export const DAILY_FREE_TRIES = 1;
