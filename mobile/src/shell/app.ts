@@ -449,14 +449,17 @@ export class GameApp {
   private foreclosed(d: { bill: string; short: number; days: number; cash: number; bossKept?: boolean }): void {
     const run = this.g.run;
     if (!run) return;
-    // the bank keeps the farm and its cash; savings are untouched. Upgrades bought with its cash count as paid out
+    // the bank keeps the farm and its cash; savings are untouched. Upgrades bought with its cash count as paid out.
+    // Tree: Insurance (m12) saves a quarter of the cash above the farm's mark (a farm pays out once, as after a deed)
+    const insured = (this.g.tree || {}).m12 > 0 ? Math.round(0.25 * bankAfterWin(run, d.cash)) : 0;
+    this.g.wallet += insured;
     const left = this.g.wallet;
     const p = (this.g.cities[run.cityId] ||= { ...cityProgress(this.g, run.cityId) });
-    p.paid = paidAfterRun(run, 0);
+    p.paid = paidAfterRun(run, insured);
     this.g.run = null;
     this.result = {
       kind: 'lost', cityId: run.cityId, stars: 0, spare: false, crown: false, firstWin: false, credit: 0,
-      days: d.days, earned: 0, harvested: 0, wallet: left, banked: 0, mark: run.mark, short: d.short, bill: d.bill, bossKept: !!d.bossKept,
+      days: d.days, earned: 0, harvested: 0, wallet: left, banked: insured, mark: run.mark, short: d.short, bill: d.bill, bossKept: !!d.bossKept,
     };
     this.saveNow();
     this.show('lost');
@@ -2089,7 +2092,7 @@ export class GameApp {
     // v0.12: a new crop every morning; on those days it takes the rival's place on the card. Short on tonight's bill,
     // the place says what a late day costs (v0.12.1, Navid: not a sentence in a button)
     const lateRow = extraLeft
-      ? `<p class="dc-late">${t('One more day for an ad: Grumble & Sons keep {p}% of what you earn that day. After 3 late days, the bank takes the farm.', { p: [20, 40, 60][late] })}</p>`
+      ? `<p class="dc-late">${t('One more day for an ad: Grumble & Sons keep {p}% of what you earn that day. After 3 late days, the bank takes the farm.', { p: Math.round(100 * ((st as unknown as { lateNext?: number }).lateNext ?? [0.2, 0.4, 0.6][late])) })}</p>`
       : '';
     const newRow = bossRow || lateRow ? '' : this.newTodayRow();
     const rivalRow =

@@ -1307,6 +1307,159 @@ test('Tool master doubles a Whirlwind (0.13)', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('tree tricks, the ranch and the bank: each does what its text says (0.13)', async ({ page }) => {
+  const errors = await trickDay(page);
+  const len = (await E(page, 'state')).dayLen;
+  await E(page, 'devClock', { time: len / 2, cash: 1000 });
+  const T = () => E(page, 'devTree');
+  const cash = async () => (await E(page, 'state')).cash;
+  const earned = async () => (await E(page, 'peek')).today.earned;
+  const mid = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().worldW / 2);
+  // a crow that carries $40 of the jar; a swipe gets the coins back
+  const crow = (loot: number) => E(page, 'devClock', { crow: 'out', loot });
+  // Crow bounty: a crow you chase off drops 2% of today's harvest. Crow hunter: it counts as a cut for the chain
+  const one = await cut(page, 'carrot');
+  await fx(page, {});
+  await crow(40);
+  let before = await cash();
+  await E(page, 'devSwing', mid, 80, 0);
+  expect((await cash()) - before).toBeCloseTo(40, 6);
+  expect((await T()).combo).toBe(1);
+  await fx(page, { a7: 1, x6: 1 });
+  await E(page, 'devClock', { combo: 4 });
+  await crow(0);
+  before = await earned();
+  await E(page, 'devSwing', mid, 80, 0);
+  expect((await earned()) - before).toBeCloseTo(Math.round(one * 0.02), 6);
+  expect((await T()).combo).toBe(5);
+  // Farm dog: every 8 s it chases a crow off and brings back what it took; not sooner
+  await fx(page, { a4: 1 });
+  await page.waitForTimeout(400);
+  await crow(25);
+  before = await cash();
+  await E(page, 'devClock', { ranch: 5 });
+  expect((await cash()) - before).toBeCloseTo(0, 6);
+  await E(page, 'devClock', { ranch: 3.5 });
+  expect((await cash()) - before).toBeCloseTo(25, 6);
+  // Pigeon post: a fertilizer bag every 12 s
+  await fx(page, { a11: 1 });
+  expect((await T()).props).toEqual([]);
+  await E(page, 'devClock', { ranch: 11 });
+  expect((await T()).props).toEqual([]);
+  await E(page, 'devClock', { ranch: 1.5 });
+  expect((await T()).props).toEqual(['fertilizer']);
+  await E(page, 'devClock', { ranch: 12 });
+  expect((await T()).props).toEqual(['fertilizer', 'fertilizer']);
+  // Goat milk: the goat drops coins every 10 s it is on the field
+  await fx(page, { x5: 1 });
+  await E(page, 'devClock', { goat: true });
+  before = await earned();
+  await E(page, 'devClock', { ranch: 9 });
+  expect((await earned()) - before).toBeCloseTo(0, 6);
+  await E(page, 'devClock', { ranch: 1.2 });
+  expect((await earned()) - before).toBeGreaterThan(0);
+  // Duck pond: one hit frees a crop the boss's storm has caught (two without it)
+  await fx(page, {});
+  let i = await E(page, 'devCrop', 'carrot', { hp: 1e9, maxHp: 1e9, encase: { kind: 'ice', hits: 2 } });
+  await E(page, 'devHit', i, 1);
+  expect((await E(page, 'peek')).encased).toBe(1);
+  await fx(page, { a13: 1 });
+  i = await E(page, 'devCrop', 'carrot', { hp: 1e9, maxHp: 1e9, encase: { kind: 'ice', hits: 2 } });
+  await E(page, 'devHit', i, 1);
+  expect((await E(page, 'peek')).encased).toBe(1); // the first one, still caught
+  // Clearing: a swing that cuts 3 or more crops at once leaves a fertilizer bag, one every 3 s at most
+  await E(page, 'devClock', { empty: true });
+  await fx(page, { x3: 1 });
+  const R = (await T()).R;
+  const three = async () => {
+    for (const [ax, ay] of [[-0.4, -0.3], [0.4, -0.3], [0, 0.4]]) await E(page, 'devCrop', 'carrot', { hp: 1e-9, maxHp: 1, x: mid + ax * R, y: 300 + ay * R });
+    await E(page, 'devSwing', mid, 290, 0);
+  };
+  await three();
+  expect((await T()).props).toEqual(['fertilizer']);
+  // (a second swing right away leaves no second bag; it may pick the first one up)
+  await three();
+  expect((await T()).props.length).toBeLessThanOrEqual(1);
+  // Barn owl: in the last 3 s of the day a crow at the jar flies off with nothing
+  await fx(page, { a6: 1 });
+  await E(page, 'devClock', { time: 2, cash: 500, crow: 'in' });
+  await expect.poll(async () => (await T()).crows, { timeout: 6000 }).toBe(0);
+  expect(await cash()).toBeCloseTo(500, 6);
+  // Barn cat: a bomb seed that is cut costs nothing and does not stun
+  await E(page, 'devClock', { empty: true });
+  await fx(page, { a15: 1 });
+  await E(page, 'devClock', { bomb: [mid, 300], cash: 1000, time: len / 2 });
+  // (the bomb is checked each frame under the finger: hold the finger there for a moment; last in this test, as
+  // the mouse stays on the field afterwards)
+  await page.evaluate(() => (window as any).__DBD_ENGINE.setTouchLift(0));
+  const pt = await page.evaluate(m => {
+    const p = (window as any).__DBD_ENGINE.peek(), r = document.getElementById('field')!.getBoundingClientRect();
+    return { x: r.left + m * p.scale, y: r.top + 286 * p.scale };
+  }, mid);
+  await page.mouse.move(pt.x, pt.y);
+  await page.mouse.down();
+  await expect.poll(async () => (await E(page, 'peek')).bombs).toBe(0);
+  await page.mouse.up();
+  expect(await cash()).toBeCloseTo(1000, 6);
+  expect((await E(page, 'peek')).stunned).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test('Good lawyer lowers the late fees, Cashback pays 8% of a bill back the next morning, Insurance saves a quarter (0.13)', async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 2), 0));
+  await act(page, 'play');
+  await expect(page.locator('.scr-farmhouse .dc-day')).toBeVisible();
+  const due = async () => {
+    await page.evaluate(() => {
+      (window as any).__DBD_ENGINE.devDue();
+      (window as any).__DBD_APP.show('farmhouse');
+    });
+  };
+  // tonight's bill and no cash: the late day says what it costs, 20% without the lawyer, 10% with, free at level 2
+  await due();
+  await expect(page.locator('.scr-farmhouse .dc-late')).toContainText('20%');
+  await fx(page, { m5: 1 });
+  await page.evaluate(() => (window as any).__DBD_APP.show('farmhouse'));
+  await expect(page.locator('.scr-farmhouse .dc-late')).toContainText('10%');
+  expect((await E(page, 'state')).lateNext).toBeCloseTo(0.1, 9);
+  await fx(page, { m5: 2 });
+  await page.evaluate(() => (window as any).__DBD_APP.show('farmhouse'));
+  await expect(page.locator('.scr-farmhouse .dc-late')).toContainText('0%');
+  expect((await E(page, 'state')).lateNext).toBe(0);
+  // the first late day of the farm is free; the second costs 40% less 10 points
+  expect(await E(page, 'lateDay')).toBe(true);
+  expect((await E(page, 'state')).lateNext).toBeCloseTo(0.3, 9);
+  // Cashback: pay the bill with the keystone, and 8% of it comes back at the next dawn
+  await fx(page, { m15: 1 });
+  const bill = (await E(page, 'bill')).amt;
+  await page.evaluate(b => {
+    const e = (window as any).__DBD_ENGINE;
+    e.devDue();
+    e.setCash(b);
+    (window as any).__DBD_APP.payBill();
+  }, bill);
+  await expect(page.locator('.scr-modal [data-act="chest-open"]')).toBeVisible();
+  await page.locator('.scr-modal [data-act="chest-open"]').click();
+  await takePerk(page.locator('.scr-modal [data-act="perk"]').first());
+  expect((await E(page, 'state')).cash).toBe(0);
+  await page.evaluate(() => (window as any).__DBD_APP.show('farmhouse'));
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  expect((await E(page, 'state')).cash).toBeGreaterThanOrEqual(Math.round(bill * 0.08));
+  expect((await E(page, 'state')).cash).toBeLessThan(Math.round(bill * 0.08) + 1);
+  // Insurance: the bank takes the farm with $400 on it, $100 of them above... no mark here, so a quarter is saved
+  const saved = await page.evaluate(() => {
+    const a = (window as any).__DBD_APP;
+    a.g.tree.m12 = 1;
+    a.foreclosed({ bill: 'New fence', short: 50, days: 4, cash: 400 });
+    return { wallet: a.g.wallet, paid: a.g.cities.ca_toronto.paid };
+  });
+  expect(saved.wallet).toBe(100);
+  expect(saved.paid).toBe(100);
+  await expect(page.locator('.scr-lost .result-card')).toContainText('$100');
+  expect(errors).toEqual([]);
+});
+
 test('menu: the signpost (Design 4), Barn opens the upgrade tree or the Bling Barn, the plank opens the map', async ({ page }) => {
   const errors = await boot(page);
   await expect(page.locator('.scr-menu .sp-play')).toBeVisible();

@@ -151,10 +151,10 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['medal', 'First of the day', 1, 'The first crop of each kind each day pays ×5.'],
     ['bank', 'Compound reserve', 3, 'Every night, 4% interest on the cash you hold (then 8%, 12%), up to 40% of a good day.'],
     ['coin', 'Sovereign mint', 1, "Lucky crops and the country's three pay 50% more."],
-    ['percent', 'Coupon book', 3, 'Upgrades cost 5% less (then 10%, 15%).'],
+    ['percent', 'Coupon book', 3, 'Everything in the tree costs 5% less (then 10%, 15%).'],
     ['crown', "Rival's envy", 1, "Beating the city's record pays a bonus of half the record."],
     ['jar', 'Tip jar', 1, 'A chain of 20 or more drops a tip: 10% of what the chain paid.'],
-    ['umbrella', 'Insurance', 1, 'If the bank takes a farm, a quarter of its cash goes to your savings.'],
+    ['umbrella', 'Insurance', 1, 'If the bank takes a farm, a quarter of its cash above what the farm has paid you goes to your savings.'],
     ['tag', 'Deal of the day', 1, 'One upgrade a day costs 25% less.'],
     ['deed', 'Deed discount', 1, 'The deed costs 10% less.'],
     ['cash', 'Cashback', 'K', 'Grumble & Sons pay back 8% of every bill you pay, the next morning.'],
@@ -184,9 +184,9 @@ const ROWS: Record<TreeBranch, Row[]> = {
 const BRIDGES: Row[] = [
   ['bolt', 'Charged edge', 1, 'During the rush, every swing crits.'],
   ['chevrons', 'Momentum', 1, 'During the rush, swings are 30% faster.'],
-  ['basket', 'Clearing', 1, 'A swing that cuts 3 or more crops at once leaves a fertilizer bag.'],
+  ['basket', 'Clearing', 1, 'A swing that cuts 3 or more crops at once leaves a fertilizer bag (one every 3 s at most).'],
   ['tag', 'Organic label', 1, 'Twins and crops that sprout again pay 50% more.'],
-  ['milk', 'Goat milk', 1, 'The goat drops coins every 10 s.'],
+  ['milk', 'Goat milk', 1, 'The goat drops coins every 10 s it is on the field.'],
   ['bow', 'Crow hunter', 1, 'Crows you chase off count as cuts for your chain.'],
 ];
 
@@ -246,6 +246,8 @@ export const TREE_NEW_LIVE = [
   'f11', 'f13', 'f14', 'f15', 'f16', 'm3', 'm4', 'm6', 'm11', 'x4',
   // batch 3: the power and the swing's reach
   'p7', 'p10', 'p11', 'p13', 'p14', 'p15', 'p16', 'r3', 'r4', 'r6', 'r9', 'r11', 'r16',
+  // batch 4: the ranch, the bank and three bridges (Coupon book and Insurance are the shell's: prices, a foreclosure)
+  'a4', 'a6', 'a7', 'a11', 'a13', 'a15', 'x3', 'x5', 'x6', 'm5', 'm9', 'm12', 'm15',
 ];
 
 const NODE: Record<string, TreeNode> = {};
@@ -309,7 +311,8 @@ export function buildingNode(g: TreeHolder): string | null {
   return NODE[job.id] ? job.id : null;
 }
 
-/** Tricks that make tree nodes cheaper (Coupon book, m9: 5% a level). Workshop tracks included. */
+/** Tricks that make tree nodes cheaper (Coupon book, m9: 5% a level). Workshop tracks included. A reset gives back
+ *  what was paid (`treeSpent`), not the list price, so a discount can't be turned into credit. */
 export function treeDiscount(g: TreeHolder): number {
   return 1 - 0.05 * Math.min(3, treeLevel(g, 'm9'));
 }

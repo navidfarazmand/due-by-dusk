@@ -2986,6 +2986,9 @@ export function startGeminiEngine() {
         extraDayUsed: !!rawFarm.extraDayUsed,
         late: clamp(Math.floor(num(rawFarm.late, 0)), 0, 3),
         lateFees: Math.max(0, num(rawFarm.lateFees, 0)),
+        // tree (0.13): late days taken on this farm (Good lawyer), and what comes back next morning (Cashback)
+        lateTotal: Math.max(0, Math.floor(num(rawFarm.lateTotal, 0))),
+        cashback: Math.max(0, num(rawFarm.cashback, 0)),
         won: !!rawFarm.won,
         lost: !!rawFarm.lost,
         boss:
@@ -18038,6 +18041,10 @@ export function startGeminiEngine() {
     moonRipe = false;
     goldenHeld = 0;
     devEmptyField = false;
+    dogT = 0;
+    pigeonT = 12;
+    milkT = 0;
+    clearingAt = -9;
     powerKill = false;
     sweepPay = 1;
     swingN = 0;
@@ -18071,6 +18078,13 @@ export function startGeminiEngine() {
       dayLen,
       event: { id: dailyEvent.id, title: dailyEvent.title, desc: dailyEvent.desc },
     });
+    if (farm.cashback > 0 && !savingOff) {
+      const back = Math.round(farm.cashback);
+      farm.cashback = 0;
+      farm.cash += back;
+      farm.earned += back;
+      addText('CASHBACK ' + fmtGain(back), worldW / 2, FIELD_TOP + 125, '#bef264', 26, -18, 1.5);
+    }
     // tree: what this morning brings (Market day every fifth day, Early bird's first 4 s)
     if (tfx('m4') && farm.day % 5 === 0) addText('MARKET DAY +30%', worldW / 2, FIELD_TOP + 95, '#ffe08a', 26, -18, 1.4);
     else if (tfx('f16')) addText('EARLY BIRD ×2', worldW / 2, FIELD_TOP + 95, '#ffe08a', 26, -18, 1.2);
@@ -18093,7 +18107,7 @@ export function startGeminiEngine() {
     paused = false;
     syncPause();
     if ((farm.late || 0) > 0 && !farm.won) {
-      const rate = LATE_FEES[Math.min(LATE_FEES.length - 1, farm.late - 1)];
+      const rate = lateRate(farm.late, farm.lateTotal || farm.late);
       const fee = Math.min(Math.max(0, Math.floor(farm.cash)), Math.round(today.earned * rate));
       farm.cash -= fee;
       farm.lateFees = (farm.lateFees || 0) + fee;
@@ -18226,6 +18240,91 @@ export function startGeminiEngine() {
   const FAST_FINGER = 700;
   /** Tests only (devClock): an empty field where nothing sprouts by itself. */
   let devEmptyField = false;
+  /** Ranch timers: the dog's next chase (Farm dog, a4), the pigeon's next bag (Pigeon post, a11), the goat's milk
+   *  (Goat milk, x5), and when Clearing (x3) last left a bag. */
+  let dogT = 0,
+    pigeonT = 12,
+    milkT = 0,
+    clearingAt = -9;
+  /** A crow is chased off: it flees, and what it carried comes back. `byDog`: the farm dog did it, not the player
+   *  (no bounty, no chain). */
+  function shooCrow(cr, px, byDog) {
+    cr.scared = true;
+    arthurAngerTimer = 2.4;
+    cr.vx = (cr.x < px ? -1 : 1) * 260;
+    cr.vy = -220;
+    if (cr.loot > 0) {
+      // the bag drops: every stolen coin comes back
+      farm.cash += cr.loot;
+      addText('COINS BACK ' + fmtGain(cr.loot), cr.x, cr.y - 20, '#bef264', 22, -38, 1.0);
+      for (let k = 0; k < Math.min(6, 2 + cr.loot / 10); k++) coin(cr.x + (Math.random() - 0.5) * 24, cr.y, k * 0.04);
+      dbdEvent('crowBack', { amt: cr.loot });
+      cr.loot = 0;
+    } else {
+      addText(byDog ? 'WOOF!' : 'SHOO!', cr.x, cr.y - 20, '#fde047', 22, -38, 0.8);
+      coin(cr.x, cr.y, 0);
+    }
+    if (!byDog) {
+      // Crow bounty (a7): 2% of today's harvest. Crow hunter (x6): the crow counts as a cut for the chain
+      if (tfx('a7')) {
+        const b = Math.round(today.earned * 0.02);
+        if (b > 0) {
+          farm.cash += b;
+          farm.earned += b;
+          today.earned += b;
+          addText('BOUNTY ' + fmtGain(b), cr.x, cr.y - 44, '#ffe08a', 22, -38, 1.0);
+        }
+      }
+      if (tfx('x6')) {
+        combo = comboTimer > 0 ? combo + 1 : 1;
+        comboTimer = cur.chainGrace;
+        today.best = Math.max(today.best, combo);
+      }
+    }
+    Sound.pop(10);
+  }
+  /** The ranch's helpers, every frame of a day. */
+  function updateRanch(dt) {
+    // Farm dog (a4): every 8 s it chases a crow off and brings back what it took
+    if (tfx('a4')) {
+      dogT += dt;
+      if (dogT >= 8) {
+        const cr = crows.find((c) => !c.scared);
+        if (cr) {
+          dogT = 0;
+          shooCrow(cr, cr.x + (cr.side < 0 ? 40 : -40), true);
+        }
+      }
+    }
+    // Pigeon post (a11): a fertilizer bag every 12 s
+    if (tfx('a11')) {
+      pigeonT -= dt;
+      if (pigeonT <= 0) {
+        pigeonT = 12;
+        if (fieldProps.length < 3) {
+          const R = fieldRng('prop');
+          const x = PAD + 40 + R() * (worldW - PAD * 2 - 80),
+            y = FIELD_TOP + 45 + R() * (HW - FIELD_TOP - 80);
+          fieldProps.push({ kind: 'fertilizer', x, y, ds: depth(y), age: 0, life: 9.5 });
+          addText('PIGEON POST', x, y - 40, '#e0e7ff', 20, -30, 1.0);
+        }
+      }
+    }
+    // Goat milk (x5): the goat drops coins every 10 s it is on the field
+    if (tfx('x5') && goat) {
+      milkT += dt;
+      if (milkT >= 10) {
+        milkT = 0;
+        const tip = Math.round((2 + 3 * unlockLevel()) * planVal());
+        farm.cash += tip;
+        farm.earned += tip;
+        today.earned += tip;
+        addText('GOAT MILK ' + fmtGain(tip), goat.x, goat.y - 60, '#ffffff', 22, -36, 1.0);
+        coin(goat.x, goat.y - 20, 0);
+        Sound.coin();
+      }
+    }
+  }
   function treePay(c, top) {
     let k = sweepPay;
     // Power payout (p14): crops the power cuts down pay 50% more, then double
@@ -18616,24 +18715,7 @@ export function startGeminiEngine() {
       }
     }
     for (const cr of crows) {
-      if (!cr.scared && Math.hypot(cr.x - px, cr.y - py) <= R + 30) {
-        cr.scared = true;
-        arthurAngerTimer = 2.4;
-        cr.vx = (cr.x < px ? -1 : 1) * 260;
-        cr.vy = -220;
-        if (cr.loot > 0) {
-          // the bag drops: every stolen coin comes back
-          farm.cash += cr.loot;
-          addText('COINS BACK ' + fmtGain(cr.loot), cr.x, cr.y - 20, '#bef264', 22, -38, 1.0);
-          for (let k = 0; k < Math.min(6, 2 + cr.loot / 10); k++) coin(cr.x + (Math.random() - 0.5) * 24, cr.y, k * 0.04);
-          dbdEvent('crowBack', { amt: cr.loot });
-          cr.loot = 0;
-        } else {
-          addText('SHOO!', cr.x, cr.y - 20, '#fde047', 22, -38, 0.8);
-          coin(cr.x, cr.y, 0);
-        }
-        Sound.pop(10);
-      }
+      if (!cr.scared && Math.hypot(cr.x - px, cr.y - py) <= R + 30) shooCrow(cr, px, false);
     }
   }
   /* ---- tools: blade swings (sickle, scythe), flame ticks with burning, seeds that fly to their targets ---- */
@@ -18645,7 +18727,8 @@ export function startGeminiEngine() {
   /** One hit on one crop. Returns 0 (blocked), 1 (hit) or 2 (harvested). */
   /** A hit on a crop encased by the boss's storm: it cracks the casing, two hits free the crop, no bonus. */
   function hitEncased(c, cy) {
-    c.encase.hits -= 1;
+    // tree: Duck pond (a13), one hit frees a crop the boss's storm has caught
+    c.encase.hits -= tfx('a13') ? 2 : 1;
     c.sq = 0.6;
     const kind = c.encase.kind;
     const col = kind === 'ice' ? '#e0f2fe' : kind === 'sand' ? '#fde68a' : '#8b6b4a';
@@ -18791,6 +18874,14 @@ export function startGeminiEngine() {
         continue;
       }
       if (pointer.active && stunT <= 0 && Math.hypot(pointer.x - b.x, pointer.y - (b.y - 14)) < cur.R * 0.55 + 20) {
+        // tree: Barn cat (a15) bats the bomb seed away: no stun, no loss
+        if (tfx('a15')) {
+          addText('BATTED AWAY', b.x, b.y - 30, '#fde047', 24, -34, 0.9);
+          for (let k = 0; k < 4 && canAdd(); k++) parts.push({ k: 'smoke', x: b.x, y: b.y - 6, vx: (Math.random() - 0.5) * 60, vy: -40, g: -10, s: 4, life: 0.4, max: 0.4 });
+          dbdEvent('bomb', { loss: 0, batted: true });
+          bombs.splice(i, 1);
+          continue;
+        }
         // cut it, and it goes off
         const loss = Math.min(Math.floor(farm.cash), Math.max(3, Math.round(farm.cash * 0.05)));
         farm.cash = Math.max(0, farm.cash - loss);
@@ -18934,6 +19025,14 @@ export function startGeminiEngine() {
     if (killed) crops = crops.filter((c) => !c.dead);
     if (goat) checkGoat();
     checkPropsAndCrows(cur.R);
+    // tree: Clearing (x3), a swing that cuts 3 or more crops at once leaves a fertilizer bag (one every 3 s at most)
+    if (killed >= 3 && tfx('x3') && tNow - clearingAt >= 3 && fieldProps.length < 3) {
+      clearingAt = tNow;
+      const a = Math.random() * Math.PI * 2,
+        x = FarmScene_clamp(pointer.x + Math.cos(a) * cur.R * 1.8, PAD + 20, worldW - PAD - 20),
+        y = FarmScene_clamp(pointer.y + Math.sin(a) * cur.R * 1.1, FIELD_TOP + 45, HW - 30);
+      fieldProps.push({ kind: 'fertilizer', x, y, ds: depth(y), age: 0, life: 9.5 });
+    }
   }
   /** Seed blaster: fire at the nearest crops in range; the seeds do the damage when they land. */
   function fireSeeds() {
@@ -20727,6 +20826,7 @@ export function startGeminiEngine() {
       }
       updateBombs(dt);
       toolUpdate(dt);
+      updateRanch(dt);
       spawnAcc += dt;
       // Field props & Crow pests timers
       propTimer -=
@@ -20904,7 +21004,15 @@ export function startGeminiEngine() {
         cr.vx = (dx / d) * sp;
         cr.x += (dx / d) * sp * dt;
         cr.y += (dy / d) * sp * dt;
-        if (cr.state === 'in' && d < 14) crowSteal(cr);
+        if (cr.state === 'in' && d < 14) {
+          // tree: Barn owl (a6), in the last 3 s of the day crows can't land
+          if (tfx('a6') && mode === 'day' && time <= 3) {
+            cr.scared = true;
+            cr.vx = (cr.side < 0 ? -1 : 1) * 260;
+            cr.vy = -220;
+            addText('HOO!', cr.x, cr.y - 20, '#e0e7ff', 22, -38, 0.8);
+          } else crowSteal(cr);
+        }
         else if (cr.state === 'out' && (cr.x < -50 || cr.x > worldW + 50)) {
           if (cr.loot > 0) dbdEvent('crowAway', { amt: cr.loot });
           crows.splice(i, 1);
@@ -23597,11 +23705,20 @@ export function startGeminiEngine() {
      and Grumble & Sons take a share of that day's earnings at sunset: 20%, then 40%, then 60%. The bill itself stays
      the same. After the third late day, only the bank is left. */
   const LATE_FEES = [0.2, 0.4, 0.6];
+  /** The collector's cut of the n-th late day of a bill (`total`: late days taken on this farm, that one included).
+   *  Tree: Good lawyer (m5) takes 10 points off; at level 2 the first late day of a farm is free. */
+  function lateRate(n, total) {
+    const lv = Math.min(2, tfx('m5'));
+    if (lv >= 2 && total <= 1) return 0;
+    const r = LATE_FEES[Math.min(LATE_FEES.length - 1, Math.max(0, n - 1))] - (lv ? 0.1 : 0);
+    return Math.max(0, Math.round(r * 100) / 100);
+  }
   function lateDay() {
     if (mode !== 'idle' || !billStatus().tonight) return false;
     if ((farm.late || 0) >= LATE_FEES.length) return false;
     if (farm.cash >= billObj(farm.bill).amt && !bossBlocked()) return false;
     farm.late = (farm.late || 0) + 1;
+    farm.lateTotal = (farm.lateTotal || 0) + 1;
     farm.due += 1;
     save();
     renderAll();
@@ -23631,6 +23748,8 @@ export function startGeminiEngine() {
       win();
       return;
     }
+    // tree: Cashback (m15), 8% of the bill comes back the next morning
+    if (tfx('m15')) farm.cashback = (farm.cashback || 0) + Math.round(b.amt * 0.08);
     farm.bill += 1;
     farm.due = Math.max(farm.due, farm.day - 1) + billList()[farm.bill].days;
     const tier = chestTier(farm.billsPaid, billCount());
@@ -24565,7 +24684,7 @@ export function startGeminiEngine() {
           extraDayUsed: !!farm.extraDayUsed,
           late: farm.late || 0,
           lateMax: LATE_FEES.length,
-          lateNext: LATE_FEES[Math.min(LATE_FEES.length - 1, farm.late || 0)],
+          lateNext: lateRate((farm.late || 0) + 1, (farm.lateTotal || 0) + 1),
           boss: bossHud(),
           lastEarn: farm.lastEarn,
           lastCount: farm.lastCount,
@@ -24986,6 +25105,12 @@ export function startGeminiEngine() {
         if (o.meter != null) rushCharge = o.meter * RUSH_GOAL;
         if (o.powerKill != null) powerKill = !!o.powerKill;
         if (o.idle != null) lastCutAt = tNow - o.idle;
+        if (o.crow) {
+          crows.push({ x: worldW / 2, y: 80, tx: worldW / 2, ty: 80, vx: 0, vy: 0, t: 0, side: -1, state: o.crow, loot: o.loot || 0, scared: false });
+        }
+        if (o.bomb) bombs.push({ x: o.bomb[0], y: o.bomb[1], sx: 0, sy: 0, tx: o.bomb[0], ty: o.bomb[1], fly: 1, t: 0, fuse: 99 });
+        if (o.goat) goat = { x: worldW / 2, y: FIELD_TOP + 90, dir: 1, speed: 0, t: 0, bumped: false, petted: true, angerFlash: 0, hop: 0 };
+        if (o.ranch != null) updateRanch(o.ranch);
         if (o.empty) {
           devEmptyField = true;
           crops = crops.filter((c) => c.boss);

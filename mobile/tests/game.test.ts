@@ -9,8 +9,8 @@ import {
 import { MAX_LEVEL, SHED_FX, UPGRADES, emptyLevels, oldWorkshopRefund, settleJob, startUpgrade, upgradeCost, upgradeDuration } from '../src/game/workshop';
 import { TOOLS, modCost, newTools, parseTools, toolStats, toolSummary } from '../src/game/tools';
 import {
-  KEY_BUILD_MS, TREE, TREE_WORKSHOP, buildingNode, buyNode, canBuyNode, nodeCost, nodeDuration, nodeLive, resetTree, settleTree, treeHasAny, treeLevel,
-  treeListValue, treeNode, treeReady, treeRefund, type TreeHolder,
+  KEY_BUILD_MS, TREE, TREE_WORKSHOP, buildingNode, buyNode, canBuyNode, nodeCost, nodeDuration, nodeLive, nodePrice, resetTree, settleTree, treeDiscount,
+  treeHasAny, treeLevel, treeListValue, treeNode, treeReady, treeRefund, type TreeHolder,
 } from '../src/game/tree';
 
 function winAll(g: GameSave, ids: string[], stars = 3): void {
@@ -506,6 +506,25 @@ describe('the upgrade tree (0.13: the one upgrade system)', () => {
     expect(g.tree).toEqual({});
     expect(treeRefund(g)).toBe(0);
     expect(treeHasAny(g)).toBe(false);
+  });
+
+  it('Coupon book makes everything in the tree 5% cheaper a level, and a reset gives back what was paid, not the list price', () => {
+    const g = holder();
+    const b1 = treeNode('b1')!;
+    expect(nodePrice(g, b1)).toBe(70);
+    g.tree!.m9 = 1;
+    expect(treeDiscount(g)).toBeCloseTo(0.95, 9);
+    expect(nodePrice(g, b1)).toBe(Math.round(70 * 0.95));
+    g.tree!.m9 = 3;
+    expect(nodePrice(g, b1)).toBe(Math.round(70 * 0.85));
+    expect(canBuyNode(g, b1)).toMatchObject({ ok: true, cost: 60 });
+    let paid = 0;
+    expect(buyNode(g, b1, 0, c => ((paid += c), true))).toMatchObject({ ok: true, cost: 60 });
+    expect(paid).toBe(60);
+    expect(g.treeSpent).toBe(60);
+    // the reset pays back the 60 that were paid (the node m9 was put there by the test for nothing)
+    expect(resetTree(g)).toBe(60);
+    expect(nodePrice(g, b1)).toBe(70);
   });
 
   it('counts the nodes that can be bought now with the money at hand (the badge on the Upgrades tile)', () => {
