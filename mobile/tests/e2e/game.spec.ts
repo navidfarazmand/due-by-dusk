@@ -1460,6 +1460,121 @@ test('Good lawyer lowers the late fees, Cashback pays 8% of a bill back the next
   expect(errors).toEqual([]);
 });
 
+test('tree tricks, batch five: bleeding, splinters, bees and honey, the hen, the ghost sickle (0.13)', async ({ page }) => {
+  const errors = await trickDay(page);
+  const len = (await E(page, 'state')).dayLen;
+  await E(page, 'devClock', { time: len / 2 });
+  const T = () => E(page, 'devTree');
+  const earned = async () => (await E(page, 'peek')).today.earned;
+  const hpOf = (min: number) => page.evaluate(m => (window as any).__DBD_ENGINE.peek().crops.find((c: any) => c.maxHp === m).hp, min);
+  const mid = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().worldW / 2);
+  const dmg = (await T()).dmg;
+  // Bleeding cut: a crop that is hit loses a third of the hit again over the next second (then a half, two thirds)
+  await fx(page, { b4: 1 });
+  let i = await E(page, 'devCrop', 'carrot', { hp: 1000, maxHp: 1000, hit1: true });
+  expect(await E(page, 'devHit', i, 30)).toBeCloseTo(30, 6);
+  await page.waitForTimeout(1500);
+  expect(await hpOf(1000)).toBeCloseTo(1000 - 30 - 10, 4);
+  await fx(page, { b4: 3 });
+  await E(page, 'devHit', i, 30);
+  await page.waitForTimeout(1500);
+  expect(await hpOf(1000)).toBeCloseTo(960 - 30 - 20, 4);
+  // Splinter: half of the damage left over when a crop falls jumps to the nearest crop (then all of it)
+  await E(page, 'devClock', { empty: true });
+  await fx(page, { b7: 1 });
+  await E(page, 'devCrop', 'carrot', { hp: 2000, maxHp: 2000, hit1: true, x: mid + 60, y: 300 });
+  i = await E(page, 'devCrop', 'carrot', { hp: 10, maxHp: 10, hit1: true, x: mid, y: 300 });
+  await E(page, 'devHit', i, 110);
+  expect(await hpOf(2000)).toBeCloseTo(2000 - 50, 6);
+  await fx(page, { b7: 2 });
+  i = await E(page, 'devCrop', 'carrot', { hp: 10, maxHp: 10, hit1: true, x: mid, y: 300 });
+  await E(page, 'devHit', i, 110);
+  expect(await hpOf(2000)).toBeCloseTo(1950 - 100, 6);
+  // Beehive: every 3 s a bee lands on a ripe crop, and that crop pays ×2. Honey: 5% of what it paid, sold at sunset
+  await E(page, 'devClock', { empty: true });
+  await fx(page, {});
+  const one = await cut(page, 'carrot');
+  await fx(page, { a5: 1, a10: 1 });
+  i = await E(page, 'devCrop', 'carrot', {});
+  await E(page, 'devClock', { ranch: 2.5 });
+  expect((await E(page, 'peek')).crops.filter((c: any) => c.bee).length).toBe(0);
+  await E(page, 'devClock', { ranch: 0.6 });
+  expect((await E(page, 'peek')).crops.filter((c: any) => c.bee).length).toBe(1);
+  await E(page, 'devClock', { combo: 0, meter: 0, rush: 0 });
+  expect(await E(page, 'devCut', i)).toBeCloseTo(2 * one, 6);
+  expect(await cut(page, 'carrot')).toBeCloseTo(one, 6);
+  // Hen house: an egg every 10 s; a swipe turns it into coins
+  await fx(page, { a8: 1 });
+  await E(page, 'devClock', { ranch: 10.5 });
+  const props = (await E(page, 'peek')).props;
+  expect(props.map((p: any) => p.kind)).toEqual(['egg']);
+  let before = await earned();
+  await E(page, 'devSwing', props[0].x, props[0].y - 14, 0);
+  expect((await earned()) - before).toBeGreaterThan(0);
+  expect((await T()).props).toEqual([]);
+  // Ghost sickle: it swings where the finger was a moment ago, for 40% of a plain hit (then 70%)
+  await E(page, 'devClock', { empty: true });
+  await fx(page, { r7: 1 });
+  await E(page, 'devCrop', 'carrot', { hp: 5000, maxHp: 5000, hit1: true, x: mid - 250, y: 300 });
+  const gy = await page.evaluate(() => {
+    const c = (window as any).__DBD_ENGINE.peek().crops.find((k: any) => k.maxHp === 5000);
+    return c.y - c.r * c.ds * 0.55;
+  });
+  await E(page, 'devClock', { ghostAt: [mid - 250, gy] });
+  // the finger is far from the crop; only the ghost reaches it
+  await page.evaluate(([x, y]) => {
+    const e = (window as any).__DBD_ENGINE;
+    e.devClock({ ghostAt: [x, y] });
+    e.devSwing(x + 400, y, 0);
+  }, [mid - 250, gy]);
+  expect(5000 - (await hpOf(5000))).toBeCloseTo(0.4 * dmg, 5);
+  await fx(page, { r7: 2 });
+  await page.evaluate(([x, y]) => {
+    const e = (window as any).__DBD_ENGINE;
+    e.devClock({ ghostAt: [x, y] });
+    e.devSwing(x + 400, y, 0);
+  }, [mid - 250, gy]);
+  expect(5000 - (await hpOf(5000))).toBeCloseTo(1.1 * dmg, 5);
+  // sunset: the honey is sold (5% of the $2×one the bee's crop paid)
+  before = await earned();
+  await E(page, 'devClock', { endDay: true });
+  await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 15_000 });
+  expect(errors).toEqual([]);
+});
+
+test("Armour breaker hurts the boss through its armour, and Rival's envy pays half the record with the crown (0.13)", async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 5), 0, { tree: { m10: 1 } }));
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_kelowna'));
+  await expect(page.locator('.scr-farmhouse .dc-day')).toBeVisible();
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  await E(page, 'devClock', { stop: true, empty: true });
+  const boss = async () => (await E(page, 'peek')).crops.find((c: any) => c.boss);
+  const b0 = await boss();
+  expect(b0).toBeTruthy();
+  const idx = (await E(page, 'peek')).crops.findIndex((c: any) => c.boss);
+  // armour on: a hit clinks and does nothing
+  await fx(page, {});
+  await E(page, 'devHit', idx, 100);
+  expect((await boss()).hp).toBe(b0.hp);
+  // with Armour breaker: 20% of it gets through (then 40%)
+  await fx(page, { b14: 1 });
+  await E(page, 'devHit', idx, 100);
+  expect(b0.hp - (await boss()).hp).toBeCloseTo(20, 6);
+  await fx(page, { b14: 2 });
+  await E(page, 'devHit', idx, 100);
+  expect(b0.hp - (await boss()).hp).toBeCloseTo(60, 6);
+  // Rival's envy: today beats the city's record, and Sundown shows the crown and half the record on top
+  const record = await page.evaluate(() => (window as any).__DBD_PLAN.record);
+  await page.evaluate(r => {
+    const e = (window as any).__DBD_ENGINE;
+    for (let k = 0; k < 400 && e.peek().today.earned < r + 50; k++) e.devCut(e.devCrop('carrot', {}));
+    e.devClock({ endDay: true });
+  }, record);
+  await expect(page.locator('.scr-sundown .sd-crown')).toContainText('$' + Math.round(record / 2).toLocaleString('en-US'), { timeout: 15_000 });
+  expect(errors).toEqual([]);
+});
+
 test('menu: the signpost (Design 4), Barn opens the upgrade tree or the Bling Barn, the plank opens the map', async ({ page }) => {
   const errors = await boot(page);
   await expect(page.locator('.scr-menu .sp-play')).toBeVisible();

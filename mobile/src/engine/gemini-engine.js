@@ -18041,6 +18041,10 @@ export function startGeminiEngine() {
     moonRipe = false;
     goldenHeld = 0;
     devEmptyField = false;
+    beeT = 0;
+    honey = 0;
+    henT = 10;
+    trail = [];
     dogT = 0;
     pigeonT = 12;
     milkT = 0;
@@ -18096,6 +18100,14 @@ export function startGeminiEngine() {
   function endDay() {
     if (mode !== 'day') return;
     chainEnds();
+    if (honey >= 1) {
+      const sold = Math.round(honey);
+      farm.cash += sold;
+      farm.earned += sold;
+      today.earned += sold;
+      today.honey = sold;
+    }
+    honey = 0;
     if (window.__odDayEnded) window.__odDayEnded(Object.assign({}, today));
     dayCheckpoint = null;
     held = false;
@@ -18246,6 +18258,92 @@ export function startGeminiEngine() {
     pigeonT = 12,
     milkT = 0,
     clearingAt = -9;
+  /** The bee's next visit (Beehive, a5), today's honey (Honey, a10), the hen's next egg (Hen house, a8), and where
+   *  the finger has been lately (Ghost sickle, r7: it follows 0.35 s behind). */
+  let beeT = 0,
+    honey = 0,
+    henT = 10,
+    trail = [];
+  const GHOST_LAG = 0.35;
+  /** Where the ghost sickle is now, or null (no Ghost sickle, or the finger has only just come down). */
+  function ghostSpot() {
+    if (!tfx('r7') || !pointer.active || !trail.length) return null;
+    const want = tNow - GHOST_LAG;
+    if (trail[0].t > want) return null;
+    let g = trail[0];
+    for (const p of trail) {
+      if (p.t > want) break;
+      g = p;
+    }
+    return g;
+  }
+  /** The ghost sickle swings with the tool: 40% of a plain hit on everything in its reach (then 70%). Afterimage
+   *  (r12): its hits can crit. Returns how many crops it cut down. */
+  function ghostSwing() {
+    const g = ghostSpot();
+    if (!g) return 0;
+    const lv = Math.min(2, tfx('r7')),
+      crit = tfx('r12') > 0 && Math.random() < cur.cc,
+      dmg = cur.dmg * [0, 0.4, 0.7][lv] * (crit ? cur.cm : 1);
+    let killed = 0;
+    for (const c of crops) {
+      if (c.dead || c.age < 0.04) continue;
+      const cy = c.y - c.r * c.ds * 0.55,
+        dx = c.x - g.x,
+        dy = cy - g.y,
+        rr = cur.R + c.r * c.ds * 0.65;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      if (hitCrop(c, cy, dmg, crit, 'ghost') === 2) killed++;
+    }
+    today.ghostHits = (today.ghostHits || 0) + 1;
+    return killed;
+  }
+  function drawGhost() {
+    const g = mode === 'day' ? ghostSpot() : null;
+    if (!g) return;
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.strokeStyle = '#e0f2fe';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([7, 6]);
+    ctx.beginPath();
+    ctx.arc(g.x, g.y, cur.R * 0.8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(g.x, g.y, cur.R * 0.45, -2.4 + sweepA, -0.6 + sweepA);
+    ctx.stroke();
+    ctx.restore();
+  }
+  /** Bees over the crops they have landed on (Beehive): those crops pay double. */
+  function drawBees() {
+    for (const c of crops) {
+      if (!c.bee || c.dead) continue;
+      const def = CROP[c.type],
+        bob = reduceMotion ? 0 : Math.sin(tNow * 9 + c.x) * 2.5,
+        x = c.x + 16 * c.ds,
+        y = c.y - (def.top || c.r * 1.6) * c.ds - 4 + bob;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(1.9 * c.ds, 1.9 * c.ds);
+      ctx.fillStyle = 'rgba(255,255,255,.75)';
+      ell(ctx, -2, -5, 4.5, 3, -0.5);
+      ell(ctx, 3, -5, 4.5, 3, 0.5);
+      ctx.fillStyle = '#fde047';
+      ctx.strokeStyle = '#1c1206';
+      ctx.lineWidth = 1.4;
+      ell(ctx, 0, 0, 6.5, 4.6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-1.5, -4.2);
+      ctx.lineTo(-1.5, 4.2);
+      ctx.moveTo(2, -3.8);
+      ctx.lineTo(2, 3.8);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
   /** A crow is chased off: it flees, and what it carried comes back. `byDog`: the farm dog did it, not the player
    *  (no bounty, no chain). */
   function shooCrow(cr, px, byDog) {
@@ -18310,6 +18408,29 @@ export function startGeminiEngine() {
         }
       }
     }
+    // Beehive (a5): every 3 s a bee lands on a ripe crop, which then pays ×2 (every 2 s at level 2)
+    const hive = Math.min(2, tfx('a5'));
+    if (hive) {
+      beeT += dt;
+      if (beeT >= (hive > 1 ? 2 : 3)) {
+        beeT = 0;
+        const free = crops.filter((c) => !c.dead && !c.boss && !c.bee && c.age >= STAGE3_AGE);
+        if (free.length) free[Math.floor(Math.random() * free.length)].bee = true;
+      }
+    }
+    // Hen house (a8): an egg on the field every 10 s; a swipe turns it into coins
+    if (tfx('a8')) {
+      henT -= dt;
+      if (henT <= 0) {
+        henT = 10;
+        if (fieldProps.length < 3) {
+          const R = fieldRng('prop');
+          const x = PAD + 40 + R() * (worldW - PAD * 2 - 80),
+            y = FIELD_TOP + 45 + R() * (HW - FIELD_TOP - 80);
+          fieldProps.push({ kind: 'egg', x, y, ds: depth(y), age: 0, life: 9.5 });
+        }
+      }
+    }
     // Goat milk (x5): the goat drops coins every 10 s it is on the field
     if (tfx('x5') && goat) {
       milkT += dt;
@@ -18341,6 +18462,8 @@ export function startGeminiEngine() {
     if (tfx('f11') && isNewToday(c.type)) k *= 1.25;
     // Market day (m4): every fifth day of a farm, every crop pays 30% more
     if (tfx('m4') && farm.day % 5 === 0) k *= 1.3;
+    // Beehive (a5): a crop a bee has landed on pays ×2
+    if (c.bee) k *= 2;
     // Organic label (x4): twins and crops that sprouted again pay 50% more
     if (c.organic && tfx('x4')) k *= 1.5;
     // First of the day (m6): the first crop of each kind each day pays ×5
@@ -18691,7 +18814,13 @@ export function startGeminiEngine() {
         fieldProps.splice(i, 1);
         Sound.coin();
         parts.push({ k: 'ring', x: fp.x, y: fp.y - 10, r: 55, life: 0.4, max: 0.4, c: '#86efac' });
-        if (fp.kind === 'fertilizer') {
+        if (fp.kind === 'egg') {
+          const bonus = Math.round((5 + unlockLevel() * 2) * planVal());
+          farm.cash += bonus;
+          farm.earned += bonus;
+          today.earned += bonus;
+          addText('EGG ' + fmtGain(bonus), fp.x, fp.y - 32, '#fef9c3', 24, -42, 1.0);
+        } else if (fp.kind === 'fertilizer') {
           addText('FERTILIZER! +4 CROPS', fp.x, fp.y - 32, '#bef264', 24, -42, 1.0);
           for (let k = 0; k < 4; k++) {
             if (spawnCrop(0)) {
@@ -18757,6 +18886,17 @@ export function startGeminiEngine() {
     if (c.encase) return hitEncased(c, cy);
     if (bossArmoured(c)) {
       clink(c, cy);
+      // tree: Armour breaker (b14), a hit on the boss's armour still does 20% of its damage (then 40%)
+      const ab = Math.min(2, tfx('b14'));
+      if (ab) {
+        c.hp -= dmg * 0.2 * ab;
+        c.hpShow = 1.4;
+        bossHit(c, true);
+        if (c.hp <= 1e-6) {
+          harvest(c);
+          return 2;
+        }
+      }
       return 0;
     }
     if (c.frosted) {
@@ -18831,8 +18971,38 @@ export function startGeminiEngine() {
     }
     if (c.boss) bossHit(c, false);
     if (c.hp <= 1e-6 || (hasSkill('reap_exec') && !c.boss && c.hp / c.maxHp <= 0.25)) {
+      const over = -c.hp;
       harvest(c);
+      // tree: Splinter (b7), half of the damage left over jumps to the nearest crop (then all of it)
+      const sp = Math.min(2, tfx('b7'));
+      if (sp && over > 0 && !c.boss) {
+        let near = null,
+          nd = Infinity;
+        for (const o of crops) {
+          if (o.dead || o.boss || o.encase || o.age < 0.04) continue;
+          const d = Math.hypot(o.x - c.x, o.y - c.y);
+          if (d < nd) {
+            nd = d;
+            near = o;
+          }
+        }
+        if (near) {
+          near.hp -= over * (sp > 1 ? 1 : 0.5);
+          near.flash = 1;
+          near.hpShow = 1.4;
+          near.sq = 0.6;
+          if (canAdd()) bolts.push({ x1: c.x, y1: c.y - 18, x2: near.x, y2: near.y - 18, life: 0.14, max: 0.14 });
+          if (near.hp <= 1e-6) harvest(near);
+        }
+      }
       return 2;
+    }
+    // tree: Bleeding cut (b4), a crop that is hit keeps losing a third of the hit over the next second (then a half,
+    // two thirds); not from the power's vortex or a flame, which already keep hurting
+    const bl = Math.min(3, tfx('b4'));
+    if (bl && src !== 'flame' && !c.boss) {
+      c.bleed = (c.bleed || 0) + dmg * [0, 1 / 3, 0.5, 2 / 3][bl];
+      c.bleedRate = c.bleed;
     }
     return 1;
   }
@@ -18992,6 +19162,8 @@ export function startGeminiEngine() {
         }
       sweepPay = 1;
     }
+    // Ghost sickle (r7): it swings too, where the finger was a moment ago
+    if (tfx('r7')) killed += ghostSwing();
     if (hits) {
       // Crit streak (b12): three crits in a row that landed, and the next swing that lands hits ×5
       if (streak) {
@@ -19181,6 +19353,18 @@ export function startGeminiEngine() {
       }
     }
     let killed = 0;
+    for (const c of crops) {
+      if (!(c.bleed > 0) || c.dead || c.encase) continue;
+      const d = Math.min(c.bleed, (c.bleedRate || c.bleed) * dt);
+      c.bleed -= d;
+      c.hp -= d;
+      c.hpShow = Math.max(c.hpShow, 0.5);
+      if (c.bleed <= 1e-9) c.bleed = 0;
+      if (c.hp <= 1e-6) {
+        harvest(c);
+        killed++;
+      }
+    }
     for (const c of crops) {
       if (!(c.burnT > 0) || c.dead) continue;
       c.burnT = Math.max(0, c.burnT - dt);
@@ -20112,6 +20296,8 @@ export function startGeminiEngine() {
     lastCutAt = tNow;
     const v = baseValue * multiplier * lucky * treePay(c, c.y - def.top * c.ds);
     chainPaid += v;
+    // tree: Honey (a10), every crop a bee visited adds honey worth 5% of what it paid, sold at sunset
+    if (c.bee && tfx('a10')) honey += v * 0.05;
     farm.cash += v;
     farm.earned += v;
     farm.harvested += 1;
@@ -20804,6 +20990,11 @@ export function startGeminiEngine() {
           pointer.active = true;
         }
       }
+      // where the finger has been in the last half second (the ghost sickle follows it)
+      if (pointer.active && tfx('r7')) {
+        trail.push({ x: pointer.x, y: pointer.y, t: tNow });
+        while (trail.length > 2 && trail[1].t < tNow - GHOST_LAG) trail.shift();
+      } else if (trail.length) trail = [];
       // how fast the finger moves, smoothed (field units a second)
       if (pointer.active) {
         const pd = Math.hypot(pointer.x - pLastX, pointer.y - pLastY) / Math.max(dt, 1e-3);
@@ -23155,7 +23346,17 @@ export function startGeminiEngine() {
       ctx.scale(s, s);
       ctx.fillStyle = 'rgba(255, 235, 130, 0.25)';
       circ(ctx, 0, -12, 22);
-      if (fp.kind === 'fertilizer') {
+      if (fp.kind === 'egg') {
+        ctx.fillStyle = '#fffbeb';
+        ctx.strokeStyle = '#78532a';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.ellipse(0, -11, 8.5, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,.9)';
+        ell(ctx, -3, -15, 2.2, 3.2, -0.4);
+      } else if (fp.kind === 'fertilizer') {
         ctx.fillStyle = '#d6b37c';
         ctx.strokeStyle = '#78532a';
         ctx.lineWidth = 1.6;
@@ -23379,6 +23580,8 @@ export function startGeminiEngine() {
     drawSeeds();
     drawVortexes();
     drawWaves();
+    drawGhost();
+    drawBees();
     drawPropsCrowsAndWeather();
     drawSnowFront(); // Seamless full-canvas evening/night atmospheric tint (NO horizontal cut line at y=105!)
     if (warm > 0.05 || night > 0.05 || dawnAmt(p) > 0.02) {
@@ -25023,10 +25226,12 @@ export function startGeminiEngine() {
           r: c.r,
           ds: c.ds,
           hp: c.hp,
+          maxHp: c.maxHp,
           type: c.type,
           dead: c.dead,
           age: c.age,
           boss: !!c.boss,
+          bee: !!c.bee,
         })),
         chargeT,
         pointer: { x: pointer.x, y: pointer.y, active: pointer.active, charge2: !!pointer.charge2 },
@@ -25111,6 +25316,11 @@ export function startGeminiEngine() {
         if (o.bomb) bombs.push({ x: o.bomb[0], y: o.bomb[1], sx: 0, sy: 0, tx: o.bomb[0], ty: o.bomb[1], fly: 1, t: 0, fuse: 99 });
         if (o.goat) goat = { x: worldW / 2, y: FIELD_TOP + 90, dir: 1, speed: 0, t: 0, bumped: false, petted: true, angerFlash: 0, hop: 0 };
         if (o.ranch != null) updateRanch(o.ranch);
+        if (o.ghostAt) trail = [{ x: o.ghostAt[0], y: o.ghostAt[1], t: tNow - 1 }];
+        if (o.endDay) {
+          clockStopped = false;
+          time = 0.01;
+        }
         if (o.empty) {
           devEmptyField = true;
           crops = crops.filter((c) => c.boss);

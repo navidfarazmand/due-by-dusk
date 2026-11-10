@@ -66,6 +66,8 @@ interface DayResult {
   today: Today;
   event: DayEvent | null;
   crownToday: boolean;
+  /** Rival's envy (the tree): what taking the crown paid. */
+  crownBonus?: number;
   doubled: boolean;
 }
 
@@ -388,15 +390,21 @@ export class GameApp {
       p.bestDay = Math.max(p.bestDay, earned);
       run.bestDay = Math.max(run.bestDay, earned);
       const crownToday = !p.crown && earned >= plan.record;
+      let crownBonus = 0;
       if (crownToday) {
         p.crown = true;
         this.g.ribbons += ribbonsForWin(0, 0, true, false);
+        // tree: Rival's envy (m10), taking a city's crown pays half its record
+        if ((this.g.tree || {}).m10 > 0) {
+          crownBonus = Math.round(plan.record / 2);
+          engine().addCash(crownBonus);
+        }
       }
       this.g.recentEarn = [...(this.g.recentEarn || []), earned].slice(-RECENT_DAYS);
       this.g.totals.days++;
       this.g.totals.crops += d.today.count;
       this.g.totals.earned += d.today.earned;
-      this.day = { day: d.day, today: d.today, event: this.pendingEvent, crownToday, doubled: false };
+      this.day = { day: d.day, today: d.today, event: this.pendingEvent, crownToday, crownBonus, doubled: false };
       this.save();
     });
     on('idle', () => {
@@ -2318,7 +2326,7 @@ export class GameApp {
     const nextBtn = !b.tonight || (b.canPay && !b.bossBlock)
       ? `<button type="button" class="st-btn gold btn-md flex1 sd-next" data-act="next-day">${b.tonight ? `<span class="sn-two"><span>${t('Pay {amt}', { amt: money(b.amt) })}</span><small>${t('Next day')}</small></span>` : t('Next day')}${ICON.next()}</button>`
       : '';
-    const crownNow = d.crownToday ? `<div class="sd-crown">👑 ${t('New city crown! You beat {rival}.', { rival: esc(ct.rival) })}</div>` : '';
+    const crownNow = d.crownToday ? `<div class="sd-crown">👑 ${t('New city crown! You beat {rival}.', { rival: esc(ct.rival) })}${d.crownBonus ? ` <b class="money">+${money(d.crownBonus)}</b>` : ''}</div>` : '';
     // v0.12.1 (Navid: "it doesn't show how much money i have left"): the money in the jar is the big number, today's
     // harvest beside it; the city and the day were not worth the space
     return `<div class="grp mc" style="width: 430px; height: 300px"><div class="st-chip sundown-card slim">

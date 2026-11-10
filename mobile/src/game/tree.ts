@@ -84,7 +84,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['scale', "Reaper's verdict", 1, 'Crops under 25% health fall at once (not bosses).'],
     ['stars', 'Crit streak', 1, 'After three crits in a row, the next swing hits ×5.'],
     ['sprout', 'Clean cut', 1, 'A crop you cut down leaves clean soil: the next one there grows 30% faster.'],
-    ['shield', 'Armour breaker', 2, "Hits on the boss's armour still do 20% damage (then 40%)."],
+    ['shield', 'Armour breaker', 2, "Hits on the boss's armour still do 20% of their damage (then 40%)."],
     ['swirl', 'Twin blade', 'K', 'Every fourth swing goes all the way round.'],
     ['flame', 'Frenzy', 'K', 'Each crop in a chain makes you swing 1.5% faster, up to 40%, until the chain breaks.'],
   ],
@@ -113,7 +113,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['wind', 'Wind trail', 2, 'A fast finger stretches the swing by up to 30% (then 50%).'],
     ['boomerang', 'Boomerang', 3, 'Every sixth swing throws the sickle out and back along your path (then every fifth, fourth).'],
     ['fan', 'Sweep', 2, 'A swing that hits 4 or more crops pays 25% more (then 50%).'],
-    ['ghost', 'Ghost sickle', 2, 'A ghost sickle follows a moment behind your finger at 40% damage (then 70%).'],
+    ['ghost', 'Ghost sickle', 2, 'A ghost sickle follows a moment behind your finger and hits for 40% (then 70%).'],
     ['bounce', 'Ricochet', 1, 'The boomerang bounces once off the edge of the field.'],
     ['pause', 'Second wind', 1, 'After 2 s without a cut, your next 5 swings are twice as fast.'],
     ['arc', 'Wide arc', 2, 'Your swing covers a 25% wider arc (then 50%).'],
@@ -152,7 +152,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['bank', 'Compound reserve', 3, 'Every night, 4% interest on the cash you hold (then 8%, 12%), up to 40% of a good day.'],
     ['coin', 'Sovereign mint', 1, "Lucky crops and the country's three pay 50% more."],
     ['percent', 'Coupon book', 3, 'Everything in the tree costs 5% less (then 10%, 15%).'],
-    ['crown', "Rival's envy", 1, "Beating the city's record pays a bonus of half the record."],
+    ['crown', "Rival's envy", 1, "Taking a city's crown pays a bonus of half its record."],
     ['jar', 'Tip jar', 1, 'A chain of 20 or more drops a tip: 10% of what the chain paid.'],
     ['umbrella', 'Insurance', 1, 'If the bank takes a farm, a quarter of its cash above what the farm has paid you goes to your savings.'],
     ['tag', 'Deal of the day', 1, 'One upgrade a day costs 25% less.'],
@@ -248,6 +248,8 @@ export const TREE_NEW_LIVE = [
   'p7', 'p10', 'p11', 'p13', 'p14', 'p15', 'p16', 'r3', 'r4', 'r6', 'r9', 'r11', 'r16',
   // batch 4: the ranch, the bank and three bridges (Coupon book and Insurance are the shell's: prices, a foreclosure)
   'a4', 'a6', 'a7', 'a11', 'a13', 'a15', 'x3', 'x5', 'x6', 'm5', 'm9', 'm12', 'm15',
+  // batch 5: bleeding, splinters, the boss's armour, bees, the hen, the ghost sickle, the crown's bonus
+  'b4', 'b7', 'b14', 'r7', 'r12', 'a5', 'a8', 'a10', 'm10',
 ];
 
 const NODE: Record<string, TreeNode> = {};
