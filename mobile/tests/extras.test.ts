@@ -61,9 +61,9 @@ describe('diamonds are retired: an older save moves into the upgrade tree (0.13)
     expect(again.migratedTree).toBeUndefined();
   });
 
-  it("gives Reaper's verdict its lightning too (Storm rod), and keeps nodes bought in the 0.12.3 tree", () => {
+  it("gives Reaper's verdict its lightning too (Storm rod, Chain lightning), and keeps nodes bought in the 0.12.3 tree", () => {
     const g = parseGame(oldSave({ skills: ['reap_exec', 'soil_dew', 'gold_interest'], bonusDiamonds: 3, tree: { p1: 2, f4: 2 }, treeCredit: 250 }));
-    expect(g.tree).toEqual({ p1: 2, f4: 2, b11: 1, b5: 1, m7: 3 });
+    expect(g.tree).toEqual({ p1: 2, f4: 2, b11: 1, b5: 1, b8: 1, m7: 3 });
     // 10 earned; Dawn abundance was already bought with cash at a higher level, so its 3 diamonds come back:
     // 4 + 3 stay in nodes, 3 are credit, on top of the credit the save had
     expect(g.treeCredit).toBe(250 + 3 * DIAMOND_CREDIT);

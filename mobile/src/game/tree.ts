@@ -80,9 +80,9 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['burst', 'Splinter', 2, 'When a crop falls, half the damage left over jumps to the nearest crop (then all of it).'],
     ['bolt2', 'Chain lightning', 1, "Storm rod's lightning jumps on to a second crop."],
     ['weight', 'Heavy hand', 2, '+20% damage on the first hit of every crop (then 40%).'],
-    ['axe', 'Giant slayer', 3, '+30% damage on crops that take 4 or more cuts (then 45%, 60%).'],
+    ['axe', 'Giant slayer', 3, '+30% damage on crops that take 4 or more cuts (then 45%, 60%). Not bosses.'],
     ['scale', "Reaper's verdict", 1, 'Crops under 25% health fall at once (not bosses).'],
-    ['stars', 'Crit streak', 1, 'Three crits in a row and the next swing hits ×5.'],
+    ['stars', 'Crit streak', 1, 'After three crits in a row, the next swing hits ×5.'],
     ['sprout', 'Clean cut', 1, 'A crop you cut down leaves clean soil: the next one there grows 30% faster.'],
     ['shield', 'Armour breaker', 2, "Hits on the boss's armour still do 20% damage (then 40%)."],
     ['swirl', 'Twin blade', 'K', 'Every fourth swing goes all the way round.'],
@@ -120,7 +120,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['spin', 'Spin cycle', 1, 'Every tenth swing spins twice.'],
     ['eye', 'Afterimage', 1, "The ghost sickle's hits can crit."],
     ['tap', 'Quickdraw', 1, 'A swing starts the moment your finger reaches a crop.'],
-    ['feather', 'Featherweight', 2, '+10% swing speed, and 10% more on a crowded field (then 20%).'],
+    ['feather', 'Featherweight', 2, '+10% swing speed, doubled while the field is nearly full (then +20%).'],
     ['orbit', 'Orbit', 'K', 'Two small sickles circle your finger, each hitting for 30%.'],
     ['zigzag', 'Dancer', 'K', 'Swings while your finger moves fast hit twice.'],
   ],
@@ -137,7 +137,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['book', 'Almanac', 1, "The day's event is 50% stronger (a market day pays +37% instead of +25%)."],
     ['rotate', 'Crop rotation', 1, "The morning's new crop pays 25% more on its first day."],
     ['vault', 'Seed vault', 1, 'The last crop of the ladder joins a day sooner.'],
-    ['hourglass', 'Golden hour', 1, 'In the last 5 s of the day, the sun waits while you keep a chain of 10 or more.'],
+    ['hourglass', 'Golden hour', 1, 'In the last 5 s of the day, the sun waits while you keep a chain of 10 or more (up to 5 s a day).'],
     ['leaf', 'Mulch', 2, 'Crops sprout 15% faster (then 30%).'],
     ['moon', 'Harvest moon', 'K', 'In the last 3 s of every day the whole field ripens and pays double.'],
     ['bird', 'Early bird', 'K', 'In the first 4 s of every day every crop pays double.'],
@@ -146,7 +146,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['cart', "Farmers' market", 'T60', '+3% crop prices a level.'],
     ['scroll', 'Retained counsel', 3, 'Every bill costs 4% less (then 8%, 12%).'],
     ['box', 'Bulk order', 2, 'Every tenth crop in a chain pays ×3 (then ×5).'],
-    ['calendar', 'Market day', 1, 'One day in five, every crop pays 30% more.'],
+    ['calendar', 'Market day', 1, 'Every fifth day of a farm, every crop pays 30% more.'],
     ['gavel', 'Good lawyer', 2, 'Late fees are 10 points lower (10%, 30%, 50%). Level 2: the first late day of a farm is free.'],
     ['medal', 'First of the day', 1, 'The first crop of each kind each day pays ×5.'],
     ['bank', 'Compound reserve', 3, 'Every night, 4% interest on the cash you hold (then 8%, 12%), up to 40% of a good day.'],
@@ -182,7 +182,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
 
 /** Between each branch and the next one round the trunk. */
 const BRIDGES: Row[] = [
-  ['bolt', 'Charged edge', 1, 'During the rush, every hit crits.'],
+  ['bolt', 'Charged edge', 1, 'During the rush, every swing crits.'],
   ['chevrons', 'Momentum', 1, 'During the rush, swings are 30% faster.'],
   ['basket', 'Clearing', 1, 'A swing that cuts 3 or more crops at once leaves a fertilizer bag.'],
   ['tag', 'Organic label', 1, 'Twins and crops that sprout again pay 50% more.'],
@@ -238,7 +238,11 @@ export const TREE_SKILL: Record<string, string> = {
 };
 /** Tricks the engine does through window.__DBD_TREEFX (`tfx(id)` in gemini-engine.js). A node that is in none of
  *  these three lists is not built yet: the tree shows it as "Coming soon" and does not sell it. */
-export const TREE_NEW_LIVE = ['p1', 'p2', 'p3', 'p4', 'p6', 'a3', 'b3', 'f5', 'm14', 'a2'];
+export const TREE_NEW_LIVE = [
+  'p1', 'p2', 'p3', 'p4', 'p6', 'a3', 'b3', 'f5', 'm14', 'a2',
+  // 0.13, batch 1: blade and swing speed
+  'b5', 'b6', 'b8', 'b9', 'b10', 'b12', 'b16', 'x1', 'x2', 'r14',
+];
 
 const NODE: Record<string, TreeNode> = {};
 for (const n of TREE) NODE[n.id] = n;
@@ -417,12 +421,13 @@ export const DIAMOND_CREDIT = 1000;
 
 /** What each diamond skill cost (skills.ts until 0.12), and the tree nodes that are the same effect now. A skill
  *  with no node (plain stat boosts: the level tracks do that) is paid back as tree credit. Retained counsel and
- *  Compound reserve gave their top level's effect (12%), and Reaper's verdict also threw lightning (Storm rod). */
+ *  Compound reserve gave their top level's effect (12%), and Reaper's verdict also threw lightning at two crops
+ *  (Storm rod and Chain lightning). */
 export const OLD_SKILLS: Record<string, { cost: number; nodes?: Array<[string, number]> }> = {
   core_awakening: { cost: 1 },
   reap_root: { cost: 2 }, reap_swift: { cost: 3 }, reap_dash: { cost: 3 },
   reap_cleave: { cost: 3, nodes: [['p5', 1]] }, reap_vortex: { cost: 3, nodes: [['p8', 1]] },
-  reap_exec: { cost: 4, nodes: [['b11', 1], ['b5', 1]] },
+  reap_exec: { cost: 4, nodes: [['b11', 1], ['b5', 1], ['b8', 1]] },
   soil_root: { cost: 2 }, soil_sun: { cost: 3 },
   soil_twin: { cost: 3, nodes: [['f3', 1]] }, soil_dew: { cost: 3, nodes: [['f4', 1]] },
   soil_bounty: { cost: 3, nodes: [['f7', 1]] }, soil_eden: { cost: 4, nodes: [['f8', 1]] },

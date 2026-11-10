@@ -16845,7 +16845,11 @@ export function startGeminiEngine() {
       (pl.dayBonus || 0);
     const maxCrops = 7 + FX.crops * shed.soil + n('hungry') + 2 * n('hungry2') + (hasSkill('soil_root') ? 2 : 0);
     const spawnRate =
-      0.82 / (1 + FX.spawn * shed.soil + 0.03 * n('hungry') + 0.06 * n('hungry2')) / (hasSkill('soil_root') ? 1.12 : 1);
+      0.82 /
+      (1 + FX.spawn * shed.soil + 0.03 * n('hungry') + 0.06 * n('hungry2')) /
+      (hasSkill('soil_root') ? 1.12 : 1) /
+      // tree: Mulch (f14), crops sprout 15% faster a level
+      (1 + 0.15 * Math.min(2, tfx('f14')));
     const vm =
       (1 + FX.price * shed.market) *
       (1 + 0.06 * n('fever') + 0.12 * n('fever2') + 0.18 * n('fever3')) *
@@ -16872,6 +16876,8 @@ export function startGeminiEngine() {
       treaty: n('treaty') > 0 || hasSkill('gold_treaty') || hasSkill('gold_herd'),
       // 0.13: the lightning is its own tree node (Storm rod, b5); Reaper's verdict (b11) only fells weak crops
       storm: n('storm') > 0 || tfx('b5') > 0 || !!T.storm,
+      // the perk and the tool's attachment reach 2 crops; Storm rod reaches 1, and 2 with Chain lightning (b8)
+      stormN: n('storm') > 0 || T.storm ? 2 : tfx('b8') ? 2 : 1,
       cleaver: n('cleaver') > 0 || hasSkill('reap_cleave'),
       // v0.11.1: the Charge Cleave comes with a tool attachment (Navid, 3 Nov: an upgrade, not a perk)
       chargeLv: T.charge || 0,
@@ -18024,6 +18030,12 @@ export function startGeminiEngine() {
     chargeReady = false;
     rushTimer = tfx('a3') ? 2 : 0;
     rushCharge = RUSH_GOAL * 0.25 * Math.min(2, tfx('p6'));
+    critRun = 0;
+    streakNext = false;
+    dayKinds = {};
+    chainPaid = 0;
+    moonRipe = false;
+    goldenHeld = 0;
     paused = false;
     today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0, boss: 0 };
     if (fieldSeed) for (const k in fieldSeq) fieldSeq[k] = 0;
@@ -18050,6 +18062,9 @@ export function startGeminiEngine() {
       dayLen,
       event: { id: dailyEvent.id, title: dailyEvent.title, desc: dailyEvent.desc },
     });
+    // tree: what this morning brings (Market day every fifth day, Early bird's first 4 s)
+    if (tfx('m4') && farm.day % 5 === 0) addText('MARKET DAY +30%', worldW / 2, FIELD_TOP + 95, '#ffe08a', 26, -18, 1.4);
+    else if (tfx('f16')) addText('EARLY BIRD ×2', worldW / 2, FIELD_TOP + 95, '#ffe08a', 26, -18, 1.2);
     if (window.__dbdRooster && window.__dbdRooster()) {
       // the shell played the rooster instead of the dawn chime
     } else Sound.dawn();
@@ -18057,6 +18072,7 @@ export function startGeminiEngine() {
   }
   function endDay() {
     if (mode !== 'day') return;
+    chainEnds();
     if (window.__odDayEnded) window.__odDayEnded(Object.assign({}, today));
     dayCheckpoint = null;
     held = false;
@@ -18157,6 +18173,79 @@ export function startGeminiEngine() {
   function tfx(id) {
     const T = window.__DBD_TREEFX;
     return (T && T[id]) | 0;
+  }
+  /* Tree tricks (0.13). Each reads its node's level with tfx(id); the effect texts are in src/game/tree.ts. */
+  /** Swings in a row that crit and landed (Crit streak, b12), and whether the next swing hits ×5. */
+  let critRun = 0,
+    streakNext = false;
+  /** Honed start (b6): every swing crits for the first seconds of the day. Charged edge (x1): during the rush. */
+  function sureCrit() {
+    const h = tfx('b6');
+    if (h && mode === 'day' && dayLen - time < [0, 3, 5][Math.min(2, h)]) return true;
+    return rushTimer > 0 && tfx('x1') > 0;
+  }
+  /** How much faster the tool swings right now: Momentum (x2) during the rush, Frenzy (b16) with the chain,
+   *  Featherweight (r14), doubled on a field at least four fifths full. */
+  function swingBoost() {
+    let k = 1;
+    if (rushTimer > 0 && tfx('x2')) k *= 1.3;
+    if (tfx('b16')) k *= 1 + Math.min(0.4, 0.015 * combo);
+    const fw = Math.min(2, tfx('r14'));
+    if (fw) k *= 1 + 0.1 * fw * (cur && crops.length >= cur.max * 0.8 ? 2 : 1);
+    return k;
+  }
+  /** What a crop pays on top of everything else, from the tree's pay tricks. Also shows the word for it. */
+  let dayKinds = {},
+    chainPaid = 0,
+    moonRipe = false,
+    goldenHeld = 0;
+  function treePay(c, top) {
+    let k = 1;
+    // Early bird (f16): the first 4 s of the day pay double. Harvest moon (f15): the last 3 s.
+    if (tfx('f16') && dayLen - time <= 4) k *= 2;
+    if (tfx('f15') && time <= 3) k *= 2;
+    // Crop rotation (f11): the crop that joined this morning pays 25% more on its first day
+    if (tfx('f11') && isNewToday(c.type)) k *= 1.25;
+    // Market day (m4): every fifth day of a farm, every crop pays 30% more
+    if (tfx('m4') && farm.day % 5 === 0) k *= 1.3;
+    // Organic label (x4): twins and crops that sprouted again pay 50% more
+    if (c.organic && tfx('x4')) k *= 1.5;
+    // First of the day (m6): the first crop of each kind each day pays ×5
+    if (!dayKinds[c.type]) {
+      dayKinds[c.type] = true;
+      if (tfx('m6')) {
+        k *= 5;
+        addText('FIRST ×5', c.x, top - 30, '#ffe08a', 20, -34, 0.9);
+      }
+    }
+    // Bulk order (m3): every tenth crop of a chain pays ×3, then ×5
+    const bulk = Math.min(2, tfx('m3'));
+    if (bulk && combo > 0 && combo % 10 === 0) {
+      k *= bulk > 1 ? 5 : 3;
+      addText('BULK ×' + (bulk > 1 ? 5 : 3), c.x, top - 30, '#ffe08a', 22, -34, 0.9);
+    }
+    return k;
+  }
+  /** True for the crop that joined the field this morning (the plan's crop table: [type, weight, level]). */
+  function isNewToday(type) {
+    const pl = plan();
+    if (!pl || !pl.crops || farm.day < 2) return false;
+    const lv = unlockLevel();
+    return pl.crops.some((t) => t[0] === type && t[2] === lv);
+  }
+  /** Tip jar (m11): a chain of 20 or more that ends drops a tip, 10% of what the chain paid. */
+  function chainEnds() {
+    if (combo >= 20 && tfx('m11') && chainPaid > 0 && mode === 'day') {
+      const tip = Math.round(chainPaid * 0.1);
+      if (tip > 0) {
+        farm.cash += tip;
+        farm.earned += tip;
+        today.earned += tip;
+        addText('TIP ' + fmtGain(tip), worldW / 2, FIELD_TOP + 95, '#ffe08a', 26, -24, 1.1);
+        Sound.coin();
+      }
+    }
+    chainPaid = 0;
   }
   function powerGain() {
     return (
@@ -18540,6 +18629,15 @@ export function startGeminiEngine() {
       if (Sound.ok()) Sound.tone(1480, 0.08, { type: 'triangle', v: 0.14, to: 1920 });
       return 0;
     }
+    // tree: Heavy hand (b9), the first hit of a crop is harder; Giant slayer (b10), crops that take 4 or more cuts
+    if (!c.boss) {
+      if (!c.hit1) {
+        c.hit1 = true;
+        dmg *= 1 + 0.2 * Math.min(2, tfx('b9'));
+      }
+      const gs = Math.min(3, tfx('b10'));
+      if (gs && c.maxHp >= 4 * cur.dmg) dmg *= [1, 1.3, 1.45, 1.6][gs];
+    }
     c.hp -= dmg;
     if (c.type === 'onion' && canAdd() && src !== 'flame') {
       for (const dir of [-1, 1]) {
@@ -18591,7 +18689,7 @@ export function startGeminiEngine() {
     let chained = 0,
       killed = 0;
     for (const tCrop of crops) {
-      if (tCrop.dead || chained >= 2) continue;
+      if (tCrop.dead || chained >= (cur.stormN || 2)) continue;
       const d = Math.hypot(tCrop.x - x, tCrop.y - y);
       if (d > cur.R && d < cur.R + 170) {
         chained++;
@@ -18693,8 +18791,9 @@ export function startGeminiEngine() {
       sweepT = 0.13;
       sweepA = (sweepA + 2.3) % (Math.PI * 2);
     }
-    const crit = Math.random() < cur.cc,
-      dmg = cur.dmg * (crit ? cur.cm : 1);
+    const crit = Math.random() < cur.cc || sureCrit(),
+      streak = streakNext,
+      dmg = cur.dmg * (crit ? cur.cm : 1) * (streak ? 5 : 1);
     let hits = 0,
       killed = 0;
     for (const c of crops) {
@@ -18708,6 +18807,18 @@ export function startGeminiEngine() {
       if (hitCrop(c, cy, dmg, crit, flame ? 'flame' : 'blade') === 2) killed++;
     }
     if (hits) {
+      // Crit streak (b12): three crits in a row that landed, and the next swing that lands hits ×5
+      if (streak) {
+        streakNext = false;
+        addText('STREAK ×5', pointer.x, pointer.y - cur.R - 34, '#ffd34d', 26, -40, 0.8);
+      }
+      if (tfx('b12')) {
+        critRun = crit && !streak ? critRun + 1 : 0;
+        if (critRun >= 3) {
+          critRun = 0;
+          streakNext = true;
+        }
+      }
       if (flame) Sound.flame();
       else Sound.hit(crit);
       if (crit) {
@@ -18753,7 +18864,7 @@ export function startGeminiEngine() {
         c: t.c,
         t: 0,
         dur: FarmScene_clamp(Math.max(0, t.d) / 900, 0.06, 0.32),
-        crit: Math.random() < cur.cc,
+        crit: Math.random() < cur.cc || sureCrit(),
         wob: Math.random() * 6,
       });
     }
@@ -19791,7 +19902,9 @@ export function startGeminiEngine() {
         ? dailyEvent.pumpkinBonus
         : 1);
     const baseValue = cropBaseVal(c.type) * cur.vm * gazetteMul * (c.type === 'radish' ? cur.radishBonus : 1);
-    const v = baseValue * multiplier * lucky;
+    if (combo === 1) chainPaid = 0;
+    const v = baseValue * multiplier * lucky * treePay(c, c.y - def.top * c.ds);
+    chainPaid += v;
     farm.cash += v;
     farm.earned += v;
     farm.harvested += 1;
@@ -19829,7 +19942,7 @@ export function startGeminiEngine() {
     } // 4-Part Slice Burst: Clipped Crop Halves, Fluttering Leaves, Dirt Clods, and Juice Droplets!
     sliceBurst(c);
     if (hasSkill('soil_eden') && Math.random() < 0.25 && crops.length < cur.max) {
-      spawnCrop(0.05);
+      if (spawnCrop(0.05)) crops[crops.length - 1].organic = true;
     }
     const n = Math.min(5, 1 + Math.floor(v / 3));
     for (let i = 0; i < n; i++) coin(c.x + (Math.random() - 0.5) * 16, c.y - c.r * c.ds * 0.5, i * 0.03);
@@ -20454,7 +20567,20 @@ export function startGeminiEngine() {
       }
     }
     if (mode === 'day') {
-      if (!clockStopped) time -= dt;
+      // Golden hour (f13): in the last 5 s the sun waits while a chain of 10 or more is kept (5 s a day at most)
+      const waits = tfx('f13') && time <= 5 && combo >= 10 && goldenHeld < 5;
+      if (waits) goldenHeld += dt;
+      if (!clockStopped && !waits) time -= dt;
+      // Harvest moon (f15): 3 s before sunset the whole field ripens (and pays double, see treePay)
+      if (!moonRipe && time <= 3 && tfx('f15')) {
+        moonRipe = true;
+        for (const c of crops) {
+          if (c.dead || c.age >= STAGE3_AGE) continue;
+          c.age = 0.5;
+          c.stage = 3;
+        }
+        addText('HARVEST MOON ×2', worldW / 2, FIELD_TOP + 65, '#e0e7ff', 30, -20, 1.2);
+      }
       if (keys.size) {
         let vx = 0,
           vy = 0;
@@ -20473,11 +20599,12 @@ export function startGeminiEngine() {
       }
       comboTimer = Math.max(0, comboTimer - dt);
       if (comboTimer <= 0 && combo) {
+        chainEnds();
         combo = 0;
       }
       rushTimer = Math.max(0, rushTimer - dt);
       tickAcc += dt;
-      const iv = 1 / cur.tick;
+      const iv = 1 / (cur.tick * swingBoost());
       stunT = Math.max(0, stunT - dt);
       while (tickAcc >= iv) {
         tickAcc -= iv;
@@ -20509,7 +20636,8 @@ export function startGeminiEngine() {
           break;
         }
         spawnCrop(0);
-        if (hasSkill('soil_twin') && crops.length < cur.max && Math.random() < 0.2) spawnCrop(0.05);
+        if (hasSkill('soil_twin') && crops.length < cur.max && Math.random() < 0.2 && spawnCrop(0.05))
+          crops[crops.length - 1].organic = true;
         spawnAcc -= spawnInterval;
         spawned++;
       }
@@ -24728,6 +24856,67 @@ export function startGeminiEngine() {
         save();
         return true;
       };
+      /** Tests only (tree tricks): set the clock, the chain and the rush of the day being played. */
+      engineApi.devClock = (o) => {
+        if (!window.__DBD_DEV_HOOKS || mode !== 'day' || !o) return false;
+        if (o.time != null) time = Math.max(0.05, Math.min(dayLen, o.time));
+        if (o.combo != null) {
+          combo = o.combo;
+          comboTimer = o.combo > 0 ? 5 : 0;
+        }
+        if (o.rush != null) rushTimer = o.rush;
+        if (o.stop != null) clockStopped = !!o.stop;
+        if (o.cash != null) farm.cash = o.cash;
+        return true;
+      };
+      /** Tests only: put one ripe crop of `type` on the field (`patch` sets its fields) and return its index. */
+      engineApi.devCrop = (type, patch) => {
+        if (!window.__DBD_DEV_HOOKS || mode !== 'day') return -1;
+        for (let i = 0; i < 6; i++) if (spawnCrop(0, { x: worldW * (0.2 + 0.12 * i), y: (FIELD_TOP + HW) / 2, d: 30, type })) break;
+        const c = crops[crops.length - 1];
+        if (!c || c.type !== type) return -1;
+        c.age = 1;
+        c.stage = 3;
+        c.lucky = false;
+        c.frosted = false;
+        Object.assign(c, patch || {});
+        return crops.length - 1;
+      };
+      /** Tests only: cut that crop down now; returns what the cut added to today's earnings. */
+      engineApi.devCut = (i) => {
+        const c = crops[i];
+        if (!window.__DBD_DEV_HOOKS || mode !== 'day' || !c) return -1;
+        const before = today.earned;
+        harvest(c);
+        crops = crops.filter((x) => !x.dead);
+        return today.earned - before;
+      };
+      /** Tests only: one hit of `dmg` on that crop (as a blade swing would); returns the health it lost. */
+      engineApi.devHit = (i, dmg, src) => {
+        const c = crops[i];
+        if (!window.__DBD_DEV_HOOKS || mode !== 'day' || !c) return -1;
+        const before = c.hp;
+        hitCrop(c, c.y - c.r * c.ds * 0.55, dmg, false, src || 'blade');
+        const lost = before - c.hp;
+        crops = crops.filter((x) => !x.dead);
+        return lost;
+      };
+      /** Tests only: what the tree's tricks come to right now. */
+      engineApi.devTree = () => ({
+        sureCrit: sureCrit(),
+        swingBoost: swingBoost(),
+        stormN: cur.stormN,
+        storm: !!cur.storm,
+        spawn: cur.spawn,
+        dmg: cur.dmg,
+        streakNext,
+        meter: rushCharge / RUSH_GOAL,
+        rush: rushTimer,
+        goldenHeld,
+        props: fieldProps.map((p) => p.kind),
+        crows: crows.length,
+        combo,
+      });
       window.__DBD_ENGINE = engineApi;
       const dbdTestApi = {
         getScene: () => this,

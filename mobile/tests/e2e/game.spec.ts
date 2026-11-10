@@ -977,6 +977,108 @@ test('the tree: a node opens the next one, a keystone is a long build, and a fre
   expect(errors).toEqual([]);
 });
 
+/** A day on Toronto with the clock stopped and no finger on the field, for testing the tree's tricks one by one:
+ *  `fx` sets the tree levels the engine reads (window.__DBD_TREEFX), `E` calls an engine hook. */
+async function trickDay(page: Page, day = 1): Promise<string[]> {
+  const errors = await boot(page, seeded(CA.slice(0, 2), 0));
+  await act(page, 'play');
+  await expect(page.locator('.scr-farmhouse .dc-day')).toBeVisible();
+  if (day > 1) {
+    await page.evaluate(d => {
+      (window as any).__DBD_ENGINE.devDay(d);
+      (window as any).__DBD_APP.show('farmhouse');
+    }, day);
+  }
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  await E(page, 'devClock', { stop: true });
+  return errors;
+}
+async function fx(page: Page, tree: Record<string, number>): Promise<void> {
+  await page.evaluate(t => {
+    (window as any).__DBD_TREEFX = t;
+    (window as any).__DBD_ENGINE.refreshStats();
+  }, tree);
+}
+async function E(page: Page, fn: string, ...args: unknown[]): Promise<any> {
+  return page.evaluate(([f, a]) => (window as any).__DBD_ENGINE[f as string](...(a as unknown[])), [fn, args] as const);
+}
+/** Puts one ripe crop on the field and cuts it at once, outside any chain; returns what it paid. */
+async function cut(page: Page, type = 'carrot', patch: Record<string, unknown> = {}, combo = 0): Promise<number> {
+  await E(page, 'devClock', { combo });
+  const i = await E(page, 'devCrop', type, patch);
+  expect(i).toBeGreaterThanOrEqual(0);
+  return E(page, 'devCut', i);
+}
+
+test('tree tricks, blade and swing speed: each does what its text says (0.13)', async ({ page }) => {
+  const errors = await trickDay(page);
+  const len = (await E(page, 'state')).dayLen;
+  const dmg = (await E(page, 'devTree')).dmg;
+  // Heavy hand: the first hit of a crop is 20% harder (then 40%); the second is plain
+  await fx(page, { b9: 2 });
+  let i = await E(page, 'devCrop', 'carrot', { hp: 2 * dmg, maxHp: 2 * dmg });
+  expect(await E(page, 'devHit', i, dmg * 0.1)).toBeCloseTo(dmg * 0.14, 5);
+  expect(await E(page, 'devHit', i, dmg * 0.1)).toBeCloseTo(dmg * 0.1, 5);
+  // Giant slayer: +30% on a crop that takes 4 or more cuts (then 45%, 60%), nothing on a smaller one
+  await fx(page, { b10: 1 });
+  i = await E(page, 'devCrop', 'carrot', { hp: 4 * dmg, maxHp: 4 * dmg, hit1: true });
+  expect(await E(page, 'devHit', i, dmg * 0.1)).toBeCloseTo(dmg * 0.13, 5);
+  await fx(page, { b10: 3 });
+  expect(await E(page, 'devHit', i, dmg * 0.1)).toBeCloseTo(dmg * 0.16, 5);
+  i = await E(page, 'devCrop', 'carrot', { hp: 3.9 * dmg, maxHp: 3.9 * dmg, hit1: true });
+  expect(await E(page, 'devHit', i, dmg * 0.1)).toBeCloseTo(dmg * 0.1, 5);
+  // Honed start: every swing crits for the first 3 s of the day (then 5 s); Charged edge: during the rush
+  await fx(page, {});
+  await E(page, 'devClock', { time: len - 1 });
+  expect((await E(page, 'devTree')).sureCrit).toBe(false);
+  await fx(page, { b6: 1 });
+  expect((await E(page, 'devTree')).sureCrit).toBe(true);
+  await E(page, 'devClock', { time: len - 4 });
+  expect((await E(page, 'devTree')).sureCrit).toBe(false);
+  await fx(page, { b6: 2 });
+  expect((await E(page, 'devTree')).sureCrit).toBe(true);
+  await fx(page, { x1: 1 });
+  expect((await E(page, 'devTree')).sureCrit).toBe(false);
+  await E(page, 'devClock', { rush: 2 });
+  expect((await E(page, 'devTree')).sureCrit).toBe(true);
+  // swing speed: Momentum +30% during the rush; Frenzy +1.5% a crop of the chain, up to 40%
+  await fx(page, { x2: 1 });
+  expect((await E(page, 'devTree')).swingBoost).toBeCloseTo(1.3, 5);
+  await E(page, 'devClock', { rush: 0, combo: 10 });
+  expect((await E(page, 'devTree')).swingBoost).toBeCloseTo(1, 5);
+  await fx(page, { b16: 1 });
+  expect((await E(page, 'devTree')).swingBoost).toBeCloseTo(1.15, 5);
+  await E(page, 'devClock', { combo: 60 });
+  expect((await E(page, 'devTree')).swingBoost).toBeCloseTo(1.4, 5);
+  // Featherweight: +10% (then +20%), doubled while the field is at least four fifths full
+  await E(page, 'devClock', { combo: 0 });
+  await fx(page, { r14: 2 });
+  const full = (await E(page, 'peek')).crops.length >= (await E(page, 'stats')).max * 0.8;
+  expect((await E(page, 'devTree')).swingBoost).toBeCloseTo(full ? 1.4 : 1.2, 5);
+  // Storm rod: crits throw lightning at one crop; Chain lightning: at a second
+  await fx(page, {});
+  expect((await E(page, 'devTree')).storm).toBe(false);
+  await fx(page, { b5: 1 });
+  expect(await E(page, 'devTree')).toMatchObject({ storm: true, stormN: 1 });
+  await fx(page, { b5: 1, b8: 1 });
+  expect((await E(page, 'devTree')).stormN).toBe(2);
+  // Crit streak: with every swing a crit (Honed start), the fourth swing that lands is the ×5 one
+  await fx(page, { b12: 1, b6: 2 });
+  await E(page, 'devClock', { time: len });
+  const big = await E(page, 'devCrop', 'carrot', { hp: 1e9, maxHp: 1e9 });
+  const at = await page.evaluate(k => {
+    const p = (window as any).__DBD_ENGINE.peek(), c = p.crops[k], r = document.getElementById('field')!.getBoundingClientRect();
+    return { x: r.left + c.x * p.scale, y: r.top + (c.y - c.r * c.ds * 0.55) * p.scale };
+  }, big);
+  await page.evaluate(() => (window as any).__DBD_ENGINE.setTouchLift(0));
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await expect.poll(async () => (await E(page, 'devTree')).streakNext, { timeout: 5000 }).toBe(true);
+  await page.mouse.up();
+  expect(errors).toEqual([]);
+});
+
 test('menu: the signpost (Design 4), Barn opens the upgrade tree or the Bling Barn, the plank opens the map', async ({ page }) => {
   const errors = await boot(page);
   await expect(page.locator('.scr-menu .sp-play')).toBeVisible();
