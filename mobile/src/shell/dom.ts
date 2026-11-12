@@ -16,6 +16,7 @@ export function esc(t: unknown): string {
 
 export function money(v: number): string {
   const n = Math.round(Math.max(0, v));
+  if (n >= 1_000_000_000) return '$' + (n / 1_000_000_000).toFixed(n >= 10_000_000_000 ? 1 : 2).replace(/\.0+$/, '') + 'B';
   if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(n >= 10_000_000 ? 1 : 2).replace(/\.0+$/, '') + 'M';
   return '$' + n.toLocaleString('en-US');
 }

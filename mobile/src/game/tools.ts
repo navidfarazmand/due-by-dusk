@@ -9,6 +9,7 @@
 
 import { t } from '../i18n/i18n';
 import type { CountryCode } from './world';
+import { BORDER_STEP } from './plan';
 
 export type ToolId = 'sickle' | 'scythe' | 'flame' | 'blaster';
 
@@ -126,6 +127,16 @@ export const TOOLS: ToolDef[] = [
     ],
   },
 ];
+
+/** v0.13: money steps up at every border (plan.ts, BORDER_STEP), and so do the tools: each one and its attachments
+ *  are priced in the money of the country it is bought in (the scythe in the USA, the flame weeder in Brazil, the
+ *  seed blaster in Morocco). */
+const TOOL_BORDERS: Record<ToolId, number> = { sickle: 0, scythe: 1, flame: 2, blaster: 3 };
+for (const tool of TOOLS) {
+  const m = Math.pow(BORDER_STEP, TOOL_BORDERS[tool.id]);
+  tool.price *= m;
+  for (const mod of tool.mods) mod.base *= m;
+}
 
 export interface ToolsState {
   owned: ToolId[];

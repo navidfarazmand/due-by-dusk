@@ -141,7 +141,7 @@
 .bill-row.paid .b-crop img { opacity: .55; }
 .bl-field { display: flex; align-items: flex-end; gap: 3px; margin: 0 0 6px; font: 900 12px var(--ui-body); flex-wrap: wrap; }
 .bl-field img { height: 22px; }
-.bl-field span { flex-basis: 100%; font-weight: 800; font-size: 10.5px; color: var(--dbd-muted); }
+.bl-field > span:not(.crop-chip) { flex-basis: 100%; font-weight: 800; font-size: 10.5px; color: var(--dbd-muted); }
 .bill-row .b-no { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--dbd-ink); display: grid; place-items: center; font-size: 11px; }
 .bill-row .b-amt { font: 400 16px var(--ui-display); }
 .bill-row .b-st { font-size: 11px; color: var(--dbd-muted); min-width: 64px; text-align: right; }
@@ -829,3 +829,11 @@ button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tab
   .tr-chip { font-size: 15px; padding: 0 8px 0 6px; }
   .tr-card { width: 214px; }
 }
+
+/* 0.13, the road: a vegetable with its level, and the levels that rose at sundown */
+.crop-chip { position: relative; display: inline-flex; align-items: flex-end; margin-right: 5px; }
+.crop-chip i { position: absolute; right: -6px; bottom: -3px; min-width: 13px; height: 13px; padding: 0 2px; border-radius: 7px; background: #2B1708; color: #FFE08A; font: 900 9px/13px var(--ui-body); font-style: normal; text-align: center; box-sizing: border-box; }
+.sd-lv { display: flex; justify-content: center; gap: 12px; align-items: flex-end; }
+.sd-lvup { display: inline-flex; align-items: flex-end; gap: 2px; animation: sdLvPop .45s cubic-bezier(.2, 1.6, .4, 1) both; }
+.sd-lvup > i { font-style: normal; font-size: 10px; color: #2f9e44; margin-left: 5px; }
+@keyframes sdLvPop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }

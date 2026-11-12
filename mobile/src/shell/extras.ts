@@ -10,7 +10,6 @@ import { ART, PREVIEW, bandFor } from './art';
 import { ICON, TOOL_ICON, INK, esc, money } from './dom';
 import { barnPreview, flairIcon, ribbonIcon } from './looks';
 import { creditIcon } from './treeview';
-import { DIAMOND_CREDIT } from '../game/tree';
 import { inner, lang, t, tn } from '../i18n/i18n';
 
 const LOCALE = { en: 'en-US', fr: 'fr-FR', es: 'es-ES', pt: 'pt-BR', de: 'de-DE' } as const;
@@ -95,7 +94,7 @@ function targetsRow(targets: [number, number, number], best: number): string {
     .join('')}</div>`;
 }
 
-export function dailyHtml(def: SideDef & { date: string }, d: DailyState, tries: number, adTry: boolean): string {
+export function dailyHtml(def: SideDef & { date: string }, d: DailyState, tries: number, adTry: boolean, goldCredit: number): string {
   const ct = cityById(def.cityId)!;
   const c = countryOf(ct.country);
   const medal = d.medal;
@@ -116,7 +115,7 @@ export function dailyHtml(def: SideDef & { date: string }, d: DailyState, tries:
     <p class="dl-text">${t("One day, no bills. Everyone gets the same field and the same upgrades, so it's all down to your swipes.")}</p>
     ${targetsRow(def.targets, d.best)}
     <p class="dl-best">${bestTxt}</p>
-    <p class="dl-rew">${medalIcon(1, 16)} ${MEDAL_RIBBONS[1]} ${ribbonIcon(14)} · ${medalIcon(2, 16)} ${MEDAL_RIBBONS[2]} ${ribbonIcon(14)} · ${medalIcon(3, 16)} ${MEDAL_RIBBONS[3]} ${ribbonIcon(14)} · ${creditIcon(15)} +${money(DIAMOND_CREDIT)}</p>
+    <p class="dl-rew">${medalIcon(1, 16)} ${MEDAL_RIBBONS[1]} ${ribbonIcon(14)} · ${medalIcon(2, 16)} ${MEDAL_RIBBONS[2]} ${ribbonIcon(14)} · ${medalIcon(3, 16)} ${MEDAL_RIBBONS[3]} ${ribbonIcon(14)} · ${creditIcon(15)} +${money(goldCredit)}</p>
     <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="go" data-arg="menu">${t('Back')}</button>${play}</div>
   </div></div>`;
 }

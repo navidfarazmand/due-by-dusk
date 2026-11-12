@@ -67,7 +67,7 @@ test('menu to the first farm and through one day', async ({ page }) => {
   await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('Due day 2');
   // the first bill is paid on the evening it is due, not before: the button starts the day
   await expect(page.locator('.scr-farmhouse .dc-go[data-act="start"]')).toBeVisible();
-  // a Canadian farm is 19 days (v0.12: bills of 2, 3, 4, 5 and 5 days)
+  // the first farm is 19 days (bills of 2, 3, 4, 5 and 5 days)
   await expect(page.locator('.scr-farmhouse .dc-dots i')).toHaveCount(19);
   await fast(page);
   await act(page, 'start');
@@ -543,7 +543,7 @@ test('perks from silver and gold chests survive a reload', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('the first farm: carrots only on day 1, a bill paid on its evening opens a chest, and a new crop joins each morning', async ({ page }) => {
+test('the first farm: carrots only on day 1, a bill paid on its evening opens a chest, and each bill brings a new crop', async ({ page }) => {
   const errors = await boot(page);
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
   await expect(page.locator('.scr-farmhouse')).toBeVisible();
@@ -576,11 +576,11 @@ test('the first farm: carrots only on day 1, a bill paid on its evening opens a 
   const st = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
   expect(st.billsPaid).toBe(1);
   expect(st.perks).toHaveLength(1);
-  // day 3: the day card names this morning's new crop, and the field holds it with the carrots and the radish
+  // day 3: the day card names the crop the bill brought (v0.13: radishes), and the field holds it with the carrots
   await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Day 3');
   await expect(page.locator('.scr-farmhouse .dc-new')).toContainText('New today');
   const fresh = await page.locator('.scr-farmhouse .dc-new').getAttribute('data-crop');
-  expect(fresh && fresh !== 'carrot' && fresh !== 'radish').toBeTruthy();
+  expect(fresh).toBe('radish');
   const seen = new Set<string>();
   for (let i = 0; i < 8 && !seen.has(fresh!); i++) {
     const t = await page.evaluate(() => {
@@ -979,15 +979,15 @@ test('the tree: a node opens the next one, a keystone is a long build, and a fre
 
 /** A day on Toronto with the clock stopped and no finger on the field, for testing the tree's tricks one by one:
  *  `fx` sets the tree levels the engine reads (window.__DBD_TREEFX), `E` calls an engine hook. */
-async function trickDay(page: Page, day = 1): Promise<string[]> {
+async function trickDay(page: Page, day = 1, paid?: number): Promise<string[]> {
   const errors = await boot(page, seeded(CA.slice(0, 2), 0));
   await act(page, 'play');
   await expect(page.locator('.scr-farmhouse .dc-day')).toBeVisible();
   if (day > 1) {
-    await page.evaluate(d => {
-      (window as any).__DBD_ENGINE.devDay(d);
+    await page.evaluate(([d, n]) => {
+      (window as any).__DBD_ENGINE.devDay(d, n);
       (window as any).__DBD_APP.show('farmhouse');
-    }, day);
+    }, [day, paid] as const);
   }
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
@@ -1084,14 +1084,15 @@ test('tree tricks, blade and swing speed: each does what its text says (0.13)', 
 });
 
 test('tree tricks, what crops pay and the field: each does what its text says (0.13)', async ({ page }) => {
-  // day 5: a market day for Market day, and a crop that joined the field this morning
-  const errors = await trickDay(page, 5);
+  // day 5 on Toronto: a market day for Market day, and the morning after the first bill (due day 4), when the farm's
+  // own new vegetable joins the field (v0.13)
+  const errors = await trickDay(page, 5, 1);
   const len = (await E(page, 'state')).dayLen;
   const mid = { time: len / 2 };
   await E(page, 'devClock', mid);
   const fresh = await page.evaluate(() => {
     const p = (window as any).__DBD_PLAN;
-    return (p.crops.find((c: any) => c[2] === p.unlock + 4) || [''])[0];
+    return (p.crops.find((c: any) => c[2] === 1) || [''])[0];
   });
   expect(fresh).not.toBe('');
   const old = await page.evaluate(() => (window as any).__DBD_PLAN.crops[0][0]);

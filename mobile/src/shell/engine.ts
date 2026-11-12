@@ -126,6 +126,8 @@ export interface Today {
   lucky: number;
   /** Boss bounty paid today (0 if none). */
   boss?: number;
+  /** Cuts by vegetable (0.13). */
+  kinds?: Record<string, number>;
 }
 
 export interface EngineApi {

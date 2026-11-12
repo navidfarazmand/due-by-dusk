@@ -47,6 +47,12 @@ export function spriteImg(type: string, h: number, alt = ''): string {
   return u ? `<img src="${u}" alt="${alt}" style="height: ${h}px" draggable="false">` : '';
 }
 
+/** A vegetable with its level in a corner (0.13, the road: the player's own cutting raises a vegetable's level). */
+export function cropChip(type: string, level: number, h: number): string {
+  const img = spriteImg(type, h);
+  return img ? `<span class="crop-chip" data-crop="${type}" data-lv="${level}">${img}<i>${level}</i></span>` : '';
+}
+
 /** The band image for a city: its own, else its country's. */
 export function bandFor(cityId: string, country: string): string | undefined {
   return BAND[cityId] || BAND[country.toLowerCase()];

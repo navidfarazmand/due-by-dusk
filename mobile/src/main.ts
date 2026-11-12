@@ -28,6 +28,8 @@ import * as workshop from './game/workshop';
 import * as tools from './game/tools';
 import * as daily from './game/daily';
 import * as tree from './game/tree';
+import * as road from './game/road';
+import * as plans from './game/plan';
 import { ROUTE } from './game/world';
 
 const { GAME_SAVE_KEY } = progress;
@@ -85,6 +87,8 @@ async function start(): Promise<void> {
     w.__DBD_ROUTE_IDS = ROUTE.map(c => c.id);
     w.__DBD_DAILY = daily;
     w.__DBD_TREE = tree;
+    w.__DBD_ROAD = road;
+    w.__DBD_PLANS = plans;
   }
 }
 

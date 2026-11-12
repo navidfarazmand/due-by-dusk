@@ -21,7 +21,7 @@ const URL = process.env.DBD_URL || 'http://localhost:5173';
 const FARMS = (process.argv[2] || '0').split(',').map(Number);
 const DAYS = (process.argv[3] || '1,3,6').split(',').map(Number);
 const REPS = Number(process.argv[4] || 1);
-const SKILLS = ['strong', 'average', 'weak'];
+const SKILLS = (process.env.BOT_SKILLS || 'strong,average,weak').split(',');
 const ROUTE = ['ca_charlottetown', 'ca_gatineau', 'ca_toronto', 'ca_leamington', 'ca_saskatoon', 'ca_kelowna', 'us_austin', 'us_desmoines', 'us_vidalia', 'br_belem', 'br_petrolina', 'br_sinop', 'br_ribeirao', 'br_bento', 'ma_marrakech', 'ma_meknes', 'ma_fes', 'fr_avignon', 'fr_beaune', 'fr_tours', 'fr_roscoff', 'fr_agen', 'cn_guilin', 'cn_hangzhou', 'cn_chengdu', 'jp_sapporo', 'jp_aomori', 'jp_shizuoka', 'jp_kyoto', 'jp_kagoshima'];
 
 // ---- an on-track build: the field power expectedPower(k) asks for (mirrors power.ts and plan.ts, sickle only)
@@ -38,11 +38,11 @@ function buildFor(k) {
   for (let a = 0; a <= 160; a += 0.25) { const L = levels(a); if (power(L) >= expected(k)) return L; }
   return levels(160);
 }
-function saveFor(k) {
+function saveFor(k, cropCuts = {}) {
   const cities = {};
   for (let i = 0; i < k; i++) cities[ROUTE[i]] = { won: true, stars: 3, bestDay: 0, crown: false, bestDays: 3, plays: 1, paid: 0 };
   // treeV 1: a 0.13 save (without it the game would turn these wins into tree credit, as for an older save)
-  return { v: 3, econ: 10, treeV: 1, createdAt: 1, cities, run: null, wallet: 0,
+  return { v: 3, econ: 10, treeV: 1, createdAt: 1, cities, run: null, wallet: 0, cropCuts,
     workshop: { levels: buildFor(k), job: null }, tools: { owned: ['sickle'], equipped: 'sickle', mods: {} },
     ads: { date: '', coins: 0, doubles: 0, finishes: 0, lastCoinsAt: 0 },
     settings: { music: false, haptics: false, lang: 'en' }, seen: { intro: true, practice: true, start: true }, totals: { days: 9, crops: 500, earned: 2000 } };
@@ -131,20 +131,33 @@ for (const k of FARMS) {
       const page = await ctx.newPage();
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
-      await page.addInitScript(([save]) => {
+      await page.addInitScript(() => {
         window.__DBD_NO_COACH = true;
         window.__DBD_NO_WEATHER = true;
-        if (sessionStorage.getItem('bot')) return;
-        localStorage.clear(); localStorage.setItem('dbd-game-v3', save); sessionStorage.setItem('bot', '1');
-      }, [JSON.stringify(saveFor(k))]);
+      });
       await page.addInitScript(installBots);
       await page.goto(URL + '/?testads=1');
+      await page.waitForFunction(() => !!(window.__DBD_APP && window.__DBD_ENGINE));
+      // v0.13 (the road): a typical player's vegetable levels when this farm starts (about 100 cuts of each vegetable
+      // of every farm before it, and half a farm's worth of the ones it opens with), and the day each bill is due
+      const road = await page.evaluate((k) => {
+        const R = window.__DBD_ROAD, P = window.__DBD_PLANS, ids = window.__DBD_ROUTE_IDS;
+        const size = (i) => P.planFor(ids[i]).bills.length;
+        const cuts = R.typicalCuts(k, size);
+        for (const f of R.fieldKinds(k, size(k))) if (f.stage === 0) cuts[f.type] = (cuts[f.type] || 0) + R.TYPICAL_CUTS / 2;
+        const due = P.planFor(ids[k]).bills.map((_, i) => P.billDueDay(i, k));
+        return { cuts, due };
+      }, k);
+      await page.evaluate((save) => { localStorage.clear(); localStorage.setItem('dbd-game-v3', save); }, JSON.stringify(saveFor(k, road.cuts)));
+      await page.reload();
       await page.waitForFunction(() => !!(window.__DBD_APP && window.__DBD_ENGINE));
       await page.evaluate((id) => window.__DBD_APP.farmHere(id), ROUTE[k]);
       await page.waitForTimeout(400);
       const tough = await page.evaluate(() => (window.__DBD_APP.g.run || {}).tough || 1);
       for (const day of DAYS) {
-        const okDay = await page.evaluate((d) => { window.__DBD_APP.show('farmhouse'); return window.__DBD_ENGINE.devDay(d); }, day);
+        // the bills due before this day are paid (a farm's vegetables join by bills paid)
+        const paid = road.due.filter((d) => d < day).length;
+        const okDay = await page.evaluate(([d, n]) => { window.__DBD_APP.show('farmhouse'); return window.__DBD_ENGINE.devDay(d, n); }, [day, paid]);
         if (!okDay) console.log('could not set day', day);
         const r = await playDay(page, skill, 1000 * k + 97 * day + rep * 7 + skill.length);
         out.push({ k, city: ROUTE[k], skill, rep, ...r, day, tough: Math.round(tough * 100) / 100 });

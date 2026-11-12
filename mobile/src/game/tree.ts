@@ -8,7 +8,8 @@
 // A reset is free and gives back everything paid as tree credit. Prices of the tricks are a first guess for the bots
 // to tune. Review page: https://claude.ai/artifact/7t59cN7bWpBkviWoQnjKLF
 
-import { TIMED_EVERY, emptyLevels, settleJob, upgradeCost, upgradeDef, upgradeDuration, type UpgradeId, type WorkshopState } from './workshop';
+import { BORDER_STEP } from './plan';
+import { TIMED_EVERY, emptyLevels, settleJob, upgradeCost, upgradeCostFlat, upgradeDef, upgradeDuration, type UpgradeId, type WorkshopState } from './workshop';
 
 export type TreeBranch = 'blade' | 'power' | 'reach' | 'field' | 'market' | 'ranch';
 export type NodeKind = 'trunk' | 'track' | 'trick' | 'key' | 'bridge';
@@ -191,7 +192,10 @@ const BRIDGES: Row[] = [
 ];
 
 /** A first guess at prices by steps from the trunk: cheap near it (Canada), a keystone around Morocco and France. */
-const TIER = [0, 20, 200, 800, 3000, 12000, 50000, 300000];
+// A trick's price by its ring (distance from the trunk). The first four rings are Canada's money; from the fifth each
+// ring is priced for the next country (plan.ts, BORDER_STEP: money steps up at every border), and each further level
+// of a trick costs ten times the one before.
+const TIER = [0, 20, 200, 800, 3000, 12000 * BORDER_STEP, 50000 * BORDER_STEP ** 2, 300000 * BORDER_STEP ** 3];
 const PREFIX: Record<TreeBranch, string> = { blade: 'b', power: 'p', reach: 'r', field: 'f', market: 'm', ranch: 'a' };
 
 function build(): TreeNode[] {
@@ -379,12 +383,14 @@ export function settleTree(g: TreeHolder, now: number, force = false): { node: T
 }
 
 /** What everything in the tree costs at list prices (a build in progress included): the ledger of an older save. */
-export function treeListValue(g: TreeHolder): number {
+export function treeListValue(g: TreeHolder, flat = false): number {
   let sum = 0;
   for (const n of TREE) {
     if (n.kind === 'trunk') continue;
     const lv = Math.min(n.levels, treeLevel(g, n.id));
-    for (let l = 0; l < lv; l++) sum += nodeCost(n, l);
+    const w = TREE_WORKSHOP[n.id];
+    // `flat`: a save from before 0.13 paid the tracks' prices of that time (no border steps)
+    for (let l = 0; l < lv; l++) sum += flat && w ? upgradeCostFlat(w, l) ?? 0 : nodeCost(n, l);
   }
   const b = buildingNode(g);
   if (b && g.workshop.job) sum += nodeCost(NODE[b], Math.max(0, g.workshop.job.level - 1));
@@ -455,7 +461,7 @@ export const OLD_SKILLS: Record<string, { cost: number; nodes?: Array<[string, n
  */
 export function migrateSkills(g: TreeHolder, skills: readonly string[], earned: number): { credit: number; nodes: string[] } {
   const tree = (g.tree ||= {});
-  const paid = treeListValue(g);
+  const paid = treeListValue(g, true);
   let kept = 0;
   const got: string[] = [];
   for (const id of new Set(skills)) {

@@ -184,6 +184,8 @@ const dict: Record<string, string> = {
   "Building…": "Em obras…",
   "Level {n}": "Nível {n}",
   "Lv {n}": "Nv. {n}",
+  "This farm is already yours. Its cash pays its bills and nothing else.": "Esta fazenda já é sua. O dinheiro dela paga as contas dela e mais nada.",
+  "Nothing: the farm was already yours": "Nada: a fazenda já era sua",
   "This farm has paid you {amt} already. Its cash buys upgrades once you hold more than that; your savings always can.": "Esta fazenda já te pagou {amt}. O dinheiro dela só compra melhorias quando você tiver mais que isso; a poupança sempre pode.",
   "Finish now": "Concluir já",
   "Pay a bill to pick your first perk for this farm.": "Pague uma conta para escolher sua primeira vantagem nesta fazenda.",

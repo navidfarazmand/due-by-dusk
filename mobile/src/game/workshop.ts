@@ -3,6 +3,8 @@
 // more on the field, +3% crop prices, +0.8% crit chance. Each level costs about a sixth more than the last, so
 // the first levels come quickly and later ones take saving up (and a player far ahead can't run away). Every fifth level of an upgrade is a bigger job that takes a while to build (an optional ad finishes it).
 
+import { BORDER_STEP } from './plan';
+
 export type UpgradeId = 'scythe' | 'swing' | 'hands' | 'days' | 'soil' | 'market' | 'clover';
 
 /** What one level of each upgrade does. The engine reads these (window.__DBD_SHED_FX) in its stats. */
@@ -87,14 +89,40 @@ export function upgradeDef(id: UpgradeId): UpgradeDef {
   return d;
 }
 
+/** The Blade level a player on track holds when each border is crossed (Canada to the USA at 26, as the bots' builds
+ *  have it; evenly from there), and how fast the other tracks rise against the Blade. */
+const BORDER_BLADE = [26, 45, 60, 72, 82, 91];
+const PACE: Record<UpgradeId, number> = { scythe: 1, swing: 0.5, hands: 0.5, clover: 1 / 3, soil: 1 / 3, market: 1 / 3, days: 0.25 };
+
+/** The country whose money a level is priced in (0: Canada). v0.13 (Navid, 10 Nov: "bills as well as upgrades… the
+ *  upgrades jump from 50 to 200 then to 2000"): a level a player on track buys after a border costs BORDER_STEP times
+ *  more, like that country's crops and bills (plan.ts), so one country's money can't buy the next one's upgrades. */
+export function upgradeTier(id: UpgradeId, level: number): number {
+  let tier = 0;
+  for (const a of BORDER_BLADE) if (level >= Math.round(a * PACE[id])) tier++;
+  return tier;
+}
+
+function roundPrice(raw: number): number {
+  if (raw < 100) return Math.round(raw);
+  if (raw < 10000) return Math.round(raw / 10) * 10;
+  if (raw < 1_000_000) return Math.round(raw / 100) * 100;
+  const st = Math.pow(10, Math.floor(Math.log10(raw)) - 2);
+  return Math.round(raw / st) * st;
+}
+
 /** Price of buying the next level (level → level + 1); null when maxed. */
 export function upgradeCost(id: UpgradeId, level: number): number | null {
   const d = upgradeDef(id);
   if (level >= d.max) return null;
-  const raw = d.base * Math.pow(d.growth, level);
-  if (raw < 100) return Math.round(raw);
-  if (raw < 10000) return Math.round(raw / 10) * 10;
-  return Math.round(raw / 100) * 100;
+  return roundPrice(d.base * Math.pow(d.growth, level) * Math.pow(BORDER_STEP, upgradeTier(id, level)));
+}
+
+/** The price before 0.13's border steps: what a level cost a player who bought it in 0.12 or earlier. */
+export function upgradeCostFlat(id: UpgradeId, level: number): number | null {
+  const d = upgradeDef(id);
+  if (level >= d.max) return null;
+  return roundPrice(d.base * Math.pow(d.growth, level));
 }
 
 /** How long the next level takes to build, in ms (0 = instant). Levels 5, 10, 15… take 2 minutes, then a

@@ -3,17 +3,18 @@
 
 import { Capacitor } from '@capacitor/core';
 import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from '../game/world';
-import { cropName, planFor, toughnessFor, type CityPlan, avgDay } from '../game/plan';
+import { cropName, goldCredit, planFor, toughnessFor, winCredit, type CityPlan, avgDay } from '../game/plan';
+import { cropLevel, cropPay, cropPayTable } from '../game/road';
 import { bestPower } from '../game/power';
 import {
-  DEFAULT_TOUCH_LIFT, GAME_SAVE_KEY, RECENT_DAYS, coinsForDays, MAX_TOUCH_LIFT, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, crownCount, newGame, nextCity, paidAfterRun,
+  DEFAULT_TOUCH_LIFT, GAME_SAVE_KEY, RECENT_DAYS, coinsForDays, MAX_TOUCH_LIFT, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, crownCount, frontierCity, newGame, nextCity, paidAfterRun,
   parseGame, spendableFarmCash, starGate, starsFor, todayKey, toolLock, totalStars, type GameSave, type RunInfo,
 } from '../game/progress';
 import { FLAIR, buyFlair, equipFlair, flairById, lookFor, ribbonsForWin, type FlairKind } from '../game/flair';
 import { DAILY_AD_TRIES, MEDAL_NAME, MEDAL_RIBBONS, dailyFor, duelFor, medalOf, newDaily, sidePlan, triesLeft, type SideDef } from '../game/daily';
 import { SHED_FX, emptyLevels, formatDuration, type Levels, type UpgradeId } from '../game/workshop';
 import { TOOLS, isToolId, modCost, modLevel, newTools, toolDef, toolStats, toolSummary, type ToolId } from '../game/tools';
-import { ART, BAND, MAP, NODES, PREVIEW, SPRITE, bandFor, spriteImg } from './art';
+import { ART, BAND, MAP, NODES, PREVIEW, SPRITE, bandFor, cropChip, spriteImg } from './art';
 import { $, ICON, TOOL_ICON, cap, clamp, esc, money, stars } from './dom';
 import { engine, on, type BillInfo, type ChestInfo, type DayEvent, type EngineState, type Today } from './engine';
 import { CHEST_UP_ICON, chestBurst, chestName, chestSvg, newTodayHtml, perkCard, perkIcon } from './chest';
@@ -34,7 +35,7 @@ import {
 import { ribbonIcon } from './looks';
 import { arthurOnCard } from './arthur';
 import { TREE_ZOOMS, centerTree, creditIcon, treeMapHtml } from './treeview';
-import { DIAMOND_CREDIT, TREE_SKILL, buildingNode, buyNode, resetTree, settleTree, treeHasAny, treeNode, treeReady } from '../game/tree';
+import { TREE_SKILL, buildingNode, buyNode, resetTree, settleTree, treeHasAny, treeNode, treeReady } from '../game/tree';
 
 type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'tree' | 'barn' | 'daily' | 'duel' | 'side';
 
@@ -63,6 +64,8 @@ const DUEL_RIBBONS_PER_DAY = 2;
 
 interface DayResult {
   day: number;
+  /** Vegetables whose level rose with today's cuts (0.13, the road). */
+  levelUps?: Array<{ type: string; level: number }>;
   today: Today;
   event: DayEvent | null;
   crownToday: boolean;
@@ -73,6 +76,8 @@ interface DayResult {
 
 interface CityResult {
   kind: 'won' | 'lost';
+  /** The farm was already the player's when the run started (0.13): nothing went to savings. */
+  own?: boolean;
   cityId: string;
   stars: number;
   spare: boolean;
@@ -400,11 +405,24 @@ export class GameApp {
           engine().addCash(crownBonus);
         }
       }
+      // the road (0.13): today's cuts raise each vegetable's level, on a farm the player does not own yet
+      const levelUps: Array<{ type: string; level: number }> = [];
+      if (!run.own && d.today.kinds) {
+        const cuts = (this.g.cropCuts ||= {});
+        for (const [type, n] of Object.entries(d.today.kinds)) {
+          if (type === 'golden' || !(n > 0)) continue;
+          const before = cropLevel(cuts[type] || 0);
+          cuts[type] = (cuts[type] || 0) + n;
+          const after = cropLevel(cuts[type]);
+          if (after > before) levelUps.push({ type, level: after });
+        }
+        if (levelUps.length) this.applyCropLevels();
+      }
       this.g.recentEarn = [...(this.g.recentEarn || []), earned].slice(-RECENT_DAYS);
       this.g.totals.days++;
       this.g.totals.crops += d.today.count;
       this.g.totals.earned += d.today.earned;
-      this.day = { day: d.day, today: d.today, event: this.pendingEvent, crownToday, crownBonus, doubled: false };
+      this.day = { day: d.day, today: d.today, event: this.pendingEvent, crownToday, crownBonus, doubled: false, levelUps };
       this.save();
     });
     on('idle', () => {
@@ -436,8 +454,9 @@ export class GameApp {
     p.won = true;
     p.stars = Math.max(p.stars, res.stars);
     p.bestDays = p.bestDays ? Math.min(p.bestDays, d.days) : d.days;
-    // a first win pays tree credit (what a diamond was worth until 0.12; a boss farm pays twice)
-    const credit = firstWin ? (plan.boss ? 2 : 1) * DIAMOND_CREDIT : 0;
+    // a first win pays tree credit: two of the farm's average days (a boss farm four), so it is worth having on
+    // every farm of the road (0.12's diamond was a flat amount)
+    const credit = firstWin ? winCredit(plan) : 0;
     if (credit) this.g.treeCredit = (this.g.treeCredit || 0) + credit;
     // v0.12.2 (Navid, 5 Nov: option B): what is left after the deed becomes savings that buy upgrades and tools, never
     // a bill (the tree credit of 0.13). Only above what this farm has already paid you (its mark), so a replay of an
@@ -448,7 +467,7 @@ export class GameApp {
     this.g.run = null;
     this.result = {
       kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.spare, crown: p.crown, firstWin, credit, ribbons,
-      days: d.days, earned: d.earned, harvested: d.harvested, wallet: this.g.wallet, banked, mark: run.mark, kept: Math.round(d.cash),
+      days: d.days, earned: d.earned, harvested: d.harvested, wallet: this.g.wallet, banked, mark: run.mark, kept: Math.round(d.cash), own: !!run.own,
     };
     this.saveNow();
     this.show('won');
@@ -714,7 +733,8 @@ export class GameApp {
     // (by the highest track levels the player has had, so a reset just before a farm can't soften its crops)
     const tough = toughnessFor(routeIndex(cityId), bestPower(this.peakLevels(), tools, []));
     const p = (this.g.cities[cityId] ||= { ...cityProgress(this.g, cityId) });
-    const run: RunInfo = { cityId, startCash: 0, startedAt: Date.now(), bestDay: 0, mark: p.paid || 0, spent: 0, tough };
+    // a farm the player already owns (0.13, the road): its cash pays its bills and nothing else
+    const run: RunInfo = { cityId, startCash: 0, startedAt: Date.now(), bestDay: 0, mark: p.paid || 0, spent: 0, tough, ...(p.won ? { own: true } : {}) };
     const plan = this.farmPlan(run);
     // every farm starts with an empty cash box: its bills are paid from its own harvest
     const ok = engine().beginCity({ cityId, country: plan.country, cash: 0, shed: this.g.workshop.levels, plan, tools });
@@ -756,8 +776,13 @@ export class GameApp {
       this.g.seen.start = true;
       this.coach.cancel();
     }
+    const paidNow = e.state().billsPaid;
     this.show('farm');
     if (!e.startDay()) this.show('farmhouse');
+    else if (this.g.run.stageSeen !== paidNow) {
+      this.g.run.stageSeen = paidNow;
+      this.save();
+    }
   }
 
   // ------------------------------------------------------------------ the coach: showing, not telling
@@ -1321,6 +1346,7 @@ export class GameApp {
   private applySkills(): void {
     const tree = this.g.tree || {};
     (window as any).__DBD_TREEFX = { ...tree };
+    this.applyCropLevels();
     const skills = Object.keys(tree).filter(id => tree[id] > 0 && TREE_SKILL[id]).map(id => TREE_SKILL[id]);
     try {
       engine().setSkills(skills);
@@ -1332,6 +1358,12 @@ export class GameApp {
   /** Side farms (the daily farm, duels, practice, the intro) run without the player's tree. */
   private clearTreeFx(): void {
     (window as any).__DBD_TREEFX = {};
+    (window as any).__DBD_CROPLV = {};
+  }
+
+  /** What each vegetable pays for its level (0.13, the road), for the engine. */
+  private applyCropLevels(): void {
+    (window as any).__DBD_CROPLV = cropPayTable(this.g.cropCuts);
   }
 
   /** The highest track levels the player has had (kept in the save). */
@@ -1459,7 +1491,7 @@ export class GameApp {
   private dailyScreen(): string {
     const st = this.dailyState();
     const def = dailyFor(st.date);
-    return dailyHtml(def, st, triesLeft(st), st.adPlays < DAILY_AD_TRIES && canOffer(this.g, 'daily'));
+    return dailyHtml(def, st, triesLeft(st), st.adPlays < DAILY_AD_TRIES && canOffer(this.g, 'daily'), goldCredit(routeIndex(frontierCity(this.g))));
   }
 
   private playDaily(): void {
@@ -1607,7 +1639,7 @@ export class GameApp {
       let credit = 0;
       if (medal >= 3 && !st.goldPaid) {
         st.goldPaid = true;
-        credit = DIAMOND_CREDIT;
+        credit = goldCredit(routeIndex(frontierCity(this.g)));
         this.g.treeCredit = (this.g.treeCredit || 0) + credit;
       }
       this.sideOut = {
@@ -2180,7 +2212,7 @@ export class GameApp {
     else body = this.billsList();
     // the payout note lives behind an "i" next to the cash so it no longer pushes the cards down (Navid, 3 Nov)
     const run = this.g.run;
-    const info = run.mark > 0
+    const info = run.own || run.mark > 0
       ? `<button type="button" class="up-info" data-act="info" data-arg="mark" aria-label="${t('About this farm\'s cash')}"><i class="info-i">i</i></button>`
       : '';
     card.innerHTML = `<div class="pn-head">${this.walletChip()}${info}<div class="seg tabs">${tabs}</div></div><div class="fh-body pn-body">${body}</div>
@@ -2261,8 +2293,11 @@ export class GameApp {
     const e = engine();
     const st = e.state();
     const plan = this.g.run ? planFor(this.g.run.cityId) : null;
-    const now = plan && plan.stages.filter(x => x.stage <= st.billsPaid).map(x => spriteImg(x.type, 22, cropName(x.type))).join('');
-    const field = now ? `<p class="bl-field">${t('On the field now:')} ${now}<span>${t('Each bill paid brings a new crop.')}</span></p>` : '';
+    // the field's vegetables, each with its level (0.13, the road)
+    const cuts = this.g.cropCuts || {};
+    const now = plan && plan.stages.filter(x => x.stage <= st.billsPaid).map(x => cropChip(x.type, cropLevel(cuts[x.type] || 0), 22)).join('');
+    const toCome = plan ? plan.stages.filter(x => x.stage > st.billsPaid).length : 0;
+    const field = now ? `<p class="bl-field">${t('On the field now:')} ${now}${toCome > 1 ? `<span>${t('Each bill paid brings a new crop.')}</span>` : ''}</p>` : '';
     // bills keep their schedule: each is due its own number of days after the one before it
     let due = st.due;
     return `${field}<div class="bill-list">${e
@@ -2270,7 +2305,7 @@ export class GameApp {
       .map((b, i) => {
         if (i > st.bill) due += b.days;
         const status = i < st.billsPaid ? 'paid' : i === st.bill ? 'now' : 'later';
-        const next = plan && plan.stages[i + 1];
+        const next = plan && plan.stages.find(x => x.stage === i + 1);
         const crop = next ? `<span class="b-crop" title="${t('Then: {crop}', { crop: esc(cropName(next.type)) })}">${spriteImg(next.type, 24, cropName(next.type))}</span>` : `<span class="b-crop"></span>`;
         return `<div class="bill-row ${status}"><span class="b-no">${i + 1}</span><span class="b-name">${esc(t(b.name))}</span><span class="b-amt">${money(b.amt)}</span><span class="b-st">${
           status === 'paid' ? t('Paid ✓') : t('Due day {day}', { day: i === st.bill ? st.due : due })
@@ -2326,6 +2361,10 @@ export class GameApp {
     const nextBtn = !b.tonight || (b.canPay && !b.bossBlock)
       ? `<button type="button" class="st-btn gold btn-md flex1 sd-next" data-act="next-day">${b.tonight ? `<span class="sn-two"><span>${t('Pay {amt}', { amt: money(b.amt) })}</span><small>${t('Next day')}</small></span>` : t('Next day')}${ICON.next()}</button>`
       : '';
+    // vegetables whose level rose today: the sprite and its new level
+    const lvNow = d.levelUps && d.levelUps.length
+      ? `<div class="sd-lv">${d.levelUps.slice(0, 5).map(u => `<span class="sd-lvup">${cropChip(u.type, u.level, 24)}<i>▲</i></span>`).join('')}</div>`
+      : '';
     const crownNow = d.crownToday ? `<div class="sd-crown">👑 ${t('New city crown! You beat {rival}.', { rival: esc(ct.rival) })}${d.crownBonus ? ` <b class="money">+${money(d.crownBonus)}</b>` : ''}</div>` : '';
     // v0.12.1 (Navid: "it doesn't show how much money i have left"): the money in the jar is the big number, today's
     // harvest beside it; the city and the day were not worth the space
@@ -2336,7 +2375,7 @@ export class GameApp {
       <div class="sd-hero"><span class="sd-cash"><span class="sd-big money">${money(cashNow)}</span><span class="sd-lbl">${t('in the jar')}</span></span>
         <span class="sd-today"><b class="money">+${money(earned)}</b>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('today')}</span></span></div>
       <div class="sd-bill">${ICON.notice(26)}<span class="sb-what"><span class="sb-name">${esc(t(b.name))}</span><span class="sb-due">${dueLine}</span></span><b class="sb-amt">${money(b.amt)}</b>${stamp}</div>
-      ${feeLine}${crownNow}${bossLine}
+      ${feeLine}${crownNow}${bossLine}${lvNow}
       <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house sd-ups" data-act="tree" aria-label="${t('Upgrades')}">${ICON.wrench(28)}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
     </div></div>`;
   }
@@ -2491,17 +2530,19 @@ export class GameApp {
     }
   }
 
-  /** The crop that joins the field this morning (v0.12: day 1 is carrots only, then a new crop each morning). */
+  /** The vegetable that joins the field this morning: the one the bill paid last night brought (0.13, the road). */
   private newTodayRow(): string {
     const run = this.g.run;
     if (!run) return '';
     const plan = this.farmPlan(run);
     const e = engine();
     const st = e.state();
-    const stage = plan.stages[st.day - 1];
-    if (!stage || st.day <= 1) return '';
+    if (st.billsPaid <= 0 || run.stageSeen === st.billsPaid) return '';
+    const i = plan.stages.findIndex(x => x.stage === st.billsPaid);
+    const stage = plan.stages[i];
+    if (!stage) return '';
     const cur = e.stats() as unknown as { dmg: number; vm: number };
-    const pay = stage.val * (cur.vm || 1);
+    const pay = stage.val * (cur.vm || 1) * cropPay(cropLevel((this.g.cropCuts || {})[stage.type] || 0));
     const hp = stage.hp * plan.hp * (1 + plan.hpDay * Math.max(0, st.day - 1));
     const cuts = Math.max(1, Math.ceil(hp / Math.max(0.01, cur.dmg || 1) - 1e-6));
     return newTodayHtml(stage.type, t(cropName(stage.type)), pay, cuts, money);
@@ -2697,7 +2738,8 @@ export class GameApp {
   private openInfo(what: string): void {
     const run = this.g.run;
     let txt = '';
-    if (what === 'mark' && run)
+    if (what === 'mark' && run && run.own) txt = t('This farm is already yours. Its cash pays its bills and nothing else.');
+    else if (what === 'mark' && run)
       txt = t('This farm has paid you {amt} already. Its cash buys upgrades once you hold more than that; your savings always can.', { amt: money(run.mark) });
     const rows = (list: Array<[string, string]>) =>
       `<div class="info-rows">${list.map(([k, v]) => `<div class="ir"><span>${k}</span><b>${v}</b></div>`).join('')}</div>`;
@@ -2716,7 +2758,7 @@ export class GameApp {
       this.openModal('info', `<h2 class="m-title">${t('Dear former customer, enclosed is the deed. We are, frankly, upset.')}</h2>${rows([
         [t('Days'), String(r.days)],
         [t('Earned'), money(r.earned)],
-        [t('Saved'), r.mark > 0 ? (r.banked > 0 ? t('+{amt} above your best', { amt: money(r.banked) }) : t('nothing above your best of {amt}', { amt: money(r.mark) })) : money(r.banked)],
+        [t('Saved'), r.own ? t('Nothing: the farm was already yours') : r.mark > 0 ? (r.banked > 0 ? t('+{amt} above your best', { amt: money(r.banked) }) : t('nothing above your best of {amt}', { amt: money(r.mark) })) : money(r.banked)],
       ])}<button type="button" class="st-btn gold btn-md" data-act="close">${t('Got it')}</button>`, 400);
       return;
     }

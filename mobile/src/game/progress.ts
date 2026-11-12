@@ -40,6 +40,11 @@ export interface RunInfo {
   spent: number;
   /** How much tougher this farm's crops are for the player's build when it started (plan.ts, toughnessFor). */
   tough?: number;
+  /** The player already owned this farm when the run started (0.13, the road): its cash pays its bills and nothing
+   *  else (no upgrades, no savings), and its cuts don't raise a vegetable's level. Stars, the crown and ribbons count. */
+  own?: boolean;
+  /** Bills paid when the last day started: the morning after a bill, the day card shows the vegetable it brought. */
+  stageSeen?: number;
 }
 
 export interface AdCounters {
@@ -121,6 +126,9 @@ export interface GameSave {
   /** The highest track levels this player has had: a farm's crop toughness follows them, so a reset just before a
    *  farm starts can't make its crops softer. */
   peak?: Levels;
+  /** Cuts of each vegetable on farms not yet owned (0.13, the road): a vegetable's level, which raises what it pays
+   *  (road.ts). Never reset. */
+  cropCuts?: Record<string, number>;
   /** Set by the 0.13 migration for one message; not saved again once shown. */
   migratedTree?: { credit: number; nodes: number };
   /** County-fair ribbons for the Bling Barn, and what's bought there. */
@@ -204,6 +212,8 @@ export function parseGame(raw: string | null): GameSave {
       mark: Math.max(0, num(o.run.mark)),
       spent: Math.max(0, num(o.run.spent)),
       ...(num(o.run.tough) > 0 ? { tough: Math.min(4, Math.max(0.5, num(o.run.tough))) } : {}),
+      ...(o.run.own ? { own: true } : {}),
+      ...(num(o.run.stageSeen) > 0 ? { stageSeen: Math.floor(num(o.run.stageSeen)) } : {}),
     };
   }
   g.wallet = Math.max(0, num(o.wallet));
@@ -263,6 +273,11 @@ export function parseGame(raw: string | null): GameSave {
     if (m.credit > 0 || m.nodes.length) g.migratedTree = { credit: m.credit, nodes: m.nodes.length };
   }
   g.treeV = TREE_V;
+  if (o.cropCuts && typeof o.cropCuts === 'object') {
+    const cc: Record<string, number> = {};
+    for (const [k, v] of Object.entries(o.cropCuts as Record<string, unknown>)) if (/^[a-z_]{3,30}$/.test(k) && Number.isFinite(v as number) && (v as number) > 0) cc[k] = Math.min(10_000_000, Math.floor(v as number));
+    g.cropCuts = cc;
+  }
   if (Array.isArray(o.recentEarn)) g.recentEarn = o.recentEarn.map(num).filter((v: number) => v >= 0).slice(-RECENT_DAYS);
   g.flair = parseFlair(o.flair);
   if (o.daily && typeof o.daily === 'object' && typeof o.daily.date === 'string') {
@@ -328,12 +343,14 @@ export function cityProgress(g: GameSave, cityId: string): CityProgress {
 
 /** Farm cash that can buy upgrades and tools during a run: what is above the farm's mark. */
 export function spendableFarmCash(run: RunInfo | null, farmCash: number): number {
-  if (!run) return 0;
+  // a farm the player already owns pays its own bills and nothing else (0.13)
+  if (!run || run.own) return 0;
   return Math.max(0, Math.floor(farmCash - run.mark));
 }
 
 /** What a won run banks into savings: the cash left after the deed, above the farm's mark. */
 export function bankAfterWin(run: RunInfo, cashLeft: number): number {
+  if (run.own) return 0;
   return Math.max(0, Math.round(cashLeft - run.mark));
 }
 
@@ -416,6 +433,13 @@ export function toolLock(g: GameSave, id: ToolId): ToolLock {
 }
 
 /** The farm the player should look at next: the current run, else the first open city not yet won. */
+/** The farthest farm the player has reached: the first open one not won yet (the last one once all are won). */
+export function frontierCity(g: GameSave): string {
+  for (const c of ROUTE) if (cityLock(g, c.id).open && !cityProgress(g, c.id).won) return c.id;
+  for (let i = ROUTE.length - 1; i >= 0; i--) if (cityLock(g, ROUTE[i].id).open) return ROUTE[i].id;
+  return ROUTE[0].id;
+}
+
 export function nextCity(g: GameSave): string {
   if (g.run) return g.run.cityId;
   for (const c of ROUTE) if (cityLock(g, c.id).open && !cityProgress(g, c.id).won) return c.id;

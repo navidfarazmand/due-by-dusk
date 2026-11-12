@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { BILL_COUNT, DAY_SECONDS, billDays, LADDER_HP, LADDER_VAL, allPlans, cropName, planFor, dayRef, expectedPower, toughnessFor } from '../src/game/plan';
+import { BILL_COUNT, BORDER_STEP, BOSSES, DAY_SECONDS, billDays, borders, goldCredit, LADDER_HP, LADDER_VAL, allPlans, cropName, planFor, dayRef, expectedPower, toughnessFor, winCredit } from '../src/game/plan';
+import {
+  CROP_LEVEL_MAX, CROP_LEVEL_PAY, DEBUT, TYPICAL_CUTS, cropLevel, cropLevelProgress, cropPay, cropPayTable, cutsForLevel, debutFarm, knownBefore, typicalCuts,
+} from '../src/game/road';
 import { BLASTER_RANGE_GAIN, bestPower, fieldPower } from '../src/game/power';
 import { COUNTRIES, ROUTE, isBossCity } from '../src/game/world';
 import {
   bankAfterWin, cityLock, coinsForDays, countryLock, newGame, nextCity, paidAfterRun, parseGame, spendableFarmCash, starGate, starsFor, toolLock,
   walletAfterForeclosure, type GameSave, type RunInfo,
 } from '../src/game/progress';
-import { MAX_LEVEL, SHED_FX, UPGRADES, emptyLevels, oldWorkshopRefund, settleJob, startUpgrade, upgradeCost, upgradeDuration } from '../src/game/workshop';
-import { TOOLS, modCost, newTools, parseTools, toolStats, toolSummary } from '../src/game/tools';
+import { MAX_LEVEL, SHED_FX, UPGRADES, emptyLevels, oldWorkshopRefund, settleJob, startUpgrade, upgradeCost, upgradeCostFlat, upgradeDuration, upgradeTier } from '../src/game/workshop';
+import { TOOLS, modCost, newTools, parseTools, toolDef, toolStats, toolSummary } from '../src/game/tools';
 import {
   KEY_BUILD_MS, TREE, TREE_WORKSHOP, buildingNode, buyNode, canBuyNode, nodeCost, nodeDuration, nodeLive, nodePrice, resetTree, settleTree, treeDiscount,
   treeHasAny, treeLevel, treeListValue, treeNode, treeReady, treeRefund, type TreeHolder,
@@ -25,12 +28,13 @@ describe('city plans', () => {
     expect(plans.map(p => p.index)).toEqual(ROUTE.map((_, i) => i));
   });
 
-  it('gives every farm bills of 2, 3, 4, then 5 days, starting with the seed loan and ending with the deed', () => {
-    expect([0, 1, 2, 3, 4, 5, 6].map(billDays)).toEqual([2, 3, 4, 5, 5, 5, 5]);
+  it('gives the first farm bills of 2, 3, 4, then 5 days and later farms 4 days a bill, from the seed loan to the deed', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map(i => billDays(i))).toEqual([2, 3, 4, 5, 5, 5, 5]);
+    expect([0, 1, 2, 6].map(i => billDays(i, 3))).toEqual([4, 4, 4, 4]);
     for (const p of plans) {
       expect(p.bills.length).toBe(BILL_COUNT[p.country] + (p.boss ? 1 : 0));
       expect(p.bills.length).toBeGreaterThanOrEqual(5);
-      p.bills.forEach((b, i) => expect(b.days).toBe(billDays(i)));
+      p.bills.forEach((b, i) => expect(b.days).toBe(billDays(i, p.index)));
       expect(p.totalDays).toBe(p.bills.reduce((a, b) => a + b.days, 0));
       expect(p.bills[0].name).toBe('Seed loan');
       expect(p.bills[p.bills.length - 1].name).toBe('The deed');
@@ -71,29 +75,115 @@ describe('city plans', () => {
     }
   });
 
-  it('starts each farm with carrots only and adds one crop per bill paid, each worth more and tougher', () => {
-    for (const p of plans) {
-      const trio = COUNTRIES.find(c => c.code === p.country)!.trio;
-      expect(p.stages.map(s => s.type).slice(0, 2)).toEqual(['carrot', 'radish']);
-      expect(p.stages).toHaveLength(p.bills.length);
-      expect(p.stages.slice(2, 5).map(s => s.type).sort()).toEqual([...trio].sort());
-      // unlocks: stage n needs n bills paid (the engine adds the city's content level to both sides)
+  it('meets each vegetable once along the road: one a bill in Charlottetown, then one a farm', () => {
+    // Charlottetown: carrots, then one more with each bill paid
+    const first = plans[0];
+    expect(first.stages.map(s => [s.type, s.stage])).toEqual([['carrot', 0], ['radish', 1], ['pei_russet', 2], ['cabbage', 3]]);
+    expect(first.crops.filter(c => c[2] <= 0).map(c => c[0])).toEqual(['carrot']);
+    const met = new Set<string>();
+    plans.forEach((p, k) => {
+      const own = DEBUT[p.cityId];
+      const known = knownBefore(k);
+      expect(p.cropBy).toBe('bill');
+      // a vegetable is new only once, and a country's three are first met on its own farms
+      for (const t of own) {
+        expect(met.has(t)).toBe(false);
+        met.add(t);
+        expect(debutFarm(t)).toBe(k);
+      }
+      const types = p.stages.map(s => s.type);
+      expect(new Set(types).size).toBe(types.length);
+      if (k > 0) {
+        // a later farm opens with vegetables the player knows (the three newest among them) and brings its own new
+        // one when the first bill is paid; it has as many vegetables as bills when the road has that many
+        expect(types.length).toBe(Math.min(p.bills.length, known.length + own.length));
+        const open = p.stages.filter(s => s.stage === 0).map(s => s.type);
+        for (const t of open) expect(known).toContain(t);
+        for (const t of known.slice(-3)) expect(open).toContain(t);
+        expect(p.stages.filter(s => s.stage > 0).map(s => s.type)).toEqual(own);
+        for (const s of p.stages) expect(s.stage).toBe(own.includes(s.type) ? 1 : 0);
+        // the farm's own vegetable is the biggest crop of its field
+        if (own.length) expect(types[types.length - 1]).toBe(own[0]);
+      }
+      // sizes: smallest first, each worth more and tougher than the one before
       p.crops.forEach(([type, , at], i) => {
         expect(type).toBe(p.stages[i].type);
-        expect(at - p.unlock).toBe(i);
+        expect(at).toBe(p.stages[i].stage);
         expect(p.cropVal[type]).toBe(LADDER_VAL[i]);
         expect(p.cropHp[type]).toBe(LADDER_HP[i]);
       });
-      expect(p.crops.filter(c => c[2] - p.unlock <= 0).map(c => c[0])).toEqual(['carrot']);
-      expect(new Set(p.stages.map(s => s.type)).size).toBe(p.stages.length);
       expect(p.goldAt).toBe(p.unlock + 2);
-    }
+    });
+    for (const c of COUNTRIES) for (const t of c.trio) expect(ROUTE[debutFarm(t)].country).toBe(c.code);
+    // every boss is a vegetable the player has met before its farm ends
+    for (const c of COUNTRIES) expect(debutFarm(BOSSES[c.code].type)).toBeLessThanOrEqual(ROUTE.findIndex(x => x.id === c.cities[c.cities.length - 1].id));
+    // the long countries' boss farms bring nothing new
+    for (const id of ['ca_kelowna', 'br_bento', 'fr_agen', 'jp_kagoshima']) expect(DEBUT[id]).toEqual([]);
     for (let i = 1; i < LADDER_VAL.length; i++) {
       expect(LADDER_VAL[i]).toBeGreaterThan(LADDER_VAL[i - 1]);
       expect(LADDER_HP[i]).toBeGreaterThan(LADDER_HP[i - 1]);
     }
     expect(cropName('radish')).toBe('Runaway Radish');
     expect(cropName('pei_russet')).toBe('Hoser Russet');
+  });
+
+  it('steps money up at every border: crops, bills and upgrades', () => {
+    expect(BORDER_STEP).toBeGreaterThanOrEqual(3);
+    expect(plans.map(p => borders(p.index)).filter((b, i, a) => i === 0 || b !== a[i - 1])).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    COUNTRIES.slice(1).forEach(c => {
+      const k = ROUTE.findIndex(x => x.id === c.cities[0].id);
+      const here = plans[k], before = plans[k - 1];
+      // a new country's first bill is more than the deed of the farm before it, and its crops pay several times more
+      expect(here.bills[0].amt).toBeGreaterThan(before.bills[before.bills.length - 1].amt);
+      expect(here.val / before.val).toBeGreaterThan(BORDER_STEP);
+    });
+    // bills never get cheaper: within a farm, and from one farm's deed to the next farm's first bill
+    plans.forEach((p, k) => {
+      for (let i = 1; i < p.bills.length; i++) expect(p.bills[i].amt).toBeGreaterThan(p.bills[i - 1].amt);
+      if (k > 0) expect(p.bills[0].amt).toBeGreaterThan(plans[k - 1].bills[plans[k - 1].bills.length - 1].amt);
+    });
+    // upgrades: Canada's levels cost what they did; the first level of the USA's reach costs BORDER_STEP times the
+    // old curve, and one country's money can't buy the next one's
+    expect(upgradeTier('scythe', 25)).toBe(0);
+    expect(upgradeTier('scythe', 26)).toBe(1);
+    expect(upgradeCost('scythe', 10)).toBe(upgradeCostFlat('scythe', 10));
+    expect(upgradeCost('scythe', 26)! / upgradeCostFlat('scythe', 26)!).toBeCloseTo(BORDER_STEP, 1);
+    for (const u of UPGRADES) for (let l = 1; l < u.max; l++) {
+      expect(upgradeCost(u.id, l)!).toBeGreaterThan(upgradeCost(u.id, l - 1)!);
+      expect(upgradeTier(u.id, l)).toBeGreaterThanOrEqual(upgradeTier(u.id, l - 1));
+    }
+    // tools are priced in the money of the country they are bought in
+    expect(toolDef('sickle').mods[0].base).toBe(300);
+    expect(toolDef('scythe').price).toBe(9000 * BORDER_STEP);
+    expect(toolDef('flame').price).toBe(30000 * BORDER_STEP ** 2);
+    expect(toolDef('blaster').price).toBe(90000 * BORDER_STEP ** 3);
+    // a first win's tree credit follows the farm
+    expect(winCredit(plans[0])).toBeLessThan(winCredit(plans[6]));
+    expect(winCredit(plans[5])).toBeGreaterThan(winCredit(plans[4]));
+    expect(goldCredit(8)).toBeGreaterThan(goldCredit(0));
+  });
+
+  it('raises a vegetable\'s level with the player\'s own cuts', () => {
+    expect(cropLevel(0)).toBe(1);
+    expect(cropLevel(24)).toBe(1);
+    expect(cropLevel(25)).toBe(2);
+    expect(cutsForLevel(1)).toBe(0);
+    for (let l = 2; l <= CROP_LEVEL_MAX; l++) {
+      expect(cutsForLevel(l)).toBeGreaterThan(cutsForLevel(l - 1));
+      expect(cropLevel(cutsForLevel(l))).toBe(l);
+      expect(cropLevel(cutsForLevel(l) - 1)).toBe(l - 1);
+    }
+    expect(cropLevel(1e9)).toBe(CROP_LEVEL_MAX);
+    expect(cropPay(1)).toBe(1);
+    expect(cropPay(CROP_LEVEL_MAX)).toBeCloseTo(1 + CROP_LEVEL_PAY * (CROP_LEVEL_MAX - 1), 6);
+    expect(cropLevelProgress(0)).toBe(0);
+    expect(cropLevelProgress(1e9)).toBe(1);
+    expect(cropPayTable({ carrot: 0, radish: 25, onion: 1e9 })).toEqual({ radish: cropPay(2), onion: cropPay(CROP_LEVEL_MAX) });
+    expect(cropPayTable(undefined)).toEqual({});
+    // the bots' typical player: about a hundred cuts of each vegetable of a field per farm
+    const cuts = typicalCuts(2, i => plans[i].bills.length);
+    expect(cuts.carrot).toBe(TYPICAL_CUTS * 2);
+    expect(cuts.fiddlehead).toBe(TYPICAL_CUTS);
   });
 
   it('gives days of 15 seconds before upgrades', () => {

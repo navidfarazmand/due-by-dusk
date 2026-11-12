@@ -1,13 +1,15 @@
 // City plans: what each of the 30 farms asks of the player. Pure data and maths, no DOM, so it can be tested.
 //
 // A farm is a run of bills; the last one is the deed. v0.12 (Navid, 5 Nov): the first bill is due after 2 days, the
-// next after 3, then 4, then 5 (and 5 from then on), and a new crop joins the field every morning: day 1 carrots,
-// day 2 radishes, then the country's three, then staples, so the field is full by about day 6. Each new crop pays
-// more and takes more cuts than the one before. Bills follow what the field can pay, tuned with bots so a weak
-// player can't pay even with an ad, an average one pays with one ad, and a computer-strong one needs none.
-// City by city, crops get tougher (hp) and pay more (val), and farms get longer.
+// next after 3, then 4, then 5 (and 5 from then on). v0.13 (Navid, 10 Nov; src/game/road.ts): the farms are one road.
+// A vegetable is met once: Charlottetown brings one with each bill, every later farm opens with vegetables the player
+// knows and brings its own new one when the first bill is paid. Bigger crops pay more and take more cuts. Bills
+// follow what the field can pay, tuned with bots so a weak player can't pay even with an ad, an average one pays
+// with one ad, and a computer-strong one needs none. Farm by farm, crops get tougher (hp) and pay more (val); at
+// every border money steps up (BORDER_STEP): what crops pay, the bills and the upgrades of that country's reach.
 
 import { COUNTRIES, ROUTE, type CityDef, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from './world';
+import { fieldKinds } from './road';
 
 export interface Bill {
   name: string;
@@ -19,10 +21,12 @@ export interface Bill {
 
 export type CropWeight = [type: string, weight: number, unlockAt: number];
 
-/** One step of a farm's crop ladder: the crop that joins the field once `stage` bills are paid. */
+/** One vegetable of a farm's field: it joins once `stage` bills are paid (0: there from the first morning). */
 export interface StageCrop {
   type: string;
   stage: number;
+  /** New to the road on this farm (road.ts). */
+  debut?: boolean;
   /** Base value and toughness, before the city's multipliers (val, hp) and the player's upgrades. */
   val: number;
   hp: number;
@@ -68,7 +72,9 @@ export interface CityPlan {
   unlock: number;
   goldAt: number;
   crops: CropWeight[];
-  /** The crop ladder (stage 0 is carrots only). */
+  /** 'bill': a crop's unlockAt counts bills paid on the farm (0.13); without it, the farm's content level. */
+  cropBy?: 'bill';
+  /** The farm's vegetables, smallest first, each with the bills paid before it joins (road.ts). */
   stages: StageCrop[];
   /** Base value and toughness per crop type on this farm (the engine uses these instead of the crop's own). */
   cropVal: Record<string, number>;
@@ -102,34 +108,31 @@ export const BOSSES: Record<CountryCode, { type: string; name: string }> = {
 /** Bills per farm in each country (the boss farm has one more). */
 export const BILL_COUNT: Record<CountryCode, number> = { CA: 5, US: 5, BR: 6, MA: 6, FR: 6, CN: 7, JP: 7 };
 /** Days a bill gives you, from the one before (Navid, 5 Nov: 2, 3, 4, 5, then 5). */
-export function billDays(i: number): number {
+export function billDays(i: number, k = 0): number {
+  // v0.13 (Navid, 11 Nov: "bills will get cheap with new city/farm"): the 2, 3, 4, 5 days stay on the first farm,
+  // where they teach the game; from the second farm on every bill gives 4 days, so a farm's first bill is not a
+  // small two-day bill after the last farm's five-day deed
+  if (k > 0) return LATER_BILL_DAYS;
   return Math.min(5, 2 + Math.max(0, i));
 }
+export const LATER_BILL_DAYS = 4;
 /** The farm's day on which bill `i` is due. */
-export function billDueDay(i: number): number {
+export function billDueDay(i: number, k = 0): number {
   let d = 0;
-  for (let j = 0; j <= i; j++) d += billDays(j);
+  for (let j = 0; j <= i; j++) d += billDays(j, k);
   return d;
-}
-/** Which rung of the crop ladder is out on a day (day 1 is carrots only, a new crop every morning). */
-export function stageOnDay(day: number, rungs: number): number {
-  return Math.max(0, Math.min(rungs - 1, day - 1));
 }
 /** Seconds of daylight with no upgrades. v0.12 (Navid, 5 Nov): 15 s; Longer days and skills add up to about 30. */
 export const DAY_SECONDS = 15;
 
 /**
- * The crop ladder: value, toughness and how often it comes up, by stage. Value per cut stays about the same, so a
- * tougher crop pays more only for a player who keeps up with it.
+ * A field's vegetables by size, smallest first: value, toughness and how often each comes up. Value per cut stays
+ * about the same, so a tougher crop pays more only for a player who keeps up with it. On a farm, the vegetables the
+ * player has known longest are the small ones and the farm's own new vegetable is the biggest.
  */
 export const LADDER_VAL = [1, 3, 5, 7.5, 10, 12.5, 15, 18];
 export const LADDER_HP = [1, 2.5, 4.5, 7, 10, 13, 16.5, 20];
 const LADDER_W = [14, 16, 18, 20, 22, 22, 22, 22];
-
-/** What a day pays at each stage of the ladder, against a day with the whole ladder out (dayRef). Measured with
- * bot playthroughs: carrots alone pay about a fifth of a full field; golden corn, the goat and the crows arrive at
- * the third stage. */
-export const STAGE_PAY = [0.25, 0.43, 0.75, 0.92, 1, 1.06, 1.12, 1.18];
 
 /**
  * Bill pressure per country (and per city in Canada). The first farm is gentle; from the third on the bills take
@@ -214,18 +217,19 @@ const SIGNATURE: Record<string, string> = {
   jp_sapporo: 'frost', jp_aomori: 'frost', jp_shizuoka: 'market', jp_kyoto: 'fair', jp_kagoshima: 'gale',
 };
 
-/** Staples that fill the end of a long ladder when the city's own list runs out. */
-const STAPLES = ['cabbage', 'onion', 'pumpkin', 'berry', 'potato'];
-
-/** The crops of a farm in the order they join the field: carrots, radishes, the country's three (in the city's
- * own order, its favourite first), then the city's staples. */
-export function ladderFor(city: CityDef): string[] {
-  const trio = countryOf(city.country).trio;
-  const own = city.crops.filter(c => trio.includes(c));
-  for (const t of trio) if (!own.includes(t)) own.push(t);
-  const staples = city.crops.filter(c => !trio.includes(c) && c !== 'carrot' && c !== 'radish' && c !== 'golden');
-  for (const s of STAPLES) if (!staples.includes(s)) staples.push(s);
-  return ['carrot', 'radish', ...own, ...staples];
+/** Money steps up at every border (v0.13; Navid, 10 Nov: "we have to make the new bills much more expensive so that it
+ *  cannot be paid by old farms at all. bills as well as upgrades… the upgrades jump from 50 to 200 then to 2000"):
+ *  what crops pay, the bills, the record and the bounty of a farm are this many times the country before, on top of
+ *  the farm-by-farm growth. Upgrades step with them (workshop.ts, tools.ts, tree.ts), so the balance inside a country
+ *  is the same as without the step, and money from an earlier country buys little in the next. */
+export const BORDER_STEP = 4;
+/** Borders crossed before farm k (0 in Canada, 6 in Japan). */
+export function borders(k: number): number {
+  const c = ROUTE[Math.max(0, Math.min(ROUTE.length - 1, k))];
+  return Math.max(0, COUNTRIES.findIndex(x => x.code === c.country));
+}
+export function borderMul(k: number): number {
+  return Math.pow(BORDER_STEP, borders(k));
 }
 
 /** What a steady player (one who upgrades as they go) earns in a day at route index k, with the whole ladder out.
@@ -235,7 +239,8 @@ const DAYREF_CANADA = [230, 330, 430, 560, 720, 1000];
 export function dayRef(k: number): number {
   if (k < DAYREF_CANADA.length) return DAYREF_CANADA[k];
   // the USA starts at about half again Kelowna: a player arrives with Canada's boss bounty and twelve days of upgrades
-  return Math.round(1550 * Math.pow(1.45, k - DAYREF_CANADA.length));
+  // (and money steps up at every border)
+  return Math.round(1550 * Math.pow(1.45, k - DAYREF_CANADA.length) * borderMul(k));
 }
 
 /**
@@ -274,7 +279,7 @@ export function hpMul(k: number): number {
 /** What crops are worth by route index: 11.5% a farm through Austin, 37% after, so an on-track player's day keeps up
  * with the bills (45% a farm) while the market stall, skills and a fuller field add the rest. */
 export function valMul(k: number): number {
-  return Math.pow(1.115, Math.min(6, k)) * Math.pow(1.37, Math.max(0, k - 6));
+  return Math.pow(1.115, Math.min(6, k)) * Math.pow(1.37, Math.max(0, k - 6)) * borderMul(k);
 }
 
 /**
@@ -289,10 +294,13 @@ export function valMul(k: number): number {
  * Bento, Avignon, Agen, Sapporo and Kagoshima) are front-loaded: an on-track build cuts the first crops as fast as
  * they come, and the longer ladders get tough. Between the rows the shape is blended by farm.
  */
+// v0.13 (the road): from the second farm on the field opens with vegetables the player knows, so the days are about
+// even: bots on 11 Nov (two runs a farm through the USA, one on every other later farm) earned about 40% more on
+// day 1 (a fresh field) in Canada and the USA and an even day from Brazil on.
 const DAY_SHAPES: Array<[k: number, days: number[], later: number]> = [
-  [8, [0.61, 0.88, 1.15, 1.13, 1.11], 0.96],
-  [13, [1.0, 1.2, 1.45, 1.3, 1.2, 1.1, 1.0], 1],
-  [21, [1.9, 1.8, 1.75, 1.5, 1.3, 1.15, 1.05], 1],
+  [0, [0.61, 0.88, 1.15, 1.13, 1.11], 0.96],
+  [8, [1.4, 1.1, 1.0, 1.0, 1.0], 1],
+  [13, [1.0, 1.0, 1.0, 1.0, 1.0], 1],
 ];
 function shapeRow(i: number, d: number): number {
   const [, days, later] = DAY_SHAPES[i];
@@ -310,11 +318,11 @@ export function dayShape(d: number, k = 0): number {
 }
 /** An average player's settled day on farm k, as a share of dayRef(k) (measured on 25 s days before v0.12). */
 const AVG_POINTS: Array<[k: number, share: number]> = [
-  // Canada and the USA: each farm measured (two runs of days 1, 2, 3, 5, 8, 12 and 19 per player)
-  [0, 0.307], [1, 0.341], [2, 0.253], [3, 0.32], [4, 0.3], [5, 0.294], [6, 0.246], [7, 0.308], [8, 0.251],
-  // later countries: a line through one run each on Belém (0.32), Bento (0.24), Avignon (0.23), Agen (0.18),
-  // Sapporo (0.18) and Kagoshima (0.16); to measure again with more runs
-  [9, 0.29], [19, 0.218], [29, 0.143],
+  // v0.13 (the road, bots on 11 Nov): the field no longer starts again on carrots, so an average day pays about a
+  // third more than 0.12's measurements (×1.15 on Gatineau, ×1.38 on the rest of Canada, ×1.33 in the USA, ×1.4 in
+  // Brazil, ×1.27 after); Charlottetown, which still brings a vegetable with each bill, is as it was
+  [0, 0.307], [1, 0.392], [2, 0.349], [3, 0.442], [4, 0.414], [5, 0.406], [6, 0.327], [7, 0.41], [8, 0.334],
+  [9, 0.406], [13, 0.37], [14, 0.364], [19, 0.277], [29, 0.182],
 ];
 export function avgDayShare(k: number): number {
   const P = AVG_POINTS;
@@ -337,6 +345,8 @@ export const BILL_CLIMB = 0.01;
 export const RECORD_DAYS = 1.6;
 
 function moneyStep(v: number): number {
+  // three figures from a million up ($1.23M, $45.6M, $1.07B)
+  if (v >= 1_000_000) return Math.pow(10, Math.floor(Math.log10(v)) - 2);
   return v < 100 ? 5 : v < 1000 ? 10 : v < 10000 ? 50 : v < 100000 ? 100 : 500;
 }
 function roundMoney(v: number): number {
@@ -373,6 +383,16 @@ function pickBillNames(city: CityDef, k: number, n: number): Array<[string, stri
   return out;
 }
 
+const DEEDS = new Map<number, number>();
+/** What farm k's deed asks (cached: each farm's bills start above the farm before). */
+function deedOf(k: number): number {
+  let v = DEEDS.get(k);
+  if (v == null) {
+    const b = planFor(ROUTE[k].id).bills;
+    DEEDS.set(k, (v = b[b.length - 1].amt));
+  }
+  return v;
+}
 export function planFor(cityId: string): CityPlan {
   const k = routeIndex(cityId);
   if (k < 0) throw new Error('unknown city ' + cityId);
@@ -382,9 +402,11 @@ export function planFor(cityId: string): CityPlan {
   const ref = dayRef(k);
   const mul = billMul(cityId);
   const names = pickBillNames(city, k, n);
-  let prevAmt = 0;
+  // v0.13 (Navid, 11 Nov): bills never get cheaper from one farm to the next: the first bill asks more than the
+  // farm before asked for its deed
+  let prevAmt = k > 0 ? deedOf(k - 1) : 0;
   const bills: Bill[] = names.map((nm, i) => {
-    const from = i ? billDueDay(i - 1) + 1 : 1, to = billDueDay(i);
+    const from = i ? billDueDay(i - 1, k) + 1 : 1, to = billDueDay(i, k);
     let sum = 0,
       best = 0;
     for (let d = from; d <= to; d++) {
@@ -395,7 +417,7 @@ export function planFor(cityId: string): CityPlan {
     return {
       name: nm[0],
       note: nm[1],
-      days: billDays(i),
+      days: billDays(i, k),
       // a boss farm: time spent on the boss earns nothing, so its bills are lighter; the bounty helps with the deed
       // later bills climb a little (a perk comes with every bill paid, and upgrades keep coming)
       amt: (prevAmt = Math.max(roundMoney((sum + BILL_OVER * best) * (1 + BILL_CLIMB * i) * mul * (boss ? (i === n - 1 ? 1 : 0.85) : 1)), moreThan(prevAmt))),
@@ -403,16 +425,17 @@ export function planFor(cityId: string): CityPlan {
   });
   // the goat and the crows come after two bills on the first farms, from the start later on
   const unlock = Math.min(5, Math.floor(k / 2));
-  const ladder = ladderFor(city).slice(0, n);
-  const stages: StageCrop[] = ladder.map((type, i) => ({ type, stage: i, val: LADDER_VAL[i], hp: LADDER_HP[i] }));
-  const crops: CropWeight[] = stages.map(s => [s.type, LADDER_W[s.stage], unlock + s.stage]);
+  // the field's vegetables, smallest first (road.ts): the ones the player knows, then this farm's own new one
+  const top = LADDER_VAL.length - 1;
+  const stages: StageCrop[] = fieldKinds(k, n).map((f, i) => ({ type: f.type, stage: f.stage, debut: f.debut, val: LADDER_VAL[Math.min(top, i)], hp: LADDER_HP[Math.min(top, i)] }));
+  const crops: CropWeight[] = stages.map((s, i) => [s.type, LADDER_W[Math.min(top, i)], s.stage]);
   const cropVal: Record<string, number> = {};
   const cropHp: Record<string, number> = {};
   for (const s of stages) {
     cropVal[s.type] = s.val;
     cropHp[s.type] = s.hp;
   }
-  const totalDays = billDueDay(n - 1);
+  const totalDays = billDueDay(n - 1, k);
   // Bosses take longer in later countries: 14 s of steady hitting in Canada, 38 s in Japan.
   const ci = COUNTRIES.findIndex(c => c.code === city.country);
   const bossFight: BossFight | undefined = boss
@@ -436,6 +459,7 @@ export function planFor(cityId: string): CityPlan {
     unlock,
     goldAt: unlock + 2,
     crops,
+    cropBy: 'bill',
     stages,
     cropVal,
     cropHp,
@@ -449,6 +473,15 @@ export function planFor(cityId: string): CityPlan {
     billMul: mul,
     ...(bossFight ? { bossFight } : {}),
   };
+}
+
+/** Tree credit for winning a farm the first time: two of its average days (a boss farm: four). */
+export function winCredit(plan: CityPlan): number {
+  return roundMoney(plan.dayRef * avgDayShare(plan.index) * (plan.boss ? 4 : 2));
+}
+/** Tree credit for the day's first gold medal on the daily farm: an average day on the farthest farm reached. */
+export function goldCredit(k: number): number {
+  return roundMoney(dayRef(k) * avgDayShare(k));
 }
 
 const STAPLE_NAMES: Record<string, string> = {

@@ -16577,6 +16577,10 @@ export function startGeminiEngine() {
     return '$' + Math.floor(Math.max(0, v)).toLocaleString('en-US');
   }
   function fmtGain(v) {
+    // v0.13: money steps up at every border, so a late farm's crops pay in thousands and millions
+    if (v >= 1e9) return '+$' + (v / 1e9).toFixed(v >= 1e10 ? 1 : 2).replace(/\.0+$/, '') + 'B';
+    if (v >= 1e6) return '+$' + (v / 1e6).toFixed(v >= 1e7 ? 1 : 2).replace(/\.0+$/, '') + 'M';
+    if (v >= 1e5) return '+$' + Math.floor(v / 1000) + 'K';
     return v < 10
       ? '+$' + (Math.floor(v * 10) / 10).toFixed(1).replace(/\.0$/, '')
       : '+$' + Math.floor(v).toLocaleString('en-US');
@@ -16931,7 +16935,13 @@ export function startGeminiEngine() {
   const FIELD = Object.assign({ size: 1.25, count: 0.85, spawn: 1, pay: 1, chain: 1 }, window.__DBD_FIELD || {});
   function cropBaseVal(type) {
     const p = plan();
-    return (p && p.cropVal && p.cropVal[type] != null ? p.cropVal[type] : CROP[type].val) * FIELD.pay;
+    return (p && p.cropVal && p.cropVal[type] != null ? p.cropVal[type] : CROP[type].val) * FIELD.pay * cropLevelPay(type);
+  }
+  /** v0.13 (the road): a vegetable pays more the more of it the player has cut (its level; src/game/road.ts). The
+   *  shell hands the multipliers over as window.__DBD_CROPLV; a daily farm or a duel sets none. */
+  function cropLevelPay(type) {
+    const t = window.__DBD_CROPLV;
+    return t && t[type] > 1 ? t[type] : 1;
   }
   function cropBaseHp(type) {
     const p = plan();
@@ -17821,7 +17831,7 @@ export function startGeminiEngine() {
   }
   let combo = 0,
     comboTimer = 0,
-    today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0 },
+    today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0, kinds: {} },
     coinTarget = null,
     lastBump = 0;
   /** What a tuning bot sees each step (see update). */
@@ -17896,7 +17906,10 @@ export function startGeminiEngine() {
             ['pumpkin', 6, 2],
             ['potato', 5, 2],
           ];
-    const w = T.filter((t) => paid >= t[2] && CROP[t[0]]);
+    // v0.13 (the road): a farm's vegetables join by bills paid (Charlottetown one a bill; later farms their own new
+    // one after the first bill), not one every morning
+    const have = pl && pl.cropBy === 'bill' ? farm.billsPaid || 0 : paid;
+    const w = T.filter((t) => have >= t[2] && CROP[t[0]]);
     let r = R() * w.reduce((a, b) => a + b[1], 0);
     for (const t of w) {
       r -= t[1];
@@ -18057,7 +18070,7 @@ export function startGeminiEngine() {
     pSpeed = 0;
     aftershock = null;
     paused = false;
-    today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0, boss: 0 };
+    today = { earned: 0, count: 0, best: 0, bonus: 0, rushes: 0, lucky: 0, boss: 0, kinds: {} };
     if (fieldSeed) for (const k in fieldSeq) fieldSeq[k] = 0;
     goatTimer = unlockLevel() >= 2 ? 3 + fieldRng('timer')() * 5 : Infinity;
     goat = null;
@@ -18494,6 +18507,14 @@ export function startGeminiEngine() {
   function isNewToday(type) {
     const pl = plan();
     if (!pl || !pl.crops || farm.day < 2) return false;
+    if (pl.cropBy === 'bill') {
+      // v0.13: the vegetable the last bill brought, on the morning after that bill
+      const n = farm.billsPaid || 0;
+      if (n < 1) return false;
+      let due = 0;
+      for (let i = 0; i < n; i++) due += billObj(i).days || 0;
+      return farm.day === due + 1 && pl.crops.some((t) => t[0] === type && t[2] === n);
+    }
     const lv = unlockLevel();
     return pl.crops.some((t) => t[0] === type && t[2] === lv);
   }
@@ -20303,6 +20324,8 @@ export function startGeminiEngine() {
     farm.harvested += 1;
     today.earned += v;
     today.count += 1;
+    // v0.13: cuts by vegetable (the shell raises a vegetable's level with them)
+    if (today.kinds) today.kinds[c.type] = (today.kinds[c.type] || 0) + 1;
     today.bonus += v - baseValue;
     if (c.lucky) today.lucky++;
     const top = c.y - def.top * c.ds;
@@ -25260,10 +25283,19 @@ export function startGeminiEngine() {
         renderAll();
         return true;
       };
-      /** Tests and tuning only: jump the farm to day `d` (the crops of that morning), with no bill due before it. */
-      engineApi.devDay = (d) => {
+      /** Tests and tuning only: jump the farm to day `d`, with no bill due before it (and `paid` bills paid). */
+      engineApi.devDay = (d, paid) => {
         if (!window.__DBD_DEV_HOOKS || mode !== 'idle' || !farm) return false;
         farm.day = Math.max(1, Math.floor(d));
+        // v0.13: `paid` bills already paid (a farm's vegetables join by bills paid), the next one due on time
+        if (paid != null) {
+          const n = Math.max(0, Math.min(billCount() - 1, Math.floor(paid)));
+          farm.bill = n;
+          farm.billsPaid = n;
+          let due = 0;
+          for (let i = 0; i <= n; i++) due += billObj(i).days || 0;
+          farm.due = due;
+        }
         farm.due = Math.max(farm.due, farm.day);
         cur = stats();
         save();
