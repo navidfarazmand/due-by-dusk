@@ -123,7 +123,8 @@ test('the farmhouse fits the screen: the day card between the tiles, and every p
 });
 
 test('tools: buy the scythe, put it in hand and add an attachment', async ({ page }) => {
-  await boot(page, seeded(CA, 15000));
+  // v0.13: tools are priced in the money of the country they are bought in (the scythe in the USA)
+  await boot(page, seeded(CA, 100000));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('us_austin'));
   await act(page, 'panel', 'tools');
   await act(page, 'tool', 'scythe');
@@ -595,44 +596,24 @@ test('the first farm: carrots only on day 1, a bill paid on its evening opens a 
   expect(errors).toEqual([]);
 });
 
-test('a farm pays out once: a replay keeps its cash for the bills and banks only what beats the best', async ({ page }) => {
+test('a farm you own pays its own bills and nothing else: its cash buys no upgrades and none goes to savings (0.13)', async ({ page }) => {
   const save = seeded([], 0);
   (save.cities as any).ca_charlottetown = { won: true, stars: 1, bestDay: 200, crown: false, bestDays: 10, plays: 1, paid: 500 };
   const errors = await boot(page, save);
-  await act(page, 'continue');
-  await act(page, 'enter', 'CA');
-  await act(page, 'city', 'ca_charlottetown');
-  await expect(page.locator('.scr-country .city-card')).toContainText('Paid you so far: $500');
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
-  await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(300));
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.own)).toBe(true);
+  await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(5000));
   await page.evaluate(() => (window as any).__DBD_APP.refresh());
+  // the note behind the "i" says so
   await act(page, 'panel', 'tools');
-  // the payout note sits behind an "i" next to the cash (Navid, 3 Nov), not above the cards
   await page.locator('.scr-modal .up-info').click();
-  await expect(page.locator('.scr-modal .info-text')).toContainText('$500');
+  await expect(page.locator('.scr-modal .info-text')).toContainText('already yours');
   await act(page, 'close');
-  // $300 on the farm is below the $500 mark: no upgrade can be bought with it (the tree shows $0 to spend)
+  // $5,000 on the farm buys nothing: the tree shows $0 to spend
   await expect(page.locator('.scr-farmhouse .ft-badge')).toHaveCount(0);
   await act(page, 'tree');
   await expect(page.locator('.scr-tree .tr-cash')).toContainText('$0');
   await expect(page.locator('.scr-tree .tr-nd.ready')).toHaveCount(0);
-  await page.locator('.scr-tree .tr-nd[data-arg="r2"]').click();
-  await expect(page.locator('.scr-tree [data-act="tree-buy"][data-arg="r2"]')).toBeDisabled();
-  await page.locator('.scr-tree [data-act="tree-back"]').click();
-  await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(300));
-  await page.evaluate(() => (window as any).__DBD_APP.refresh());
-  // $600 on the farm: $100 above the mark buys the cheapest upgrades
-  await expect(page.locator('.scr-farmhouse .ft-badge')).toBeVisible();
-  await act(page, 'tree');
-  await expect(page.locator('.scr-tree .tr-cash')).toContainText('$100');
-  await expect(page.locator('.scr-tree .tr-nd.ready').first()).toBeVisible();
-  const cost = await page.evaluate(() => (window as any).__DBD_WORKSHOP.upgradeCost('hands', 2));
-  await page.locator('.scr-tree .tr-nd[data-arg="r2"]').click();
-  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="r2"]').click();
-  const g = await page.evaluate(() => (window as any).__DBD_APP.g);
-  expect(g.workshop.levels.hands).toBe(3);
-  expect(cost).toBeLessThanOrEqual(100);
-  expect(g.run.spent).toBe(cost);
   expect(errors).toEqual([]);
 });
 
