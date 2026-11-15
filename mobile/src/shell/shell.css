@@ -837,3 +837,22 @@ button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tab
 .sd-lvup { display: inline-flex; align-items: flex-end; gap: 2px; animation: sdLvPop .45s cubic-bezier(.2, 1.6, .4, 1) both; }
 .sd-lvup > i { font-style: normal; font-size: 10px; color: #2f9e44; margin-left: 5px; }
 @keyframes sdLvPop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* 0.13.1 (Navid, 14 Nov): a node not next to one you own is locked: faded, a padlock, no name until it is next */
+.tr-nd.locked .tr-art { opacity: .34; }
+.tr-lockcard .tr-head h3 { color: rgba(255, 241, 214, .8); }
+/* a purchase: the node pops with a gold burst, the Buy button goes down and comes back up */
+.tr-burst { pointer-events: none; transform-box: fill-box; transform-origin: center; opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .tr-nd.bought .tr-art { animation: dbdTrPop .5s cubic-bezier(.2, 1.7, .4, 1) both; }
+  @keyframes dbdTrPop { 0% { transform: scale(.82); } 100% { transform: scale(1); } }
+  .tr-burst { animation: dbdTrBurst .65s ease-out both; }
+  @keyframes dbdTrBurst { 0% { opacity: 1; transform: scale(.9); stroke-width: 7px; } 100% { opacity: 0; transform: scale(1.9); stroke-width: 1px; } }
+  .st-btn.tr-buy.bought { animation: dbdTrPress .42s ease-out both; }
+  @keyframes dbdTrPress { 0% { transform: translateY(3px) scale(.95); box-shadow: 0 0 0 var(--dbd-ink); } 55% { transform: translateY(-2px) scale(1.03); } 100% { transform: none; } }
+}
+
+/* Sundown, 0.13.1 (Navid, 14 Nov): today's harvest is the big number on top; the jar is a smaller line under it */
+.sd-hero { flex-direction: column; align-items: center; gap: 3px; padding: 2px 0 2px; }
+.sd-today b.sd-big { font: 400 50px/1 var(--ui-display); color: var(--dbd-deep-green, #2E7D32); }
+.sd-hero .sd-cash .money { font: 400 22px/1 var(--ui-display); color: var(--dbd-ink); }

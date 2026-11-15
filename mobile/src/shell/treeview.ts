@@ -2,10 +2,12 @@
 // to pan (the map scrolls) and zoom, with a card for the chosen node. A player buys upgrades every evening, so it
 // opens centred on the trunk with every node that can be bought now ringed in gold, the trunk's card lists them, and
 // a node's card has one big Buy button with the price. Pure render functions; GameApp owns the state and the clicks.
+// 0.13.1 (Navid, 14 Nov): one money, gold (tree credit is gone); a node not next to one you own is locked: a padlock,
+// faded, and no name or effect until it is next in line; no reset.
 
 import { t } from '../i18n/i18n';
 import {
-  BRANCHES, TREE, TREE_WORKSHOP, buildingNode, canBuyNode, nodeDuration, treeHasAny, treeLevel, treeNode, type BuyCheck, type TreeBranch, type TreeNode,
+  BRANCHES, TREE, TREE_WORKSHOP, buildingNode, canBuyNode, nodeDuration, treeLevel, treeNode, type BuyCheck, type TreeBranch, type TreeNode,
 } from '../game/tree';
 import { formatDuration, upgradeDef } from '../game/workshop';
 import type { GameSave } from '../game/progress';
@@ -21,9 +23,10 @@ export const TREE_ZOOMS = [620, 820, 1100];
 export interface TreeUi {
   sel: string;
   zoom: number;
-  resetArmed: boolean;
-  /** Everything a node can be bought with now: tree credit, savings and the farm's cash above its mark. */
+  /** Everything a node can be bought with now: savings and the farm's cash above its mark. */
   money: number;
+  /** The node just bought: it and the Buy button pop once. */
+  bought?: string;
   /** A rewarded ad is loaded for "Finish now". */
   ad: boolean;
   now: number;
@@ -43,9 +46,12 @@ function pos(n: TreeNode): [number, number] {
 const P: Record<string, [number, number]> = {};
 for (const n of TREE) P[n.id] = pos(n);
 
-/** A small tree: the sign of tree credit (it buys upgrades only). */
-export function creditIcon(size = 18): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22V13" stroke="#2B1708" stroke-width="3.4" stroke-linecap="round"/><path d="M12 2.5c4.6 0 7.5 3 7.5 6.6 0 3.4-3 5.9-7.5 5.9s-7.5-2.5-7.5-5.9c0-3.6 2.9-6.6 7.5-6.6Z" fill="#6DBE45" stroke="#2B1708" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="9" r="2.6" fill="#FFC23D" stroke="#2B1708" stroke-width="1.6"/></svg>`;
+/** A padlock in the tree's 24-unit glyph box (a locked node). */
+const LOCK_PATH = 'M7.5 11V8.2a4.5 4.5 0 0 1 9 0V11 M5.5 11h13v9.5h-13z M12 14.6v2.6';
+
+/** A node is open when it is the trunk, owned, being built, or next to one you own. Only open nodes show what they are. */
+export function nodeOpen(g: GameSave, n: TreeNode, building: string | null): boolean {
+  return n.kind === 'trunk' || treeLevel(g, n.id) > 0 || building === n.id || n.parents.some(p => treeLevel(g, p) > 0);
 }
 
 /** Short money for the map and the lists ($12k); the Buy button shows the exact price. */
@@ -61,21 +67,39 @@ interface View {
   /** Can be bought right now with the money at hand. */
   ready: boolean;
   building: boolean;
+  /** Next to a node you own (or owned): its name, effect and price can be seen. */
+  open: boolean;
 }
 
 function view(g: GameSave, n: TreeNode, ui: TreeUi, building: string | null): View {
   const chk = canBuyNode(g, n);
-  return { have: treeLevel(g, n.id), chk, ready: chk.ok && chk.cost <= ui.money, building: building === n.id };
+  return { have: treeLevel(g, n.id), chk, ready: chk.ok && chk.cost <= ui.money, building: building === n.id, open: nodeOpen(g, n, building) };
 }
 
-function nodeSvg(n: TreeNode, v: View, sel: string): string {
+/** A locked node: its outline only, faded, with a padlock instead of its sign. */
+function lockedSvg(n: TreeNode, sel: string): string {
+  const [x, y] = P[n.id];
+  const col = n.kind === 'bridge' ? COL.bridge : COL[n.branch];
+  const r = n.kind === 'key' ? 24 : n.kind === 'track' ? 21 : n.kind === 'bridge' ? 16 : 19;
+  const shape = n.kind === 'key'
+    ? `<path d="M${x} ${y - r} L${x + r} ${y} L${x} ${y + r} L${x - r} ${y} Z" fill="#221A38" stroke="${col}" stroke-width="2.5"/>`
+    : n.kind === 'track'
+      ? `<rect x="${x - r}" y="${y - r}" width="${r * 2}" height="${r * 2}" rx="12" fill="#221A38" stroke="${col}" stroke-width="2.5"/>`
+      : `<circle cx="${x}" cy="${y}" r="${r}" fill="#221A38" stroke="${col}" stroke-width="2.5"/>`;
+  const s = n.kind === 'bridge' ? 14 : 18;
+  const halo = n.id === sel ? `<circle cx="${x}" cy="${y}" r="${r + 9}" fill="none" stroke="#FFF1D6" stroke-width="3" opacity=".6"/>` : '';
+  return `<g class="tr-nd locked" data-act="tree-node" data-arg="${n.id}" role="button" aria-label="${esc(t('Locked'))}"><circle cx="${x}" cy="${y}" r="26" fill="transparent"/><g class="tr-art">${halo}${shape}<g transform="translate(${x - s / 2} ${y - s / 2}) scale(${s / 24})"><path d="${LOCK_PATH}" fill="none" stroke="#FFF1D6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g></g></g>`;
+}
+
+function nodeSvg(n: TreeNode, v: View, sel: string, bought?: string): string {
+  if (!v.open) return lockedSvg(n, sel);
   const [x, y] = P[n.id];
   const col = n.kind === 'bridge' ? COL.bridge : COL[n.branch];
   const have = v.have > 0;
   const fill = have ? col : '#221A38';
   const ink = have || n.kind === 'key' || n.kind === 'trunk' ? '#161126' : '#FFF1D6';
-  // a node that is out of reach (locked, its partner owned, not built yet) is dimmed
-  const far = !have && !v.building && !v.chk.ok && (v.chk.why === 'locked' || v.chk.why === 'pair' || v.chk.why === 'soon');
+  // next in line but out of reach (its partner owned, not built yet) is dimmed
+  const far = !have && !v.building && !v.chk.ok && (v.chk.why === 'pair' || v.chk.why === 'soon');
   let shape = '', size = 20, ring = 27;
   if (n.kind === 'trunk') {
     shape = `<circle cx="${x}" cy="${y}" r="29" fill="${COL.trunk}" stroke="#161126" stroke-width="3"/>`;
@@ -114,9 +138,11 @@ function nodeSvg(n: TreeNode, v: View, sel: string): string {
   const clock = v.building
     ? `<g><circle cx="${x + ring * 0.72}" cy="${y - ring * 0.72}" r="9" fill="#FFF1D6" stroke="#161126" stroke-width="2"/><path d="M${x + ring * 0.72} ${y - ring * 0.72 - 4.5} v4.5 l3 2" fill="none" stroke="#161126" stroke-width="2" stroke-linecap="round"/></g>`
     : '';
-  const cls = `tr-nd${v.ready ? ' ready' : ''}${far ? ' far' : ''}${have ? ' own' : ''}`;
+  const cls = `tr-nd${v.ready ? ' ready' : ''}${far ? ' far' : ''}${have ? ' own' : ''}${bought === n.id ? ' bought' : ''}`;
   // a clear circle makes the node easy to hit with a thumb
-  return `<g class="${cls}" data-act="tree-node" data-arg="${n.id}" role="button" aria-label="${esc(t(n.name))}"><circle cx="${x}" cy="${y}" r="26" fill="transparent"/><g class="tr-art">${halo}${shape}${icon}</g>${buy}${clock}${lv}</g>`;
+  // just bought: a gold burst behind it (the node itself pops, see .tr-nd.bought)
+  const burst = bought === n.id ? `<circle class="tr-burst" cx="${x}" cy="${y}" r="${ring}" fill="none" stroke="#FFD36A" stroke-width="5"/>` : '';
+  return `<g class="${cls}" data-act="tree-node" data-arg="${n.id}" role="button" aria-label="${esc(t(n.name))}"><circle cx="${x}" cy="${y}" r="26" fill="transparent"/>${burst}<g class="tr-art" style="transform-origin: ${x}px ${y}px">${halo}${shape}${icon}</g>${buy}${clock}${lv}</g>`;
 }
 
 /** The way from a node back to the trunk (lit up when it is chosen). */
@@ -174,6 +200,12 @@ function cardHtml(g: GameSave, n: TreeNode, ui: TreeUi, building: string | null)
     ? `${t(BRANCHES[bIndex[n.between![0]]].name)} + ${t(BRANCHES[bIndex[n.between![1]]].name)}`
     : t(BRANCHES[bIndex[n.branch as TreeBranch]].name);
   const v = view(g, n, ui, building);
+  // locked: nothing about it until a neighbour is owned
+  if (!v.open)
+    return `<div class="tr-card tr-lockcard">
+    <div class="tr-head">${ICON.lock('#FFF1D6', 26)}<h3>${esc(t('Locked'))}</h3></div>
+    <p class="tr-small">${esc(t('Buy a node next to it first.'))}</p>
+  </div>`;
   const have = v.have;
   // where the player stands: a track's number now and after the next level, a trick's level, or "Yours"
   let state = '';
@@ -190,13 +222,13 @@ function cardHtml(g: GameSave, n: TreeNode, ui: TreeUi, building: string | null)
   if (v.building) action = jobHtml(g, ui);
   else if (chk.ok) {
     const dur = chk.dur ? `<small>${ICON.clock(12)}${formatDuration(chk.dur)}</small>` : '';
-    action = `<button type="button" class="st-btn tr-buy${v.ready ? ' gold' : ' off'}" data-act="tree-buy" data-arg="${n.id}" ${v.ready ? '' : 'disabled'}><span>${esc(t('Buy'))}</span><b>${money(chk.cost)}</b>${dur}</button>`;
+    action = `<button type="button" class="st-btn tr-buy${v.ready ? ' gold' : ' off'}${ui.bought === n.id ? ' bought' : ''}" data-act="tree-buy" data-arg="${n.id}" ${v.ready ? '' : 'disabled'}><span>${esc(t('Buy'))}</span><b>${money(chk.cost)}</b>${dur}</button>`;
   } else if (chk.why === 'busy') {
     const dur = nodeDuration(n, have);
     action = `<button type="button" class="st-btn tr-buy off" disabled><span>${esc(t('Building…'))}</span><b>${money(chk.cost || 0)}</b><small>${ICON.clock(12)}${formatDuration(dur)}</small></button>`;
   } else {
     const why: Record<string, string> = {
-      soon: t('Coming soon.'), max: have && n.levels > 1 ? t('Maxed') : '', pair: t('You own its partner keystone.'), locked: t('Buy a node next to it first.'),
+      soon: t('Coming soon.'), max: have && n.levels > 1 ? t('Maxed') : '', pair: t('You own its partner keystone.'),
     };
     if (why[chk.why]) action = `<p class="tr-small">${esc(why[chk.why])}</p>`;
   }
@@ -234,9 +266,8 @@ export function treeMapHtml(g: GameSave, ui: TreeUi): string {
     const a = -Math.PI / 2 + i * (Math.PI / 3), r = R0 + STEP * 7 + 58;
     return `<text x="${C + r * Math.cos(a)}" y="${C + r * Math.sin(a) + 9}" text-anchor="middle" font-size="26" fill="${COL[b.id]}">${esc(t(b.name))}</text>`;
   }).join('');
-  const nodes = TREE.map(n => nodeSvg(n, view(g, n, ui, building), sel)).join('');
+  const nodes = TREE.map(n => nodeSvg(n, view(g, n, ui, building), sel, ui.bought)).join('');
   const px = TREE_ZOOMS[Math.max(0, Math.min(TREE_ZOOMS.length - 1, ui.zoom))];
-  const credit = g.treeCredit || 0, cash = Math.max(0, ui.money - credit);
   const job = g.workshop.job;
   const jobChip = job && building
     ? `<button type="button" class="tr-chip tr-jobchip" data-act="tree-pick" data-arg="${building}" aria-label="${esc(t('Building…'))}">${ICON.clock(15)}<span id="dbdTreeJob">${formatDuration(job.endsAt - ui.now)}</span></button>`
@@ -244,8 +275,7 @@ export function treeMapHtml(g: GameSave, ui: TreeUi): string {
   return `<div class="tr-wrap">
     <div class="tr-top"><button type="button" class="st-btn st-sq" data-act="tree-back" aria-label="${t('Back')}">${ICON.back()}</button>
       <h2>${t('Upgrades')}</h2>
-      <div class="tr-chips">${credit > 0 ? `<span class="tr-chip tr-credit" aria-label="${esc(t('Tree credit {amt}: it buys upgrades only', { amt: money(credit) }))}">${creditIcon(18)}<span>${short(credit)}</span></span>` : ''}<span class="tr-chip tr-cash" aria-label="${esc(t('Cash for upgrades {amt}', { amt: money(cash) }))}">${ICON.coin(18)}<span>${short(cash)}</span></span>${jobChip}</div>
-      ${treeHasAny(g) ? `<button type="button" class="st-btn btn-sm tr-reset${ui.resetArmed ? ' red' : ''}" data-act="tree-reset"${ui.resetArmed ? ` aria-label="${esc(t('Tap again to reset'))}"` : ''}>${esc(ui.resetArmed ? t('Sure?') : t('Reset'))}</button>` : ''}
+      <div class="tr-chips"><span class="tr-chip tr-cash" aria-label="${esc(t('Cash for upgrades {amt}', { amt: money(ui.money) }))}">${ICON.coin(18)}<span>${short(ui.money)}</span></span>${jobChip}</div>
       <div class="tr-zoom"><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="-1" aria-label="${t('Zoom out')}">−</button><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="1" aria-label="${t('Zoom in')}">+</button></div></div>
     <div class="tr-body">
       <div class="tr-map" id="dbdTreeMap"><svg viewBox="0 0 1000 1000" width="${px}" height="${px}" role="img" aria-label="${t('Upgrade tree')}">${rings}${labels}${links}${nodes}</svg></div>

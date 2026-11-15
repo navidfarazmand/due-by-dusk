@@ -164,6 +164,8 @@ export interface EngineApi {
   setSound(on: boolean): void;
   /** The effects volume (a gain, 0..1); `sample` plays a coin at the new level. */
   setSfxVolume(v: number, sample?: boolean): void;
+  /** A sound for the shell's own screens (0.13.1). */
+  uiSound?(name: 'buy' | 'build' | 'click'): void;
   /** Settings → Finger offset: how far above a finger the sickle sits, in CSS px (0 = under the finger). */
   setTouchLift(px: number): void;
   /** Where a finger has to touch (client px) to put the sickle at client point (x, y). */

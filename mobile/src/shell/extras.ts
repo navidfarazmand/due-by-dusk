@@ -9,7 +9,6 @@ import type { GameSave } from '../game/progress';
 import { ART, PREVIEW, bandFor } from './art';
 import { ICON, TOOL_ICON, INK, esc, money } from './dom';
 import { barnPreview, flairIcon, ribbonIcon } from './looks';
-import { creditIcon } from './treeview';
 import { inner, lang, t, tn } from '../i18n/i18n';
 
 const LOCALE = { en: 'en-US', fr: 'fr-FR', es: 'es-ES', pt: 'pt-BR', de: 'de-DE' } as const;
@@ -115,7 +114,7 @@ export function dailyHtml(def: SideDef & { date: string }, d: DailyState, tries:
     <p class="dl-text">${t("One day, no bills. Everyone gets the same field and the same upgrades, so it's all down to your swipes.")}</p>
     ${targetsRow(def.targets, d.best)}
     <p class="dl-best">${bestTxt}</p>
-    <p class="dl-rew">${medalIcon(1, 16)} ${MEDAL_RIBBONS[1]} ${ribbonIcon(14)} · ${medalIcon(2, 16)} ${MEDAL_RIBBONS[2]} ${ribbonIcon(14)} · ${medalIcon(3, 16)} ${MEDAL_RIBBONS[3]} ${ribbonIcon(14)} · ${creditIcon(15)} +${money(goldCredit)}</p>
+    <p class="dl-rew">${medalIcon(1, 16)} ${MEDAL_RIBBONS[1]} ${ribbonIcon(14)} · ${medalIcon(2, 16)} ${MEDAL_RIBBONS[2]} ${ribbonIcon(14)} · ${medalIcon(3, 16)} ${MEDAL_RIBBONS[3]} ${ribbonIcon(14)} · ${ICON.coin(15)} +${money(goldCredit)}</p>
     <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="go" data-arg="menu">${t('Back')}</button>${play}</div>
   </div></div>`;
 }
@@ -172,7 +171,7 @@ export function sideResultHtml(o: SideOutcome): string {
     const next = got < 3 ? t('{medal} needs {amt}.', { medal: t(MEDAL_NAME[got + 1]), amt: money(o.def.targets[got]) }) : t('The best a farmer can do. Come back tomorrow.');
     const rew = [
       o.ribbons ? `<span class="dia">+${o.ribbons} ${ribbonIcon(18)}</span>` : '',
-      o.credit ? `<span class="dia">${creditIcon(18)} +${money(o.credit)}</span>` : '',
+      o.credit ? `<span class="dia">${ICON.coin(18)} +${money(o.credit)}</span>` : '',
     ].join('');
     let again = '';
     if (o.tries && o.tries > 0) again = `<button type="button" class="st-btn gold btn-md flex1" data-act="daily-play">${t('Again · {n} left', { n: o.tries })}</button>`;

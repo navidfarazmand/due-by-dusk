@@ -17214,6 +17214,15 @@ export function startGeminiEngine() {
         this.tone(f, i === 3 ? 0.95 : 0.34, { type: 'sawtooth', v: 0.07, at: i * 0.38, to: i === 3 ? 290 : null }),
       );
     },
+    /* v0.13.1 (Navid, 14 Nov: "when clicking on buy for each skill i don't hear no sound effect"): a purchase in the
+       upgrade tree, a cash-register clink and a rising chime; a long build starts with a lower, slower one */
+    buy(build) {
+      if (!this.ok()) return;
+      this.noise(0.05, { v: 0.22, f: 2600, q: 1.4, type: 'bandpass' });
+      const notes = build ? [392, 523, 659] : [784, 988, 1319];
+      notes.forEach((f, i) => this.tone(f, 0.16, { type: 'triangle', v: 0.12, at: 0.04 + i * 0.065 }));
+      this.tone(build ? 784 : 1568, 0.32, { type: 'square', v: 0.045, at: 0.24 });
+    },
     fanfare() {
       if (!this.ok()) return;
       [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.3, { type: 'triangle', v: 0.13, at: i * 0.12 }));
@@ -25089,6 +25098,12 @@ export function startGeminiEngine() {
         setSfxVolume: (v, sample) => {
           Sound.setVol(v);
           if (sample && Sound.vol > 0) Sound.coin();
+        },
+        /** A sound for the shell's own screens (the upgrade tree's Buy). */
+        uiSound: (name) => {
+          if (name === 'buy') Sound.buy(false);
+          else if (name === 'build') Sound.buy(true);
+          else if (name === 'click') Sound.click();
         },
         setPaused: (v) => setPaused(v),
         /** The shell's equipped tool (style plus multipliers); takes effect now and at the next day start. */

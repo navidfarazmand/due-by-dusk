@@ -34,8 +34,9 @@ import {
 } from './extras';
 import { ribbonIcon } from './looks';
 import { arthurOnCard } from './arthur';
-import { TREE_ZOOMS, centerTree, creditIcon, treeMapHtml } from './treeview';
-import { TREE_SKILL, buildingNode, buyNode, resetTree, settleTree, treeHasAny, treeNode, treeReady } from '../game/tree';
+import { TREE_ZOOMS, centerTree, treeMapHtml } from './treeview';
+import { hapticImpact } from '../platform/mobile';
+import { TREE_SKILL, buildingNode, buyNode, settleTree, treeNode, treeReady } from '../game/tree';
 
 type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'tree' | 'barn' | 'daily' | 'duel' | 'side';
 
@@ -256,13 +257,20 @@ export class GameApp {
       this.saveNow();
       if (back > 0) setTimeout(() => this.toast(t('New workshop and longer farms: {amt} back in your savings.', { amt: money(back) })), 900);
     }
-    // 0.13: learned skills are tree nodes now and diamonds became tree credit (progress.ts); say so once
+    // 0.13: learned skills are tree nodes now and diamonds became money (progress.ts); say so once
     if (this.g.migratedTree) {
       const m = this.g.migratedTree;
       delete this.g.migratedTree;
       this.saveNow();
-      if (m.credit > 0) setTimeout(() => this.toast(t('Skills moved to the upgrade tree. Your diamonds became {amt} of tree credit.', { amt: money(m.credit) }), 4200), 1400);
+      if (m.credit > 0) setTimeout(() => this.toast(t('Skills moved to the upgrade tree. Your diamonds became {amt} in your savings.', { amt: money(m.credit) }), 4200), 1400);
       else setTimeout(() => this.toast(t('Your skills moved to the upgrade tree.'), 3200), 1400);
+    }
+    // 0.13.1 (Navid, 14 Nov: "why it has two different currency... shouldn't be all gold?"): one money. Tree credit
+    // (0.13.0) goes into savings, which buy upgrades and tools
+    if ((this.g.treeCredit || 0) > 0) {
+      this.g.wallet += this.g.treeCredit || 0;
+      this.g.treeCredit = 0;
+      this.saveNow();
     }
     const run = this.g.run;
     if (run) {
@@ -334,9 +342,9 @@ export class GameApp {
     return this.g.wallet + spendableFarmCash(this.g.run, this.farmCash());
   }
 
-  /** Everything a tree node can be bought with: tree credit, then savings, then the farm's cash above its mark. */
+  /** Everything a tree node can be bought with: savings, then the farm's cash above its mark. */
   private treeMoney(): number {
-    return (this.g.treeCredit || 0) + this.wallet();
+    return this.wallet();
   }
 
   private tick(): void {
@@ -457,7 +465,7 @@ export class GameApp {
     // a first win pays tree credit: two of the farm's average days (a boss farm four), so it is worth having on
     // every farm of the road (0.12's diamond was a flat amount)
     const credit = firstWin ? winCredit(plan) : 0;
-    if (credit) this.g.treeCredit = (this.g.treeCredit || 0) + credit;
+    if (credit) this.g.wallet += credit;
     // v0.12.2 (Navid, 5 Nov: option B): what is left after the deed becomes savings that buy upgrades and tools, never
     // a bill (the tree credit of 0.13). Only above what this farm has already paid you (its mark), so a replay of an
     // easy farm can't be farmed for money; the next farm still starts its bills at $0.
@@ -554,8 +562,9 @@ export class GameApp {
       const box = el.querySelector<HTMLElement>('#dbdTreeMap');
       const keep = box && !this.treeRecenter ? [box.scrollLeft, box.scrollTop] : null;
       el.innerHTML = treeMapHtml(this.g, {
-        sel: this.treeSel, zoom: this.treeZoom, resetArmed: this.treeResetArmed, money: this.treeMoney(), ad: canOffer(this.g, 'finish'), now: Date.now(),
+        sel: this.treeSel, zoom: this.treeZoom, money: this.treeMoney(), ad: canOffer(this.g, 'finish'), now: Date.now(), bought: this.treeBought,
       });
+      this.treeBought = '';
       const nb = el.querySelector<HTMLElement>('#dbdTreeMap');
       if (keep && nb) [nb.scrollLeft, nb.scrollTop] = keep;
       else requestAnimationFrame(() => centerTree(el, this.treeSel, this.treeZoom));
@@ -640,12 +649,11 @@ export class GameApp {
       case 'barn-menu': this.openBarnMenu(); break;
       case 'back': this.show(this.backTo); break;
       case 'tree': this.openTree(); break;
-      case 'tree-back': this.treeResetArmed = false; this.show(this.backTo === 'tree' ? 'menu' : this.backTo); break;
-      case 'tree-node': this.treeResetArmed = false; this.treeSel = arg; this.render('tree'); break;
+      case 'tree-back': this.show(this.backTo === 'tree' ? 'menu' : this.backTo); break;
+      case 'tree-node': this.treeSel = arg; this.render('tree'); break;
       // from a list (what is ready to buy, the build in progress): the map goes to the node
-      case 'tree-pick': this.treeResetArmed = false; this.treeSel = arg; this.treeRecenter = true; this.render('tree'); break;
-      case 'tree-buy': this.treeResetArmed = false; this.buyTreeNode(arg); break;
-      case 'tree-reset': this.resetTree(); break;
+      case 'tree-pick': this.treeSel = arg; this.treeRecenter = true; this.render('tree'); break;
+      case 'tree-buy': this.buyTreeNode(arg); break;
       case 'tree-zoom': this.treeZoom = Math.max(0, Math.min(TREE_ZOOMS.length - 1, this.treeZoom + (Number(arg) || 0))); this.treeRecenter = true; this.render('tree'); break;
       case 'barn': if (!this.modal.hidden) this.closeModal(); this.backTo = this.scr === 'tree' || this.scr === 'barn' ? this.backTo : this.scr; this.barnSel = this.g.flair.equipped[this.barnTab]; this.show('barn'); break;
       case 'barn-tab': this.barnTab = arg as FlairKind; this.barnSel = this.g.flair.equipped[this.barnTab]; this.render('barn'); break;
@@ -1379,16 +1387,12 @@ export class GameApp {
     if (this.scr !== 'tree') this.backTo = this.scr === 'barn' ? this.backTo : this.scr;
     this.treeSel = 'trunk';
     this.treeRecenter = true;
-    this.treeResetArmed = false;
     this.show('tree');
   }
 
-  /** Pays for a tree node: tree credit first, then savings, then the farm's cash above its mark (`spend`). */
+  /** Pays for a tree node: savings, then the farm's cash above its mark (`spend`). */
   private payTree(cost: number): boolean {
-    const credit = Math.min(this.g.treeCredit || 0, cost);
-    if (cost - credit > 0 && !this.spend(cost - credit)) return false;
-    if (credit) this.g.treeCredit = (this.g.treeCredit || 0) - credit;
-    return true;
+    return this.spend(cost);
   }
 
   /** Buy a node's next level in the tree, or start building it (a keystone, every fifth level of a track). */
@@ -1410,6 +1414,15 @@ export class GameApp {
       /* engine not ready */
     }
     this.saveNow();
+    // 0.13.1 (Navid, 14 Nov: "i don't hear no sound effect and no vibration. not even button goes down and come up"):
+    // a sound, a buzz, and the node and the Buy button pop once
+    try {
+      engine().uiSound?.(res.instant ? 'buy' : 'build');
+    } catch {
+      /* engine not ready */
+    }
+    void hapticImpact('medium');
+    this.treeBought = n.id;
     if (!res.instant) this.toast(t('Building {name}.', { name: t(n.name) }));
     this.render('tree');
   }
@@ -1422,32 +1435,8 @@ export class GameApp {
   private treeSel = 'trunk';
   private treeZoom = 1;
   private treeRecenter = true;
-  /** The tree's reset button asks for a second tap. */
-  private treeResetArmed = false;
-
-  /** A free reset: every node and track level comes back as tree credit, which only buys tree nodes. */
-  private resetTree(): void {
-    if (!treeHasAny(this.g)) return;
-    if (!this.treeResetArmed) {
-      this.treeResetArmed = true;
-      this.render('tree');
-      return;
-    }
-    this.treeResetArmed = false;
-    this.peakLevels();
-    const back = resetTree(this.g);
-    this.applySkills();
-    try {
-      engine().setShed(this.g.workshop.levels);
-    } catch {
-      /* engine not ready */
-    }
-    this.saveNow();
-    this.toast(t('Tree reset: {amt} back as tree credit.', { amt: money(back) }));
-    this.treeSel = 'trunk';
-    this.treeRecenter = true;
-    this.render('tree');
-  }
+  /** The node just bought: it pops once on the next draw. */
+  private treeBought = '';
 
   private barnBuy(id: string): void {
     const res = buyFlair(this.g.flair, this.g.ribbons, id);
@@ -1640,7 +1629,7 @@ export class GameApp {
       if (medal >= 3 && !st.goldPaid) {
         st.goldPaid = true;
         credit = goldCredit(routeIndex(frontierCity(this.g)));
-        this.g.treeCredit = (this.g.treeCredit || 0) + credit;
+        this.g.wallet += credit;
       }
       this.sideOut = {
         kind: 'daily', score, def: sr.def, medal, newMedal: medal > before, ribbons, credit,
@@ -2175,11 +2164,11 @@ export class GameApp {
 
   /** Tree nodes the player could buy right now (the badge on the Upgrades tile and the Barn sign). */
   private upgradesReady(): number {
-    let money = this.g.treeCredit || 0;
+    let money = this.g.wallet;
     try {
       money = this.treeMoney();
     } catch {
-      /* engine not ready: credit and nothing else */
+      /* engine not ready: savings and nothing else */
     }
     return treeReady(this.g, money).length;
   }
@@ -2366,14 +2355,15 @@ export class GameApp {
       ? `<div class="sd-lv">${d.levelUps.slice(0, 5).map(u => `<span class="sd-lvup">${cropChip(u.type, u.level, 24)}<i>▲</i></span>`).join('')}</div>`
       : '';
     const crownNow = d.crownToday ? `<div class="sd-crown">👑 ${t('New city crown! You beat {rival}.', { rival: esc(ct.rival) })}${d.crownBonus ? ` <b class="money">+${money(d.crownBonus)}</b>` : ''}</div>` : '';
-    // v0.12.1 (Navid: "it doesn't show how much money i have left"): the money in the jar is the big number, today's
-    // harvest beside it; the city and the day were not worth the space
+    // v0.12.1 (Navid: "it doesn't show how much money i have left"): the jar is on the card. v0.13.1 (Navid, 14 Nov:
+    // "the money in the jar should be less bold than what we earned today. also what we earned today should come on
+    // top"): today's harvest is the big number, the jar a smaller line under it
     return `<div class="grp mc" style="width: 430px; height: 300px"><div class="st-chip sundown-card slim">
       <button type="button" class="st-btn sd-home" data-act="farmhouse" aria-label="${t('Farmhouse')}">${ICON.house(22)}</button>
       <div class="sd-head"><h2>${t('Sundown!')}</h2>
         <button type="button" class="up-info" data-act="info" data-arg="day" aria-label="${t('About today')}"><i class="info-i">i</i></button></div>
-      <div class="sd-hero"><span class="sd-cash"><span class="sd-big money">${money(cashNow)}</span><span class="sd-lbl">${t('in the jar')}</span></span>
-        <span class="sd-today"><b class="money">+${money(earned)}</b>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('today')}</span></span></div>
+      <div class="sd-hero"><span class="sd-today"><b class="sd-big money">+${money(earned)}</b>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('today')}</span></span>
+        <span class="sd-cash"><span class="money">${money(cashNow)}</span><span class="sd-lbl">${t('in the jar')}</span></span></div>
       <div class="sd-bill">${ICON.notice(26)}<span class="sb-what"><span class="sb-name">${esc(t(b.name))}</span><span class="sb-due">${dueLine}</span></span><b class="sb-amt">${money(b.amt)}</b>${stamp}</div>
       ${feeLine}${crownNow}${bossLine}${lvNow}
       <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house sd-ups" data-act="tree" aria-label="${t('Upgrades')}">${ICON.wrench(28)}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
@@ -2404,7 +2394,7 @@ export class GameApp {
       ].join('');
       const gains =
         (r.ribbons ? `<button type="button" class="dia dia-btn" data-act="barn" aria-label="${t('Spend ribbons in the Bling Barn')}">${ribbonIcon(18)} +${r.ribbons}</button>` : '') +
-        (r.credit ? `<button type="button" class="dia dia-btn" data-act="tree" aria-label="${t('Tree credit {amt}: it buys upgrades only', { amt: money(r.credit) })}">${creditIcon(18)} +${money(r.credit)}</button>` : '');
+        (r.credit ? `<button type="button" class="dia dia-btn" data-act="tree" aria-label="${t('Upgrades')}">${ICON.coin(18)} +${money(r.credit)}</button>` : '');
       return `<div class="grp mc" style="width: 470px; height: 350px"><div class="st-chip result-card">
         <div class="letter-head"><span class="eyebrow">${t('GRUMBLE &amp; SONS SAVINGS &amp; LOAN')}</span><span class="stamp ok big">${t('PAID IN FULL')}</span></div>
         <h2 class="r-title">${t('The {farm} farm is yours.', { farm: esc(ct.short) })}<button type="button" class="up-info" data-act="info" data-arg="farm" aria-label="${t('About this farm')}"><i class="info-i">i</i></button></h2>

@@ -278,13 +278,15 @@ async function boxes(page: Page, sels: string[]): Promise<{ vw: number; vh: numb
 const inside = (x: Box, vw: number, vh: number) => x.l >= -1 && x.t >= -1 && x.r <= vw + 1 && x.b <= vh + 1;
 const apart = (a: Box, c: Box) => a.r <= c.l + 1 || c.r <= a.l + 1 || a.b <= c.t + 1 || c.b <= a.t + 1;
 
-test('an older save: learned skills become owned tree nodes, diamonds become tree credit, and no diamond is left on screen', async ({ page }) => {
+test('an older save: learned skills become owned tree nodes, diamonds become savings, and no diamond is left on screen', async ({ page }) => {
   // a 0.12 save: three farms won (3 diamonds) and 4 from daily golds; Pasture accord (3) and Harvester's Awakening (1) learned
   const errors = await boot(page, seeded(CA.slice(0, 3), 0, { treeV: undefined, skills: ['core_awakening', 'gold_root', 'gold_treaty'], bonusDiamonds: 3 }));
   const g = await page.evaluate(() => (window as any).__DBD_APP.g);
-  // Pasture accord is its node; the other 3 diamonds (two plain stat skills) are $1,000 of tree credit each
+  // Pasture accord is its node; the other 3 diamonds (two plain stat skills) are $1,000 each, in savings (0.13.1: one
+  // money, gold)
   expect(g.tree).toEqual({ a1: 1 });
-  expect(g.treeCredit).toBe(3000);
+  expect(g.treeCredit || 0).toBe(0);
+  expect(g.wallet).toBe(3000);
   expect(g.treeV).toBe(1);
   expect(g.skills).toBeUndefined();
   expect(g.bonusDiamonds).toBeUndefined();
@@ -296,7 +298,8 @@ test('an older save: learned skills become owned tree nodes, diamonds become tre
   await expect(page.locator('.scr-modal [data-act="skills"]')).toHaveCount(0);
   await page.locator('.scr-modal [data-act="tree"]').click();
   await expect(page.locator('.scr-tree .tr-nd')).toHaveCount(103);
-  await expect(page.locator('.scr-tree .tr-credit')).toContainText('$3,000');
+  await expect(page.locator('.scr-tree .tr-credit')).toHaveCount(0);
+  await expect(page.locator('.scr-tree .tr-cash')).toContainText('$3,000');
   await expect(page.locator('.scr-tree .tr-nd[data-arg="a1"]')).toHaveClass(/\bown\b/);
   await page.locator('.scr-tree .tr-nd[data-arg="a1"]').click();
   await expect(page.locator('.scr-tree .tr-card')).toContainText('Pasture accord');
@@ -305,8 +308,7 @@ test('an older save: learned skills become owned tree nodes, diamonds become tre
   await page.locator('.scr-tree [data-act="tree-buy"][data-arg="a2"]').click();
   const g2 = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g2.tree.a2).toBe(1);
-  expect(g2.treeCredit).toBe(3000 - 200);
-  expect(g2.wallet).toBe(0);
+  expect(g2.wallet).toBe(3000 - 200);
   // no diamond anywhere: not on the tree, the menu, the Barn card or the daily farm
   for (const scr of ['menu', 'daily']) {
     await page.evaluate(sc => (window as any).__DBD_APP.show(sc), scr);
@@ -318,7 +320,8 @@ test('an older save: learned skills become owned tree nodes, diamonds become tre
   await page.reload();
   await page.waitForFunction(() => !!(window as any).__DBD_APP);
   const g3 = await page.evaluate(() => (window as any).__DBD_APP.g);
-  expect(g3.treeCredit).toBe(2800);
+  expect(g3.wallet).toBe(2800);
+  expect(g3.treeCredit || 0).toBe(0);
   expect(g3.tree).toEqual({ a1: 1, a2: 1 });
   expect(errors).toEqual([]);
 });
@@ -828,10 +831,11 @@ test('the upgrade tree from the farmhouse: opens on the trunk, a track level is 
   expect(g.wallet).toBe(400 - cost);
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().shed.scythe)).toBe(7);
   await expect(card).toContainText('Lv 7');
-  // a node that is not built yet says so, without a version number, and has no Buy button
+  // a node that is not built yet and is next in line says so, without a version number, and has no Buy button (one
+  // further out is just locked, 0.13.1)
   const soon = await page.evaluate(() => {
-    const T = (window as any).__DBD_TREE;
-    const n = T.TREE.find((x: any) => x.kind !== 'trunk' && !T.nodeLive(x.id));
+    const T = (window as any).__DBD_TREE, g = (window as any).__DBD_APP.g;
+    const n = T.TREE.find((x: any) => x.kind !== 'trunk' && !T.nodeLive(x.id) && x.parents.some((p: string) => T.treeLevel(g, p) > 0));
     return n ? n.id : '';
   });
   if (soon) {
@@ -903,58 +907,39 @@ test('a long build: the fifth level of a track takes time, one build at a time, 
   expect(errors).toEqual([]);
 });
 
-test('the tree: a node opens the next one, a keystone is a long build, and a free reset gives everything back as tree credit', async ({ page }) => {
+test('the tree: one gold money and no reset; nodes not next to one you own are locked and nameless; a purchase opens the next and pops', async ({ page }) => {
   const errors = await boot(page, seeded(CA.slice(0, 2), 5000));
   await act(page, 'barn-menu');
   await page.locator('.scr-modal [data-act="tree"]').click();
-  // Power cell from the trunk's list of what is ready, then Big power opens
-  await page.locator('.scr-tree .tr-row[data-arg="p1"]').click();
+  // one money chip, gold; no tree credit and no reset (Navid, 14 Nov)
+  await expect(page.locator('.scr-tree .tr-cash')).toContainText('$5,000');
+  await expect(page.locator('.scr-tree .tr-credit')).toHaveCount(0);
+  await expect(page.locator('.scr-tree [data-act="tree-reset"]')).toHaveCount(0);
+  // Big power is behind Power cell: locked, a padlock, and its card says nothing about it
+  await expect(page.locator('.scr-tree .tr-nd[data-arg="p2"]')).toHaveClass(/\blocked\b/);
+  expect(await page.locator('.scr-tree .tr-nd.locked').count()).toBeGreaterThan(40);
+  await page.locator('.scr-tree .tr-nd[data-arg="p2"]').click();
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Locked');
+  await expect(page.locator('.scr-tree .tr-card')).not.toContainText('Big power');
+  await expect(page.locator('.scr-tree [data-act="tree-buy"]')).toHaveCount(0);
+  // Power cell is next to the trunk: its name, effect and price show
+  await page.locator('.scr-tree .tr-nd[data-arg="p1"]').click();
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Power cell');
+  expect(await page.evaluate(() => typeof (window as any).__DBD_ENGINE.uiSound)).toBe('function');
   await page.locator('.scr-tree [data-act="tree-buy"][data-arg="p1"]').click();
-  let g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  const g = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g.tree.p1).toBe(1);
   expect(g.wallet).toBe(5000 - 20);
   expect(await page.evaluate(() => (window as any).__DBD_TREEFX.p1)).toBe(1);
+  // the node just bought pops once, and the one behind it opens
+  await expect(page.locator('.scr-tree .tr-nd[data-arg="p1"]')).toHaveClass(/\bbought\b/);
+  await expect(page.locator('.scr-tree .tr-nd[data-arg="p2"]')).not.toHaveClass(/\blocked\b/);
   await page.locator('.scr-tree .tr-nd[data-arg="p2"]').click();
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Big power');
+  await expect(page.locator('.scr-tree .tr-nd[data-arg="p1"]')).not.toHaveClass(/\bbought\b/);
   await page.locator('.scr-tree [data-act="tree-buy"][data-arg="p2"]').click();
-  // a track level too: the reset gives tracks back as well
-  await page.locator('.scr-tree .tr-nd[data-arg="b1"]').click();
-  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="b1"]').click();
-  g = await page.evaluate(() => (window as any).__DBD_APP.g);
-  expect(g.workshop.levels.scythe).toBe(7);
-  const paid = 5000 - g.wallet;
-  const before = await page.evaluate(() => {
-    const w = window as any;
-    return w.__DBD_TREE.treeRefund(w.__DBD_APP.g);
-  });
-  // what the save's track levels cost at the Workshop's prices, plus what was just paid
-  const seedValue = await page.evaluate(() => {
-    const W = (window as any).__DBD_WORKSHOP, lv = { scythe: 6, swing: 2, hands: 2, days: 2, soil: 2, market: 2, clover: 1 } as Record<string, number>;
-    let sum = 0;
-    for (const [id, n] of Object.entries(lv)) for (let l = 0; l < n; l++) sum += W.upgradeCost(id, l);
-    return sum;
-  });
-  expect(before).toBe(seedValue + paid);
-  // a free reset: two taps
-  await page.locator('.scr-tree [data-act="tree-reset"]').click();
-  await expect(page.locator('.scr-tree [data-act="tree-reset"]')).toHaveClass(/\bred\b/);
-  expect((await page.evaluate(() => (window as any).__DBD_APP.g)).tree.p1).toBe(1);
-  await page.locator('.scr-tree [data-act="tree-reset"]').click();
-  const g2 = await page.evaluate(() => (window as any).__DBD_APP.g);
-  expect(Object.values(g2.tree).filter((v: any) => v > 0)).toHaveLength(0);
-  expect(Object.values(g2.workshop.levels).every((v: any) => v === 0)).toBe(true);
-  expect(g2.treeCredit).toBe(before);
-  expect(g2.treeSpent).toBe(0);
-  expect(g2.wallet).toBe(g.wallet);
-  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().shed.scythe)).toBe(0);
-  expect(await page.evaluate(() => (window as any).__DBD_TREEFX.p1 || 0)).toBe(0);
-  await expect(page.locator('.scr-tree .tr-credit')).toBeVisible();
-  // tree credit is spent first: savings stay where they are
-  await page.locator('.scr-tree .tr-row[data-arg="b1"]').click();
-  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="b1"]').click();
-  const g3 = await page.evaluate(() => (window as any).__DBD_APP.g);
-  expect(g3.workshop.levels.scythe).toBe(1);
-  expect(g3.treeCredit).toBe(before - 70);
-  expect(g3.wallet).toBe(g.wallet);
+  await expect(page.locator('.scr-tree [data-act="tree-buy"].bought, .scr-tree .tr-nd.bought')).not.toHaveCount(0);
+  expect((await page.evaluate(() => (window as any).__DBD_APP.g)).tree.p2).toBe(1);
   expect(errors).toEqual([]);
 });
 
@@ -1664,11 +1649,14 @@ test('Sundown goes straight to the next day, and the field music plays on (v0.11
   await fast(page);
   await act(page, 'start');
   await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
-  // no bill tonight: Next day is the big button, Upgrades a small one, the farmhouse in the corner; the money you have
-  // is the big number (v0.12.1); the music stays the field's
+  // no bill tonight: Next day is the big button, Upgrades a small one, the farmhouse in the corner; today's harvest is
+  // the big number on top and the money in the jar a smaller line under it (0.13.1); the music stays the field's
   await expect(page.locator('.scr-sundown [data-act="next-day"]')).toBeVisible();
   await expect(page.locator('.scr-sundown [data-act="farmhouse"]')).toBeVisible();
-  await expect(page.locator('.scr-sundown .sd-big')).toHaveText(await page.evaluate(() => '$' + Math.round((window as any).__DBD_ENGINE.state().cash).toLocaleString('en-US')));
+  await expect(page.locator('.scr-sundown .sd-today .sd-big')).toHaveText(/^\+\$/);
+  await expect(page.locator('.scr-sundown .sd-cash .money')).toHaveText(await page.evaluate(() => '$' + Math.round((window as any).__DBD_ENGINE.state().cash).toLocaleString('en-US')));
+  const [today, jar] = await Promise.all(['.sd-today', '.sd-cash'].map(c => page.locator('.scr-sundown ' + c).boundingBox()));
+  expect(today!.y).toBeLessThan(jar!.y);
   // Sundown's Upgrades button opens the upgrade tree (0.13), and its back button returns to Sundown
   await page.locator('.scr-sundown .sd-ups').click();
   await expect(page.locator('.scr-tree .tr-map')).toBeVisible();

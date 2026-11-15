@@ -184,6 +184,7 @@ const dict: Record<string, string> = {
   "Building…": "En obras…",
   "Level {n}": "Nivel {n}",
   "Lv {n}": "Nv. {n}",
+  "Skills moved to the upgrade tree. Your diamonds became {amt} in your savings.": "Las habilidades pasaron al árbol de mejoras. Tus diamantes se convirtieron en {amt} de ahorros.",
   "This farm is already yours. Its cash pays its bills and nothing else.": "Esta granja ya es tuya. Su dinero paga sus facturas y nada más.",
   "Nothing: the farm was already yours": "Nada: la granja ya era tuya",
   "This farm has paid you {amt} already. Its cash buys upgrades once you hold more than that; your savings always can.": "Ya llevas {amt} cobrados de esta granja. Su dinero compra mejoras cuando superes esa cifra; tus ahorros, siempre.",
