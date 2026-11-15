@@ -153,7 +153,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['bank', 'Compound reserve', 3, 'Every night, 4% interest on the cash you hold (then 8%, 12%), up to 40% of a good day.'],
     ['coin', 'Sovereign mint', 1, "Lucky crops and the country's three pay 50% more."],
     ['percent', 'Coupon book', 3, 'Everything in the tree costs 5% less (then 10%, 15%).'],
-    ['crown', "Rival's envy", 1, "Taking a city's crown pays a bonus of half its record."],
+    ['book', 'Tax lawyer', 1, 'Taxes cost half.'],
     ['jar', 'Tip jar', 1, 'A chain of 20 or more drops a tip: 10% of what the chain paid.'],
     ['umbrella', 'Insurance', 1, 'If the bank comes, it takes a quarter of your jar instead of half.'],
     ['tag', 'Deal of the day', 1, 'One upgrade a day costs 25% less.'],
@@ -252,7 +252,7 @@ export const TREE_NEW_LIVE = [
   'p7', 'p10', 'p11', 'p13', 'p14', 'p15', 'p16', 'r3', 'r4', 'r6', 'r9', 'r11', 'r16',
   // batch 4: the ranch, the bank and three bridges (Coupon book and Insurance are the shell's: prices, a foreclosure)
   'a4', 'a6', 'a7', 'a11', 'a13', 'a15', 'x3', 'x5', 'x6', 'm5', 'm9', 'm12', 'm15',
-  // batch 5: bleeding, splinters, the boss's armour, bees, the hen, the ghost sickle, the crown's bonus
+  // batch 5: bleeding, splinters, the boss's armour, bees, the hen, the ghost sickle, the tax lawyer (0.15; was the crown's bonus)
   'b4', 'b7', 'b14', 'r7', 'r12', 'a5', 'a8', 'a10', 'm10',
 ];
 

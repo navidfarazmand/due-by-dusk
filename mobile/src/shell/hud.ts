@@ -5,7 +5,6 @@ import { t } from '../i18n/i18n';
 import { clamp, money, cap } from './dom';
 import { ArthurView, type ArthurMood } from './arthur';
 import { engine, type DayEvent, type HudState } from './engine';
-import { rivalFace } from './rival';
 
 const EVENT_ICON: Record<string, string> = {
   market: '💰', gale: '🍂', rain: '🌧️', frost: '❄️', fair: '🧶', stampede: '🐐',
@@ -80,7 +79,6 @@ export const HUD_HTML = `<div id="dbdHud" hidden>
   </div>
   <div class="grp tr">
     <canvas class="hb-arthur" id="dbdArthur" aria-hidden="true"></canvas>
-    <div class="st-chip hb-rival" id="dbdRival" hidden><span class="hb-rface" id="dbdRivalFace"></span><span class="hb-rbar"><i id="dbdRivalFill"></i></span><span class="hb-ramt" id="dbdRivalAmt">$0</span></div>
     <button type="button" class="st-btn st-sq hb-sound" id="dbdSound" aria-label="Sound">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2B1708" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="#2B1708"/><path class="w" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="x" d="M15.5 9.5l5 5M20.5 9.5l-5 5" style="display:none"/></svg>
     </button>
@@ -113,7 +111,7 @@ export class FarmHud {
     this.root = document.getElementById('dbdHud') as HTMLElement;
     for (const k of ['Bank', 'Cash', 'BillFill', 'BillName', 'BillAmt', 'Jar', 'JarGold', 'Badge', 'Chain', 'Mult', 'ChainLbl', 'ChainFill', 'Next', 'ChainTimer',
       'Arc', 'Sun', 'Secs', 'Boss', 'BossName', 'BossFill', 'Rush', 'RushLbl', 'RushFill', 'Sound', 'Pause', 'Banner', 'BannerIc', 'BannerT', 'BannerD', 'BannerH',
-      'Rival', 'RivalFace', 'RivalFill', 'RivalAmt', 'Arthur']) {
+      'Arthur']) {
       this.E[k] = document.getElementById('dbd' + k) as HTMLElement & SVGElement;
     }
     this.E.Pause.addEventListener('click', () => engine().setPaused(true));
@@ -172,34 +170,6 @@ export class FarmHud {
 
   setGoal(g: HudGoal | null): void {
     this.goal = g;
-  }
-
-  /** The city's record: watched during the day so passing it can be celebrated. Its chip is no longer shown on the field
-   *  (v0.11.3, Navid: a second row under the top-right buttons that blocks the view); the record is on the day card. */
-  private rival: { record: number; beaten: boolean } | null = null;
-  /** Called once when today's harvest passes the rival's record. */
-  onRivalBeaten: (() => void) | null = null;
-
-  setRival(r: { name: string; record: number } | null): void {
-    const E = this.E;
-    this.rival = r ? { record: Math.max(1, r.record), beaten: false } : null;
-    E.Rival.hidden = true;
-    E.Rival.classList.remove('beaten', 'gone');
-    if (!r) return;
-    E.RivalFace.innerHTML = rivalFace(r.name, 30);
-    E.RivalFace.setAttribute('aria-label', r.name);
-    E.RivalAmt.textContent = money(r.record);
-    E.RivalFill.style.width = '0%';
-  }
-
-  /** Today's harvest so far (the engine's tally for the day). */
-  private earnedToday(): number {
-    try {
-      const p = (engine() as unknown as { peek(): { today: { earned: number } } }).peek();
-      return p.today.earned || 0;
-    } catch {
-      return 0;
-    }
   }
 
   show(on: boolean): void {
@@ -321,18 +291,6 @@ export class FarmHud {
     E.RushLbl.textContent = rl;
     E.RushLbl.classList.toggle('long', rl.length > 7);
     E.RushFill.style.width = (pw * 100).toFixed(1) + '%';
-    const rv = this.rival;
-    if (rv && !rv.beaten) {
-      const got = this.earnedToday();
-      E.RivalFill.style.width = (clamp(got / rv.record, 0, 1) * 100).toFixed(1) + '%';
-      if (got >= rv.record && h.mode === 'day') {
-        rv.beaten = true;
-        E.Rival.classList.add('beaten');
-        E.RivalAmt.textContent = t('Crown!');
-        setTimeout(() => E.Rival.classList.add('gone'), 2600);
-        this.onRivalBeaten?.();
-      }
-    }
     const bo = h.boss;
     const bossOn = !!(bo && bo.onField && !bo.down);
     if (E.Boss.hidden === bossOn) E.Boss.hidden = !bossOn;

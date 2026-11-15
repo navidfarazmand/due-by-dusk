@@ -1146,5 +1146,14 @@ const dict: Record<string, string> = {
   "The bank took a quarter of your jar.": "La banque a pris un quart de ton bocal.",
   "New towns and bills: your town starts again, and its {amt} went to your jar.": "Nouvelles villes et factures : ta ville recommence, et ses {amt} sont allés dans ton bocal.",
   "New towns and bills: your town starts again.": "Nouvelles villes et factures : ta ville recommence.",
+  "Tax lawyer": "Avocat fiscaliste",
+  "Taxes cost half.": "Les impôts coûtent moitié moins.",
+  "BIG BILL": "GROSSE FACTURE",
+  "Caught on the first try": "Capture du premier coup",
+  "This wipes every town, star and upgrade on this device. It can't be undone.": "Cela efface toutes les villes, étoiles et améliorations de cet appareil. Impossible d'annuler.",
+  "Needs {n} ribbons. You have {have}. Win stars and daily medals to earn more.": "Il faut {n} rubans. Tu en as {have}. Gagne des étoiles et des médailles du jour pour en avoir plus.",
+  "Ohio river-bottom fields where the whole town turns out every October for the Pumpkin Show, and Grandma Pumpkin judges the pies.": "Des champs au bord des rivières de l'Ohio, où toute la ville sort chaque octobre pour la fête de la citrouille, et Mamie Citrouille juge les tartes.",
+  "Atlantic breezes over the Loukkos berry fields, where the Briar-Berry Twins hide under the plastic tunnels.": "Brise atlantique sur les champs de baies du Loukkos, où les Mûres Jumelles se cachent sous les tunnels en plastique.",
+  "Yangtze river flats famous for winter cabbages, where Lord Cabbage grows fat on river mud and steamed buns.": "Les plaines du Yangtsé, célèbres pour leurs choux d'hiver, où Sire Chou s'engraisse de limon et de brioches vapeur.",
 };
 export default dict;

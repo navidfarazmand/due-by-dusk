@@ -16963,11 +16963,20 @@ export function startGeminiEngine() {
       perBill = p && p.hpBill != null ? p.hpBill : 1.24;
     return (1 + perDay * (farm.day - 1)) * Math.pow(perBill, farm.billsPaid) * (p ? p.hp || 1 : 1);
   }
+  /** 0.15 (Navid, 15 Nov: "make sure the bills are clean numbers"): a discounted bill (the tree's Retained counsel,
+   *  Big bill discount) comes down to two figures ($1,056 is $1,000, $52,800 is $52,000), never up. */
+  function cleanDown(v) {
+    if (!(v >= 100)) return Math.max(5, Math.floor(v / 5) * 5);
+    let e = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+    if (v / e >= 100 - 1e-9) e *= 10;
+    return Math.floor(v / e + 1e-9) * e;
+  }
   function billObj(idx) {
     const list = billList();
     const raw = list[FarmScene_clamp(idx, 0, list.length - 1)];
     const m = (list === FarmScene_BILLS ? curBiome().mul : 1) * (1 - 0.04 * Math.min(3, tfx('m2'))) * (tfx('m14') && idx >= list.length - 1 ? 0.9 : 1);
-    return { name: raw.name, days: raw.days, note: raw.note, amt: Math.max(10, Math.round(raw.amt * m)) };
+    const amt = m === 1 ? raw.amt : m < 1 ? cleanDown(raw.amt * m) : Math.round(raw.amt * m);
+    return { name: raw.name, days: raw.days, note: raw.note, amt: Math.max(10, amt) };
   }
   function billStatus() {
     const left = farm.due - (farm.day - 1);
@@ -25107,6 +25116,13 @@ export function startGeminiEngine() {
           else if (name === 'build') Sound.buy(true);
           else if (name === 'click') Sound.click();
         },
+        /** 0.15: roughly how much the town's perks raise a day's pay (5% a wooden perk, 10% silver, 15% gold), so the
+         *  shell can take them out of the player's pace. */
+        perkBoost: () =>
+          (farm && Array.isArray(farm.perks) ? farm.perks : []).reduce((m, id) => {
+            const p = perkPublic(id);
+            return m * (1 + 0.05 * Math.max(1, Math.min(3, (p && p.tier) || 1)));
+          }, 1),
         setPaused: (v) => setPaused(v),
         /** The shell's equipped tool (style plus multipliers); takes effect now and at the next day start. */
         setTool: (t) => {

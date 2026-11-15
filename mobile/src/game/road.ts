@@ -7,8 +7,9 @@
 //     border, the field starts again with the new country's first runaway.
 //   - Inside a country the field keeps the runaways already caught there (the newest few), so it grows town by town
 //     and never starts again until the border.
-//   - Towns per country follow the cities on the maps: Canada 6, Brazil 5, France 5, the others 3 (28 in all), one
-//     vegetable each; the last town of a country is its capital, with the King.
+//   - Towns per country (0.15, Navid 15 Nov): Canada 5, Japan 3, the others 4 (28 in all), one vegetable each; the last
+//     town of a country is its capital, with the King. The USA, Morocco and China have three drawn vegetables each, so
+//     the pumpkin (Circleville), the berries (Larache) and the cabbage (Wuhan) moved there from Canada, Brazil and France.
 // A player's own cutting of a vegetable raises what it pays (its level), and levels never reset.
 // Pure data and maths, no DOM.
 
@@ -16,12 +17,12 @@ import { ROUTE } from './world';
 
 /** Each town's runaway: the vegetable it brings. */
 export const RUNAWAY: Record<string, string> = {
-  ca_charlottetown: 'carrot', ca_gatineau: 'radish', ca_toronto: 'fiddlehead', ca_leamington: 'pumpkin', ca_saskatoon: 'saskaberry', ca_kelowna: 'pei_russet',
-  us_austin: 'habanero', us_desmoines: 'sweetcorn', us_vidalia: 'brisket_onion',
-  br_belem: 'mandioca', br_petrolina: 'abacaxi', br_sinop: 'guarana', br_ribeirao: 'berry', br_bento: 'onion',
-  ma_marrakech: 'chickpea', ma_meknes: 'olive', ma_fes: 'eggplant',
-  fr_avignon: 'lavender', fr_beaune: 'echalote', fr_tours: 'artichaut', fr_roscoff: 'cabbage', fr_agen: 'potato',
-  cn_guilin: 'bittermelon', cn_hangzhou: 'lotusroot', cn_chengdu: 'bokchoy',
+  ca_charlottetown: 'carrot', ca_gatineau: 'radish', ca_toronto: 'fiddlehead', ca_saskatoon: 'saskaberry', ca_kelowna: 'pei_russet',
+  us_austin: 'habanero', us_desmoines: 'sweetcorn', us_circleville: 'pumpkin', us_vidalia: 'brisket_onion',
+  br_belem: 'mandioca', br_petrolina: 'abacaxi', br_sinop: 'guarana', br_bento: 'onion',
+  ma_marrakech: 'chickpea', ma_meknes: 'olive', ma_larache: 'berry', ma_fes: 'eggplant',
+  fr_avignon: 'lavender', fr_beaune: 'echalote', fr_tours: 'artichaut', fr_agen: 'potato',
+  cn_guilin: 'bittermelon', cn_hangzhou: 'lotusroot', cn_wuhan: 'cabbage', cn_chengdu: 'bokchoy',
   jp_sapporo: 'kabocha', jp_shizuoka: 'wasabi', jp_kagoshima: 'daikon',
 };
 

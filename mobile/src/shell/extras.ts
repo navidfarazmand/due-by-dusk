@@ -35,7 +35,7 @@ export function barnHtml(g: GameSave, tab: FlairKind, sel: string, ribbonAd: boo
   if (on) action = `<p class="bb-why">${t('In use on your farm.')}</p>`;
   else if (own) action = `<button type="button" class="st-btn blue bb-act" data-act="barn-equip" data-arg="${cur.id}">${t('Use this')}</button>`;
   else if (g.ribbons >= cur.price) action = `<button type="button" class="st-btn gold bb-act" data-act="barn-buy" data-arg="${cur.id}">${t('Buy')} · ${ribbonIcon(20)} ${cur.price}</button>`;
-  else action = `<p class="bb-why">${t('Needs {n} ribbons. You have {have}. Win stars, crowns and daily medals to earn more.', { n: cur.price, have: g.ribbons })}</p>`;
+  else action = `<p class="bb-why">${t('Needs {n} ribbons. You have {have}. Win stars and daily medals to earn more.', { n: cur.price, have: g.ribbons })}</p>`;
   const ad = ribbonAd ? `<button type="button" class="ad-chip" data-act="ad-ribbon">${ICON.play()}<span>${t('Free ribbon')}</span></button>` : '';
   return `<div class="bb-planks"></div>
     <div class="grp tl" style="width: 480px; height: 390px">

@@ -16,8 +16,10 @@ export function esc(t: unknown): string {
 
 export function money(v: number): string {
   const n = Math.round(Math.max(0, v));
-  if (n >= 1_000_000_000) return '$' + (n / 1_000_000_000).toFixed(n >= 10_000_000_000 ? 1 : 2).replace(/\.0+$/, '') + 'B';
-  if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(n >= 10_000_000 ? 1 : 2).replace(/\.0+$/, '') + 'M';
+  // 0.15: no trailing zeros ($1.3M, not $1.30M), so the bank's clean amounts read clean
+  const short = (x: number, d: number) => x.toFixed(d).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  if (n >= 1_000_000_000) return '$' + short(n / 1_000_000_000, n >= 10_000_000_000 ? 1 : 2) + 'B';
+  if (n >= 1_000_000) return '$' + short(n / 1_000_000, n >= 10_000_000 ? 1 : 2) + 'M';
   return '$' + n.toLocaleString('en-US');
 }
 

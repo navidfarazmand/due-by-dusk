@@ -93,17 +93,17 @@ export interface CityPlan {
   /** Base value and toughness per crop type on this farm (the engine uses these instead of the crop's own). */
   cropVal: Record<string, number>;
   cropHp: Record<string, number>;
-  /** The rival's best day here; beating it takes the city crown. */
-  record: number;
   totalDays: number;
   /** Keep this much cash after paying the deed for the second star. */
   spare: number;
   /** The day's gazette event this city leans towards (every other day). */
   signatureEvent: string;
-  /** What a steady player earns on a day here once the whole ladder is out (used for bills, records, ad rewards). */
+  /** What a steady player earns on a day here once the whole ladder is out (used for bills and ad rewards). */
   dayRef: number;
   /** How heavy this farm's bills are against what its field pays. */
   billMul: number;
+  /** The player's bill scale this plan was made with (0.15: bills follow the player's own days; 1 for the town's own bills). */
+  scale: number;
   /** Only on boss farms. The deed cannot be paid until the boss is knocked out. */
   bossFight?: BossFight;
 }
@@ -271,13 +271,13 @@ const LOCAL_BILLS: Record<CountryCode, Array<[string, string]>> = {
 };
 
 const SIGNATURE: Record<string, string> = {
-  ca_charlottetown: 'gale', ca_gatineau: 'frost', ca_toronto: 'rain', ca_leamington: 'fair', ca_saskatoon: 'gale', ca_kelowna: 'frost',
-  us_austin: 'stampede', us_desmoines: 'market', us_vidalia: 'fair',
-  br_belem: 'rain', br_petrolina: 'market', br_sinop: 'gale', br_ribeirao: 'market', br_bento: 'fair',
-  ma_marrakech: 'market', ma_meknes: 'stampede', ma_fes: 'market',
-  fr_avignon: 'stampede', fr_beaune: 'market', fr_tours: 'fair', fr_roscoff: 'rain', fr_agen: 'gale',
-  cn_guilin: 'rain', cn_hangzhou: 'fair', cn_chengdu: 'market',
-  jp_sapporo: 'frost', jp_aomori: 'frost', jp_shizuoka: 'market', jp_kyoto: 'fair', jp_kagoshima: 'gale',
+  ca_charlottetown: 'gale', ca_gatineau: 'frost', ca_toronto: 'rain', ca_saskatoon: 'gale', ca_kelowna: 'frost',
+  us_austin: 'stampede', us_desmoines: 'market', us_circleville: 'fair', us_vidalia: 'fair',
+  br_belem: 'rain', br_petrolina: 'market', br_sinop: 'gale', br_bento: 'fair',
+  ma_marrakech: 'market', ma_meknes: 'stampede', ma_larache: 'gale', ma_fes: 'market',
+  fr_avignon: 'stampede', fr_beaune: 'market', fr_tours: 'fair', fr_agen: 'gale',
+  cn_guilin: 'rain', cn_hangzhou: 'fair', cn_wuhan: 'frost', cn_chengdu: 'market',
+  jp_sapporo: 'frost', jp_shizuoka: 'market', jp_kagoshima: 'gale',
 };
 
 /** Money steps up at every border (v0.13; Navid, 10 Nov: "we have to make the new bills much more expensive so that it
@@ -295,15 +295,43 @@ export function borderMul(k: number): number {
   return Math.pow(BORDER_STEP, borders(k));
 }
 
+/**
+ * Where town k sits on the money curves below (0.15). The curves were measured on the road of 0.13/0.14 (Canada 6
+ * towns, the USA 3, Brazil 5, Morocco 3, France 5, China 3, Japan 3); Navid set Canada 5, Japan 3 and the others 4 on
+ * 15 Nov. Each country's towns are spread over its old stretch of the curves, so a country starts and ends at the same
+ * money, power and toughness as before, and the upgrade prices (which step at the old borders) stay in step.
+ */
+const OLD_SPAN: Record<CountryCode, [number, number]> = { CA: [0, 5], US: [6, 8], BR: [9, 13], MA: [14, 16], FR: [17, 21], CN: [22, 24], JP: [25, 27] };
+export function econPos(k: number): number {
+  const last = ROUTE.length - 1;
+  if (k > last) return econPos(last) + (k - last);
+  if (k < 0) return k;
+  const c = ROUTE[k];
+  const towns = ROUTE.filter(x => x.country === c.country);
+  const i = towns.indexOf(c);
+  const [a, b] = OLD_SPAN[c.country];
+  return towns.length > 1 ? a + ((b - a) * i) / (towns.length - 1) : a;
+}
+
 /** What a steady player (one who upgrades as they go) earns in a day at route index k, with the whole ladder out.
  * Measured with bot playthroughs (a player who buys upgrades with every spare dollar and pays its bills at about
- * two thirds of what its field makes): about 30% more each farm through Canada, then 45% more each farm. */
+ * two thirds of what its field makes): about 30% more each farm through Canada, then 45% more each farm (positions
+ * on the old road, econPos). */
 const DAYREF_CANADA = [230, 330, 430, 560, 720, 1000];
-export function dayRef(k: number): number {
-  if (k < DAYREF_CANADA.length) return DAYREF_CANADA[k];
+function dayRefAt(x: number): number {
+  if (x <= 0) return DAYREF_CANADA[0];
+  if (x < DAYREF_CANADA.length - 1) {
+    const i = Math.floor(x);
+    return DAYREF_CANADA[i] * Math.pow(DAYREF_CANADA[i + 1] / DAYREF_CANADA[i], x - i);
+  }
+  if (x <= DAYREF_CANADA.length - 1) return DAYREF_CANADA[DAYREF_CANADA.length - 1];
   // the USA starts at about half again Kelowna: a player arrives with Canada's boss bounty and twelve days of upgrades
-  // (and money steps up at every border)
-  return Math.round(1550 * Math.pow(1.45, k - DAYREF_CANADA.length) * borderMul(k));
+  return 1550 * Math.pow(1.45, x - DAYREF_CANADA.length);
+}
+export function dayRef(k: number): number {
+  const x = econPos(k);
+  // money steps up at every border
+  return Math.round(dayRefAt(x) * (x < DAYREF_CANADA.length ? 1 : borderMul(k)));
 }
 
 /**
@@ -311,11 +339,14 @@ export function dayRef(k: number): number {
  * on one crop, crits averaged in, times the swing's area or the seeds per shot). Bot playthroughs on 29 Oct followed
  * 3.43 × 1.35^k through Canada within about 15%; from Des Moines it grows 50% a farm (the scythe, the flame weeder
  * and their attachments), 20% from Bento (the seed blaster) and 7% from Beaune (most upgrades are long builds).
+ * (Positions on the old road, econPos.)
  */
+function expectedAt(x: number): number {
+  const c = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  return Math.exp(Math.log(3.43) + c(x, 0, 6) * Math.log(1.35) + c(x - 6, 0, 6) * Math.log(1.5) + c(x - 12, 0, 5) * Math.log(1.2) + Math.max(0, x - 17) * Math.log(1.07));
+}
 export function expectedPower(k: number): number {
-  let v = 3.43 * Math.pow(1.35, Math.min(6, Math.max(0, k)));
-  for (let i = 7; i <= k; i++) v *= i <= 12 ? 1.5 : i <= 17 ? 1.2 : 1.07;
-  return v;
+  return expectedAt(econPos(k));
 }
 
 /**
@@ -331,18 +362,24 @@ export function toughnessFor(k: number, power: number): number {
 }
 
 /** How tough crops are by route index (before toughnessFor): 13.5% a farm through Canada, 22.5% into Austin, then in
- * step with the expected power, so the bigger crops of a ladder keep taking a few cuts and upgrades keep paying. */
+ * step with the expected power, so the bigger crops of a ladder keep taking a few cuts and upgrades keep paying
+ * (positions on the old road, econPos). */
 export function hpMul(k: number): number {
+  const x = econPos(k);
   const austin = 0.45 * Math.pow(1.135, 6) * 1.08;
-  if (k <= 5) return 0.45 * Math.pow(1.135, k);
-  if (k === 6) return austin;
-  return (austin * expectedPower(k)) / expectedPower(6);
+  if (x <= 5) return 0.45 * Math.pow(1.135, x);
+  if (x < 6) {
+    const kelowna = 0.45 * Math.pow(1.135, 5);
+    return kelowna * Math.pow(austin / kelowna, x - 5);
+  }
+  return (austin * expectedAt(x)) / expectedAt(6);
 }
 
 /** What crops are worth by route index: 11.5% a farm through Austin, 37% after, so an on-track player's day keeps up
  * with the bills (45% a farm) while the market stall, skills and a fuller field add the rest. */
 export function valMul(k: number): number {
-  return Math.pow(1.115, Math.min(6, k)) * Math.pow(1.37, Math.max(0, k - 6)) * borderMul(k);
+  const x = econPos(k);
+  return Math.pow(1.115, Math.min(6, x)) * Math.pow(1.37, Math.max(0, x - 6)) * borderMul(k);
 }
 
 /**
@@ -383,13 +420,16 @@ export function dayShape(d: number, k = 0): number {
 }
 /** An average player's settled day on farm k, as a share of dayRef(k) (measured on 25 s days before v0.12). */
 const AVG_POINTS: Array<[k: number, share: number]> = [
-  // 0.14 (the runaways, bots on 15 Nov: average and strong players, on-track builds, days 1 to 5, about 300 days):
-  // a town's field is the country's runaways caught so far plus its own, so a town's day no longer follows the old
-  // ladder. Charlottetown (carrots only) pays about half the old share; Saskatoon, Kelowna, Austin and the capitals
-  // more. Towns in between are interpolated.
-  [0, 0.172], [1, 0.349], [2, 0.328], [3, 0.403], [4, 0.521], [5, 0.484], [6, 0.445], [7, 0.331], [8, 0.303],
-  [9, 0.39], [11, 0.552], [13, 0.455], [14, 0.459], [16, 0.481], [17, 0.351], [19, 0.287], [21, 0.336], [22, 0.284],
-  [24, 0.385], [25, 0.24], [27, 0.315],
+  // 0.15 (bots on 15 Nov on the new road: average and strong players, on-track builds, days 1 to 6, six days a town;
+  // Charlottetown also with 0.14's eight days of the same field). A town's field is the country's runaways caught so
+  // far plus its own, so each town is measured, not read off a curve.
+  [0, 0.19], [1, 0.334], [2, 0.346], [3, 0.547], [4, 0.412],
+  [5, 0.396], [6, 0.313], [7, 0.256], [8, 0.398],
+  [9, 0.371], [10, 0.593], [11, 0.523], [12, 0.401],
+  [13, 0.449], [14, 0.55], [15, 0.494], [16, 0.501],
+  [17, 0.348], [18, 0.447], [19, 0.293], [20, 0.33],
+  [21, 0.312], [22, 0.291], [23, 0.359], [24, 0.324],
+  [25, 0.25], [26, 0.295], [27, 0.298],
 ];
 export function avgDayShare(k: number): number {
   const P = AVG_POINTS;
@@ -402,28 +442,49 @@ export function avgDay(k: number, d: number): number {
   return dayRef(k) * avgDayShare(k) * dayShape(d, k);
 }
 /**
- * How hard town k's bills are (0.14; Navid, 14 Nov: "less ads in the beginning of the game, and then after some
- * cities the difficulty increases... stop the ad rise at medium 6 or 7 per 10 minute even less its ok"): what a bill
- * asks per day, against an average player's day there (AVG_POINTS, measured with on-track builds). The first two towns
- * leave money over for upgrades, so they need no ad; the third and fourth ask most of a day; from the fifth a bill asks
- * a whole average day. With the surprises (about 8% of a day) an average player who keeps up with upgrades is short
- * about 10% of a day, two ads in ten minutes, and one who falls behind (crops soften for a weaker build, but not all
- * the way) about six; a strong one needs none. It stops rising there.
+ * How hard town k's bills are, against an average player's day there (AVG_POINTS: the bots on on-track builds). Navid
+ * (14-15 Nov): "less ads in the beginning ... stop the ad rise at medium 6 or 7 per 10 minute even less its ok", then
+ * "change the ads to play from town 2 and then in town 3 more than 2, then in town 4 full ads". The first town leaves
+ * money over for upgrades; the second asks a whole day (the surprises, about 8% of a day, make the ads); the third a
+ * little more; from the fourth BILL_RATE, about 6 ads in ten minutes for an average player with the surprises and some
+ * upgrades. A town's bills then follow the player's own days (paceMul), so this holds for weaker players too, and a
+ * strong one needs about 2 or 3.
  */
-export const BILL_RATE = 1;
+export const BILL_RATE = 1.15;
 export function billPressure(k: number): number {
   if (k <= 0) return 0.7;
-  if (k === 1) return 0.75;
-  if (k === 2) return 0.9;
-  if (k === 3) return 0.95;
+  if (k === 1) return 1;
+  if (k === 2) return 1.1;
   return BILL_RATE;
 }
+
+// ---------------------------------------------------------------- the player's pace (0.15)
+
+/**
+ * Bills follow the player's own days (0.15; Navid, 15 Nov: "strong players also have to watch ads ... your idea that
+ * the bills have to be based on their own earning is a smart move"). The pace is what the player's recent days earned
+ * against an average player's day in the same town (1: average), perks taken out. When a town starts its bills, tax,
+ * repairs and the King's bounty are its own times paceMul(pace), and they stay so until the town ends: all the way
+ * for a player below the average (so nobody needs more ads than an average player), part of the way above it (a
+ * strong player keeps a little of the lead and watches about 2 or 3 ads in ten minutes instead of 6).
+ */
+export const PACE_LEARN = 0.25;
+export const PACE_UP = 0.8;
+/** The pace after one more day that earned `rel` times an average day (a moving average, about the last week). */
+export function updatePace(pace: number | undefined, rel: number): number {
+  const r = Math.max(0.2, Math.min(5, Number.isFinite(rel) ? rel : 1));
+  const p = pace != null && pace > 0 && Number.isFinite(pace) ? pace : r;
+  return Math.round((p * (1 - PACE_LEARN) + r * PACE_LEARN) * 1000) / 1000;
+}
+/** The bill scale for a pace (1 with no days yet). */
+export function paceMul(pace: number | undefined): number {
+  if (pace == null || !(pace > 0) || !Number.isFinite(pace)) return 1;
+  const p = Math.max(0.4, Math.min(3, pace));
+  return Math.round((p <= 1 ? p : Math.pow(p, PACE_UP)) * 100) / 100;
+}
+
 /** Each bill of a town asks this much more per day than the one before: upgrades should keep up. */
 export const BILL_CLIMB = 0.01;
-/** The rival's record: this many average settled days in one. The strong bot's best day (day 3, golden corn) is 1.8 to
- *  3 of them from Gatineau on, the average one's 1.15 to 1.5; on the first farms the two are close, so the record
- *  starts lower there (1.3 on Charlottetown) and a good first run can take the crown. */
-export const RECORD_DAYS = 1.6;
 
 function moneyStep(v: number): number {
   // three figures from a million up ($1.23M, $45.6M, $1.07B)
@@ -434,10 +495,33 @@ function roundMoney(v: number): number {
   const st = moneyStep(v);
   return v < 100 ? Math.max(10, Math.round(v / st) * st) : Math.round(v / st) * st;
 }
-/** The smallest round amount that is at least `p` (a bill never asks less per day than the one before). */
-function atLeast(p: number): number {
-  const st = moneyStep(p);
-  return Math.ceil(p / st - 1e-9) * st;
+/**
+ * Clean amounts for everything the bank asks (0.15; Navid, 15 Nov: "make sure the bills are clean numbers like 5000$
+ * or 8000$. Don't make something like 4987$ which may rise the attention of players"): one of these times a power of
+ * ten ($1,100, $2,800, $5,000, $75,000, $1.3M), so a bill looks set by the bank, not worked out from the player's days.
+ */
+const NICE = [1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2, 2.2, 2.5, 2.8, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 9, 10];
+function decade(v: number): number {
+  let e = Math.pow(10, Math.floor(Math.log10(v)));
+  if (v / e >= 10 - 1e-9) e *= 10;
+  if (v / e < 1 - 1e-9) e /= 10;
+  return e;
+}
+export function niceMoney(v: number): number {
+  if (!(v > 0)) return 0;
+  if (v < 10) return Math.max(5, Math.round(v / 5) * 5);
+  const e = decade(v), f = v / e;
+  let best = 1;
+  for (const n of NICE) if (Math.abs(Math.log(f / n)) < Math.abs(Math.log(f / best))) best = n;
+  return Math.round(best * e);
+}
+/** The smallest clean amount that is at least `v` (a bill never asks less per day than the one before). */
+export function niceAtLeast(v: number): number {
+  if (!(v > 0)) return 0;
+  if (v <= 10) return Math.max(5, Math.ceil(v / 5 - 1e-9) * 5);
+  const e = decade(v);
+  for (const n of NICE) if (n * e >= v - 1e-6 * e) return Math.round(n * e);
+  return Math.round(10 * e);
 }
 
 /** Rent or the bank's loan for every bill but the last, which is the town's big bill (the same every time). */
@@ -458,17 +542,17 @@ void GENERIC_BILLS;
 void LOCAL_BILLS;
 
 const LAST_RATE = new Map<number, number>();
-/** What town k's last bill asks per day (cached: every bill asks more per day than the one before). */
+/** What town k's last bill asks per day before rounding (cached; the bank's rate never goes down, see planFor). */
 function lastRate(k: number): number {
   let v = LAST_RATE.get(k);
   if (v == null) {
-    const b = planFor(ROUTE[k].id).bills;
-    const last = b[b.length - 1];
-    LAST_RATE.set(k, (v = last.amt / last.days));
+    planFor(ROUTE[k].id);
+    v = LAST_RATE.get(k) ?? 0;
   }
   return v;
 }
-export function planFor(cityId: string): CityPlan {
+export function planFor(cityId: string, scale = 1): CityPlan {
+  scale = Number.isFinite(scale) && scale > 0 ? Math.round(Math.max(0.3, Math.min(3, scale)) * 100) / 100 : 1;
   const k = routeIndex(cityId);
   if (k < 0) throw new Error('unknown city ' + cityId);
   const city = ROUTE[k];
@@ -481,17 +565,21 @@ export function planFor(cityId: string): CityPlan {
   const press = billPressure(k);
   // 0.14 (Navid, 11 Nov: "bills will get cheap with new city/farm"): a short bill asks less money than a long one, but
   // no bill asks less per day than the one before it, here and in the town before (each asks 1% more before rounding)
-  let prevRate = k > 0 ? lastRate(k - 1) : 0;
+  // (0.15: with the player's scale on both, so a player at a steady pace never sees them get cheaper either). The rule
+  // holds for the bank's own rate; the amounts are then rounded to clean money (up or down, at most about 6%), since a
+  // floor on rounded amounts kept stepping up to the next clean amount (+11% a bill in Des Moines).
+  let prevRate = k > 0 ? lastRate(k - 1) * scale : 0;
   const bills: Bill[] = kinds.map((kind, i) => {
     const days = schedule[i];
     const from = i ? billDueDay(i - 1, k) + 1 : 1, to = billDueDay(i, k);
     let sum = 0;
     for (let d = from; d <= to; d++) sum += avgDay(k, d);
     // a boss town: time spent on the King earns nothing, so its bills are lighter; the bounty helps with the big bill
-    const raw = sum * press * (1 + BILL_CLIMB * i) * mul * (boss && i < n - 1 ? 0.85 : 1);
-    let amt = roundMoney(raw);
-    if (amt / days < prevRate) amt = atLeast(prevRate * days);
-    prevRate = amt / days;
+    let raw = sum * press * (1 + BILL_CLIMB * i) * mul * (boss && i < n - 1 ? 0.85 : 1) * scale;
+    if (raw / days < prevRate) raw = prevRate * days;
+    prevRate = raw / days;
+    if (scale === 1 && i === n - 1) LAST_RATE.set(k, prevRate);
+    const amt = niceMoney(raw);
     return { name: BILL_NAME[kind][0], note: BILL_NAME[kind][1], kind, days, amt };
   });
   // the goat and the crows come after two bills on the first farms, from the start later on
@@ -524,7 +612,7 @@ export function planFor(cityId: string): CityPlan {
   // Bosses take longer in later countries: 14 s of steady hitting in Canada, 38 s in Japan.
   const ci = COUNTRIES.findIndex(c => c.code === city.country);
   const bossFight: BossFight | undefined = boss
-    ? { ...BOSSES[city.country], focusSec: 14 + 4 * ci, share: 0.5, uptime: 0.45, hpMul: Math.round(0.6 * (12 + 0.45 * k) * totalDays), bounty: roundMoney(ref * mul) }
+    ? { ...BOSSES[city.country], focusSec: 14 + 4 * ci, share: 0.5, uptime: 0.45, hpMul: Math.round(0.6 * (12 + 0.45 * k) * totalDays), bounty: niceMoney(ref * mul * scale) }
     : undefined;
   return {
     cityId,
@@ -548,18 +636,16 @@ export function planFor(cityId: string): CityPlan {
     stages,
     runaway: kindsHere.length ? kindsHere[kindsHere.length - 1].type : '',
     // surprises (0.14): none in the first town; a tax about half an average day, a repair a little under a day
-    tax: k > 0 ? roundMoney(avgHere * 0.5 * mul) : 0,
-    repair: k > 0 ? roundMoney(avgHere * 0.8 * mul) : 0,
+    tax: k > 0 ? niceMoney(avgHere * 0.5 * mul * scale) : 0,
+    repair: k > 0 ? niceMoney(avgHere * 0.8 * mul * scale) : 0,
     cropVal,
     cropHp,
-    // the rival's best day: about a good day with the whole ladder out, a little more on later farms, so a good
-    // player can take the crown on a first run (stars open the next country)
-    record: roundMoney(ref * avgDayShare(k) * (RECORD_DAYS - 0.3 * Math.max(0, 1 - k / 2)) * mul),
     totalDays,
-    spare: roundMoney(bills[n - 1].amt * 0.5),
+    spare: niceMoney(bills[n - 1].amt * 0.5),
     signatureEvent: SIGNATURE[cityId] || 'market',
     dayRef: ref,
     billMul: mul,
+    scale,
     ...(bossFight ? { bossFight } : {}),
   };
 }

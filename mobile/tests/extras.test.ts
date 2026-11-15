@@ -32,7 +32,7 @@ describe('diamonds are retired: an older save moves into the upgrade tree (0.13)
 
   it('turns learned skills into owned nodes and every other diamond into tree credit, once', () => {
     // Canada won: 5 farms and a boss farm = 7 diamonds, plus 5 from daily golds = 12 earned; 11 spent on five skills
-    expect(isBossCity(ROUTE[5].id)).toBe(true);
+    expect(isBossCity('ca_kelowna')).toBe(true);
     const g = parseGame(oldSave());
     // the skills that are tree nodes: Retained counsel at the level that gives its old 12%, Sundering cleave
     expect(g.tree).toEqual({ m2: 3, p5: 1 });
@@ -164,8 +164,13 @@ describe('savings', () => {
     expect(v13.migratedRefund).toBe(0);
     expect(v13.wallet).toBe(70);
     expect(v13.workshop.levels.scythe).toBe(4);
-    // 0.14 with a town running (one jar: savings went into it): kept
-    const cur = parseGame(JSON.stringify({ v: 3, econ: 11, wallet: 0, splitWallet: true, run: { cityId: 'ca_toronto', startCash: 70, startedAt: 1, bestDay: 0, mark: 0, spent: 5, debt: 12, repair: { what: 'The fence broke', amt: 40 } } }));
+    // a 0.14 save with a town running: the towns and bills changed in 0.15, so it starts again
+    const v14 = parseGame(JSON.stringify({ v: 3, econ: 11, wallet: 0, splitWallet: true, run: { cityId: 'ca_toronto', startCash: 70, startedAt: 1, bestDay: 0, mark: 0, spent: 5 } }));
+    expect(v14.run).toBeNull();
+    expect(v14.migratedFarm).toBe(true);
+    expect(v14.migratedRoad).toBe(true);
+    // 0.15 with a town running (one jar: savings went into it): kept
+    const cur = parseGame(JSON.stringify({ v: 3, econ: 12, wallet: 0, splitWallet: true, run: { cityId: 'ca_toronto', startCash: 70, startedAt: 1, bestDay: 0, mark: 0, spent: 5, debt: 12, repair: { what: 'The fence broke', amt: 40 } } }));
     expect(cur.run!.startCash).toBe(70);
     expect(cur.run!.spent).toBe(5);
     expect(cur.run!.debt).toBe(12);

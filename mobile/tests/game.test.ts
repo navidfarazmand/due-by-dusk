@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ECONOMY } from '../src/game/progress';
-import { BILL_NAME, BILL_RATE, BORDER_STEP, BOSSES, DAY_SECONDS, billDays, billDueDay, billPressure, billSchedule, borders, goldCredit, LADDER_HP, LADDER_VAL, allPlans, cropName, planFor, dayRef, expectedPower, toughnessFor, winCredit } from '../src/game/plan';
+import { BILL_NAME, BILL_RATE, BORDER_STEP, niceAtLeast, niceMoney, paceMul, updatePace, BOSSES, DAY_SECONDS, billDays, billDueDay, billPressure, billSchedule, borders, goldCredit, LADDER_HP, LADDER_VAL, allPlans, cropName, planFor, dayRef, expectedPower, toughnessFor, winCredit } from '../src/game/plan';
 import {
   CROP_LEVEL_MAX, CROP_LEVEL_PAY, FIELD_KINDS, RUNAWAY, TYPICAL_CUTS, countryKnown, cropLevel, cropLevelProgress, cropPay, cropPayTable, cutsForLevel, debutFarm, typicalCuts,
 } from '../src/game/road';
@@ -26,7 +26,8 @@ describe('city plans', () => {
 
   it('covers all 28 towns in route order', () => {
     expect(ROUTE).toHaveLength(28);
-    expect(COUNTRIES.map(c => c.cities.length)).toEqual([6, 3, 5, 3, 5, 3, 3]);
+    // Navid (15 Nov): Canada 5, Japan 3, the others 4
+    expect(COUNTRIES.map(c => c.cities.length)).toEqual([5, 4, 4, 4, 4, 4, 3]);
     expect(plans.map(p => p.index)).toEqual(ROUTE.map((_, i) => i));
   });
 
@@ -70,30 +71,73 @@ describe('city plans', () => {
     expect(billSchedule(7)).toEqual(billSchedule(7));
   });
 
-  it('never asks less per day than the bill before, all along the road, in round money', () => {
-    const step = (v: number) => (v >= 1_000_000 ? Math.pow(10, Math.floor(Math.log10(v)) - 2) : v < 100 ? 5 : v < 1000 ? 10 : v < 10000 ? 50 : v < 100000 ? 100 : 500);
+  /** Navid (15 Nov): "make sure the bills are clean numbers like 5000$ or 8000$. Don't make something like 4987$". */
+  const NICE = [1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2, 2.2, 2.5, 2.8, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 9];
+  const clean = (v: number) => {
+    if (v < 10) return v % 5 === 0;
+    const e = Math.pow(10, Math.floor(Math.log10(v) + 1e-12));
+    return NICE.some(n => Math.abs(n * e - v) < 1e-6 * e);
+  };
+
+  it('never asks less per day than the bill before, all along the road (but for rounding), in clean amounts', () => {
+    // the bank's own rate never goes down; the amounts are rounded to clean money, at most about 6% either way
     let prev = 0;
-    for (const p of plans)
+    for (const p of plans) {
       for (const b of p.bills) {
         expect(b.amt).toBeGreaterThan(0);
-        expect(b.amt / b.days).toBeGreaterThanOrEqual(prev - 1e-9);
-        prev = b.amt / b.days;
-        const st = step(b.amt);
-        expect(Math.abs(b.amt / st - Math.round(b.amt / st))).toBeLessThan(1e-9);
+        expect(b.amt / b.days, `${p.cityId} ${b.amt}`).toBeGreaterThanOrEqual(prev * 0.88);
+        prev = Math.max(prev, b.amt / b.days);
+        expect(clean(b.amt), `${p.cityId} ${b.amt}`).toBe(true);
       }
+      for (const v of [p.tax, p.repair, p.spare, p.bossFight?.bounty ?? 0]) if (v) expect(clean(v), `${p.cityId} ${v}`).toBe(true);
+    }
+    expect([4987, 5000, 8000, 1234, 1100, 2800, 75000, 1300000].map(niceMoney)).toEqual([5000, 5000, 8000, 1200, 1100, 2800, 75000, 1300000]);
+    expect(niceAtLeast(1210)).toBe(1300);
+    expect(niceAtLeast(1300)).toBe(1300);
+    expect(niceAtLeast(9500)).toBe(10000);
   });
 
-  it('needs no ad in the first two towns and stops getting harder from the fifth', () => {
-    // a bill asks this share of an average day: under one leaves money for upgrades
+  it("follows the player's pace (0.15): weaker players' bills all the way down, stronger ones' part of the way up, in clean amounts", () => {
+    // no days yet: the town's own bills
+    expect(paceMul(undefined)).toBe(1);
+    // an average player
+    expect(paceMul(1)).toBe(1);
+    // a weaker one: all the way, so they need no more ads than an average player
+    expect(paceMul(0.6)).toBe(0.6);
+    // a strong one: part of the way, so they still need some ads, fewer than an average player
+    expect(paceMul(1.6)).toBeGreaterThan(1.3);
+    expect(paceMul(1.6)).toBeLessThan(1.6);
+    // a moving average of the days: one great day moves it a quarter of the way
+    expect(updatePace(undefined, 1.4)).toBe(1.4);
+    expect(updatePace(1, 2)).toBeCloseTo(1.25, 6);
+    expect(updatePace(1, 0)).toBeCloseTo(0.8, 6);
+    // the plan for a pace: every money amount follows it, still clean and never cheaper per day bill by bill
+    const base = planFor('ca_toronto'), strong = planFor('ca_toronto', paceMul(1.6)), weak = planFor('ca_toronto', 0.6);
+    expect(base.scale).toBe(1);
+    expect(strong.scale).toBe(paceMul(1.6));
+    for (let i = 0; i < base.bills.length; i++) {
+      expect(strong.bills[i].amt / base.bills[i].amt).toBeGreaterThan(paceMul(1.6) * 0.85);
+      expect(strong.bills[i].amt / base.bills[i].amt).toBeLessThan(paceMul(1.6) * 1.15);
+      expect(weak.bills[i].amt / base.bills[i].amt).toBeGreaterThan(0.6 * 0.85);
+      expect(weak.bills[i].amt / base.bills[i].amt).toBeLessThan(0.6 * 1.15);
+      expect(clean(strong.bills[i].amt) && clean(weak.bills[i].amt)).toBe(true);
+      if (i) expect(strong.bills[i].amt / strong.bills[i].days).toBeGreaterThanOrEqual((strong.bills[i - 1].amt / strong.bills[i - 1].days) * 0.88);
+    }
+    expect(strong.tax).toBeGreaterThan(base.tax);
+    expect(weak.repair).toBeLessThan(base.repair);
+  });
+
+  it('needs no ad in the first town, some from the second, more in the third and the full amount from the fourth', () => {
+    // Navid (15 Nov): "change the ads to play from town 2 and then in town 3 more than 2, then in town 4 full ads".
+    // A bill asks this share of an average day; under one leaves money for upgrades, the surprises add about 8%.
     expect(billPressure(0)).toBeLessThan(0.9);
-    expect(billPressure(1)).toBeLessThan(0.9);
+    expect(billPressure(1)).toBeGreaterThanOrEqual(1);
     expect(billPressure(2)).toBeGreaterThan(billPressure(1));
     expect(billPressure(3)).toBeGreaterThan(billPressure(2));
-    expect(billPressure(4)).toBeGreaterThan(billPressure(3));
-    expect(billPressure(4)).toBe(BILL_RATE);
+    expect(billPressure(3)).toBe(BILL_RATE);
     expect(billPressure(27)).toBe(BILL_RATE);
-    // about one ad a bill for an average player, never a wall
-    expect(BILL_RATE).toBeLessThanOrEqual(1.2);
+    // about 6 ads in ten minutes for an average player at most, never a wall
+    expect(BILL_RATE).toBeLessThanOrEqual(1.25);
   });
 
   it('sizes the surprises: none in the first town, a tax of about half a day and a repair a little under one', () => {
@@ -343,12 +387,11 @@ describe('progress', () => {
     expect(cityLock(g, ca[0]).open).toBe(true);
     expect(cityLock(g, ca[1]).open).toBe(false);
     expect(countryLock(g, 'US').open).toBe(false);
-    winAll(g, ca.slice(0, 5), 3);
-    expect(cityLock(g, ca[5]).open).toBe(true);
+    const king = ca.length - 1;
+    winAll(g, ca.slice(0, king), 3);
+    expect(cityLock(g, ca[king]).open).toBe(true);
     expect(countryLock(g, 'US').reason).toMatch(/Win/);
-    winAll(g, [ca[5]], 1);
-    // 5 × 3 + 1 = 16 stars, the gate is 11
-    expect(starGate('CA')).toBe(11);
+    winAll(g, [ca[king]], 1);
     expect(countryLock(g, 'US').open).toBe(true);
     expect(nextCity(g)).toBe('us_austin');
   });
@@ -361,12 +404,13 @@ describe('progress', () => {
     expect(countryLock(g, 'US').open).toBe(true);
   });
 
-  it('scores stars for winning, money to spare after the deed and the crown', () => {
-    expect(starsFor({ won: false, cashLeft: 900, spare: 100, crown: true }).stars).toBe(0);
-    expect(starsFor({ won: true, cashLeft: 99, spare: 100, crown: false }).stars).toBe(1);
-    expect(starsFor({ won: true, cashLeft: 100, spare: 100, crown: false }).stars).toBe(2);
-    expect(starsFor({ won: true, cashLeft: 100, spare: 100, crown: true }).stars).toBe(3);
-    expect(starsFor({ won: true, cashLeft: 0, spare: 100, crown: true }).spare).toBe(false);
+  it('scores stars for catching the runaway, money to spare after the big bill and a first try (0.15)', () => {
+    expect(starsFor({ won: false, cashLeft: 900, spare: 100, firstTry: true }).stars).toBe(0);
+    expect(starsFor({ won: true, cashLeft: 99, spare: 100, firstTry: false }).stars).toBe(1);
+    expect(starsFor({ won: true, cashLeft: 100, spare: 100, firstTry: false }).stars).toBe(2);
+    expect(starsFor({ won: true, cashLeft: 100, spare: 100, firstTry: true }).stars).toBe(3);
+    expect(starsFor({ won: true, cashLeft: 0, spare: 100, firstTry: true }).stars).toBe(2);
+    expect(starsFor({ won: true, cashLeft: 0, spare: 100, firstTry: true }).spare).toBe(false);
   });
 
   it('pays out a farm only once: a run banks and spends only what beats what the farm already paid', () => {

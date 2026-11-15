@@ -1146,5 +1146,14 @@ const dict: Record<string, string> = {
   "The bank took a quarter of your jar.": "Die Bank hat ein Viertel deines Glases genommen.",
   "New towns and bills: your town starts again, and its {amt} went to your jar.": "Neue Orte und Rechnungen: Dein Ort fängt von vorn an, seine {amt} sind in deinem Glas.",
   "New towns and bills: your town starts again.": "Neue Orte und Rechnungen: Dein Ort fängt von vorn an.",
+  "Tax lawyer": "Steueranwalt",
+  "Taxes cost half.": "Steuern kosten die Hälfte.",
+  "BIG BILL": "GROSSE RECHNUNG",
+  "Caught on the first try": "Beim ersten Versuch gefangen",
+  "This wipes every town, star and upgrade on this device. It can't be undone.": "Das löscht alle Orte, Sterne und Upgrades auf diesem Gerät. Das lässt sich nicht rückgängig machen.",
+  "Needs {n} ribbons. You have {have}. Win stars and daily medals to earn more.": "Braucht {n} Schleifen. Du hast {have}. Mehr gibt's für Sterne und Tagesmedaillen.",
+  "Ohio river-bottom fields where the whole town turns out every October for the Pumpkin Show, and Grandma Pumpkin judges the pies.": "Flussauen in Ohio, wo jeden Oktober die ganze Stadt zur Kürbisschau kommt und Oma Kürbis die Kuchen bewertet.",
+  "Atlantic breezes over the Loukkos berry fields, where the Briar-Berry Twins hide under the plastic tunnels.": "Atlantikwind über den Beerenfeldern am Loukkos, wo sich die Brombeer-Zwillinge unter den Folientunneln verstecken.",
+  "Yangtze river flats famous for winter cabbages, where Lord Cabbage grows fat on river mud and steamed buns.": "Die Jangtse-Ebenen, berühmt für Winterkohl, wo Graf Kohl sich an Flussschlamm und Dampfbrötchen satt frisst.",
 };
 export default dict;

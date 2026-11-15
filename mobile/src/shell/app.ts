@@ -3,11 +3,11 @@
 
 import { Capacitor } from '@capacitor/core';
 import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from '../game/world';
-import { cropName, goldCredit, planFor, toughnessFor, winCredit, type BillKind, type CityPlan, avgDay } from '../game/plan';
+import { cropName, goldCredit, niceMoney, paceMul, planFor, toughnessFor, updatePace, winCredit, type BillKind, type CityPlan, avgDay } from '../game/plan';
 import { cropLevel, cropPay, cropPayTable } from '../game/road';
 import { bestPower } from '../game/power';
 import {
-  DEFAULT_TOUCH_LIFT, GAME_SAVE_KEY, RECENT_DAYS, coinsForDays, MAX_TOUCH_LIFT, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, crownCount, frontierCity, newGame, nextCity, paidAfterRun,
+  DEFAULT_TOUCH_LIFT, GAME_SAVE_KEY, RECENT_DAYS, coinsForDays, MAX_TOUCH_LIFT, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, frontierCity, newGame, nextCity, paidAfterRun,
   jarAfterForeclosure, parseGame, spendableFarmCash, starGate, starsFor, todayKey, toolLock, totalStars, type GameSave, type RunInfo,
 } from '../game/progress';
 import { FLAIR, buyFlair, equipFlair, flairById, lookFor, ribbonsForWin, type FlairKind } from '../game/flair';
@@ -18,7 +18,6 @@ import { ART, BAND, MAP, NODES, PREVIEW, SPRITE, bandFor, cropChip, spriteImg } 
 import { $, ICON, TOOL_ICON, cap, clamp, esc, money, stars } from './dom';
 import { engine, on, type BillInfo, type ChestInfo, type DayEvent, type EngineState, type Today } from './engine';
 import { CHEST_UP_ICON, chestBurst, chestName, chestSvg, newTodayHtml, perkCard, perkIcon } from './chest';
-import { rivalFace } from './rival';
 import { FarmHud, deviceText, eventIcon, touchy } from './hud';
 import { REPORT_EMAIL, reportDetails, sendReport, watchErrors, watchShake } from '../platform/report';
 import { checkForUpdate, startUpdate, type UpdateOffer } from '../platform/update';
@@ -72,9 +71,6 @@ interface DayResult {
   levelUps?: Array<{ type: string; level: number }>;
   today: Today;
   event: DayEvent | null;
-  crownToday: boolean;
-  /** Rival's envy (the tree): what taking the crown paid. */
-  crownBonus?: number;
   doubled: boolean;
 }
 
@@ -85,7 +81,10 @@ interface CityResult {
   cityId: string;
   stars: number;
   spare: boolean;
-  crown: boolean;
+  /** The second star's goal in this run (0.15: it follows the run's bills). */
+  goal?: number;
+  /** 0.15 (the third star, after rivals and crowns left): caught without the bank ever coming in this town. */
+  firstTry: boolean;
   firstWin: boolean;
   /** Tree credit for a first win (a boss farm pays twice). */
   credit: number;
@@ -222,16 +221,6 @@ export class GameApp {
     this.root.append(this.modal);
     // the field's sound button opens the pause card, which holds the music and effects switches (Navid, 3 Nov)
     this.hud = new FarmHud($('stage'), () => this.pauseForSound());
-    this.hud.onRivalBeaten = () => {
-      try {
-        navigator.vibrate?.([30, 40, 70]);
-      } catch {
-        /* no vibration */
-      }
-      // a short message, no spotlight (the record chip is off the field since v0.11.3)
-      const rv = this.rivalToday();
-      this.toast(rv ? t('Crown! You beat {rival}\'s record.', { rival: rv.name }) : t('Crown!'), 2200);
-    };
     this.root.addEventListener('click', e => this.click(e));
     // Settings → the two volume sliders: heard while dragging, saved on release
     this.root.addEventListener('input', e => this.volumeInput(e, false));
@@ -392,11 +381,9 @@ export class GameApp {
       this.pendingEvent = d.event;
       this.day = null;
       if (this.intro) {
-        this.hud.setRival(null);
         this.hud.dayStarted(d.event, true);
         return;
       }
-      this.hud.setRival(this.rivalToday());
       // a lesson keeps the day's event banner out of its way
       const lesson = !this.side && !!this.g.run && this.dayLessons();
       this.hud.dayStarted(d.event, lesson);
@@ -419,21 +406,16 @@ export class GameApp {
       }
       const run = this.g.run;
       if (!run) return;
-      const plan = planFor(run.cityId);
+      const plan = this.farmPlan(run);
       const p = (this.g.cities[run.cityId] ||= { ...cityProgress(this.g, run.cityId) });
       const earned = Math.round(d.today.earned);
       p.bestDay = Math.max(p.bestDay, earned);
       run.bestDay = Math.max(run.bestDay, earned);
-      const crownToday = !p.crown && earned >= plan.record;
-      let crownBonus = 0;
-      if (crownToday) {
-        p.crown = true;
-        this.g.ribbons += ribbonsForWin(0, 0, true, false);
-        // tree: Rival's envy (m10), taking a city's crown pays half its record
-        if ((this.g.tree || {}).m10 > 0) {
-          crownBonus = Math.round(plan.record / 2);
-          engine().addCash(crownBonus);
-        }
+      // 0.15: the player's pace (the next towns' bills follow it): today against an average day here, the town's perks
+      // taken out. Not on a King's town, where time on the King earns nothing.
+      if (!plan.boss) {
+        const boost = engine().perkBoost?.() || 1;
+        this.g.pace = updatePace(this.g.pace, earned / (avgDay(plan.index, d.day) * boost));
       }
       // the road (0.13): today's cuts raise each vegetable's level, on a farm the player does not own yet
       const levelUps: Array<{ type: string; level: number }> = [];
@@ -460,7 +442,7 @@ export class GameApp {
       this.g.totals.days++;
       this.g.totals.crops += d.today.count;
       this.g.totals.earned += d.today.earned;
-      this.day = { day: d.day, today: d.today, event: this.pendingEvent, crownToday, crownBonus, doubled: false, levelUps, collector };
+      this.day = { day: d.day, today: d.today, event: this.pendingEvent, doubled: false, levelUps, collector };
       this.save();
     });
     on('idle', () => {
@@ -483,10 +465,11 @@ export class GameApp {
     this.afterChest = '';
     const run = this.g.run;
     if (!run) return;
-    const plan = planFor(run.cityId);
+    const plan = this.farmPlan(run);
     const p = (this.g.cities[run.cityId] ||= { ...cityProgress(this.g, run.cityId) });
     const firstWin = !p.won;
-    const res = starsFor({ won: true, cashLeft: d.cash, spare: plan.spare, crown: p.crown });
+    // 0.15: the third star is for a town caught on the first try (the bank never came here)
+    const res = starsFor({ won: true, cashLeft: d.cash, spare: plan.spare, firstTry: !(p.fails || 0) });
     const ribbons = ribbonsForWin(p.stars, res.stars, false, firstWin && plan.boss);
     this.g.ribbons += ribbons;
     p.won = true;
@@ -503,7 +486,7 @@ export class GameApp {
     p.paid = paidAfterRun(run, banked);
     this.g.run = null;
     this.result = {
-      kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.spare, crown: p.crown, firstWin, credit, ribbons,
+      kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.spare, goal: plan.spare, firstTry: res.firstTry, firstWin, credit, ribbons,
       days: d.days, earned: d.earned, harvested: d.harvested, wallet: this.g.wallet, banked, mark: run.mark, kept: Math.round(d.cash), own: !!run.own,
     };
     this.saveNow();
@@ -520,9 +503,11 @@ export class GameApp {
     const left = this.g.wallet;
     const p = (this.g.cities[run.cityId] ||= { ...cityProgress(this.g, run.cityId) });
     p.paid = paidAfterRun(run, insured);
+    // 0.15: this town can no longer be caught on the first try (the third star)
+    p.fails = (p.fails || 0) + 1;
     this.g.run = null;
     this.result = {
-      kind: 'lost', cityId: run.cityId, stars: 0, spare: false, crown: false, firstWin: false, credit: 0,
+      kind: 'lost', cityId: run.cityId, stars: 0, spare: false, firstTry: false, firstWin: false, credit: 0,
       days: d.days, earned: 0, harvested: 0, wallet: left, banked: insured, mark: run.mark, short: d.short, bill: d.bill, bossKept: !!d.bossKept,
     };
     this.saveNow();
@@ -670,7 +655,6 @@ export class GameApp {
       case 'settings': this.openSettings(); break;
       case 'languages': this.langFromSettings = arg === 'settings'; this.openLanguages(); break;
       case 'lang': this.chooseLang(arg); break;
-      case 'crowns': this.openCrowns(); break;
       case 'info': this.openInfo(arg); break;
       case 'report': this.openReport(); break;
       case 'report-send': void this.submitReport(); break;
@@ -777,10 +761,23 @@ export class GameApp {
     this.beginRun(cityId);
   }
 
-  /** The plan the engine plays: the city's plan with crops as tough as this run's build calls for. */
+  /** The plan the engine plays: the city's plan with crops as tough as this run's build calls for, and (0.15) the
+   *  bills set for the player's pace when the town started (they never change while it runs). */
   private farmPlan(run: RunInfo): CityPlan {
-    const plan = planFor(run.cityId);
+    const plan = planFor(run.cityId, run.scale ?? 1);
     return run.tough && run.tough !== 1 ? { ...plan, hp: plan.hp * run.tough } : plan;
+  }
+
+  /** A town's plan as this player gets it: the running town's as it started, any other as it would start now. */
+  private planOf(cityId: string): CityPlan {
+    const run = this.g.run;
+    return run && run.cityId === cityId ? this.farmPlan(run) : planFor(cityId, this.paceScale());
+  }
+
+  /** 0.15 (Navid, 15 Nov: bills "based on their own earning"): the bill scale for a town started now, from the
+   *  player's pace (1 until they have days behind them). */
+  private paceScale(): number {
+    return paceMul(this.g.pace);
   }
 
   private beginRun(cityId: string): void {
@@ -792,7 +789,7 @@ export class GameApp {
     // 0.14, one jar (Navid, 15 Nov): the savings go into the town's jar and pay its bills; what is left after the big
     // bill comes back out as savings for the next town
     const jar = Math.max(0, Math.round(this.g.wallet));
-    const run: RunInfo = { cityId, startCash: jar, startedAt: Date.now(), bestDay: 0, mark: 0, spent: 0, tough };
+    const run: RunInfo = { cityId, startCash: jar, startedAt: Date.now(), bestDay: 0, mark: 0, spent: 0, tough, scale: this.paceScale() };
     const plan = this.farmPlan(run);
     const ok = engine().beginCity({ cityId, country: plan.country, cash: jar, shed: this.g.workshop.levels, plan, tools });
     if (!ok) return;
@@ -1025,7 +1022,7 @@ export class GameApp {
   private rollSurprise(): boolean {
     const run = this.g.run;
     if (!run || (window as unknown as { __DBD_NO_SURPRISES?: boolean }).__DBD_NO_SURPRISES) return false;
-    const plan = planFor(run.cityId);
+    const plan = this.farmPlan(run);
     if (!plan.tax && !plan.repair) return false;
     const e = engine();
     const st = e.state();
@@ -1038,17 +1035,19 @@ export class GameApp {
     const kind = forced || (r < 0.07 ? 'tax' : r < 0.13 && !run.repair ? 'repair' : '');
     this.save();
     if (kind === 'tax' && plan.tax > 0) {
+      // the tree's Tax lawyer (m10, 0.15) halves it
+      const tax = (this.g.tree || {}).m10 > 0 ? niceMoney(plan.tax / 2) : plan.tax;
       const cash = Math.max(0, Math.floor(st.cash));
-      const paid = Math.min(cash, plan.tax);
+      const paid = Math.min(cash, tax);
       if (paid > 0) e.spendCash(paid);
-      const owed = plan.tax - paid;
+      const owed = tax - paid;
       if (owed > 0) run.debt = (run.debt || 0) + Math.round(owed * 1.2);
       this.saveNow();
       this.surpriseCard(
         'tax',
         t('Tax day'),
         owed > 0 ? t('The jar was short: the collector takes {amt} from today\'s harvest.', { amt: money(Math.round(owed * 1.2)) }) : '',
-        `<b class="sp-amt money">-${money(plan.tax)}</b>`,
+        `<b class="sp-amt money">-${money(tax)}</b>`,
         `<button type="button" class="st-btn gold btn-md flex1" data-act="surprise-ok">${t('Start')}${ICON.next()}</button>`,
       );
       return true;
@@ -1324,15 +1323,6 @@ export class GameApp {
     return false;
   }
 
-  /** The rival on today's HUD: the city's record holder, until the player takes the crown. */
-  private rivalToday(): { name: string; record: number } | null {
-    const run = this.g.run;
-    if (this.side || !run) return null;
-    const ct = cityById(run.cityId);
-    if (!ct || cityProgress(this.g, run.cityId).crown) return null;
-    return { name: ct.rival, record: planFor(run.cityId).record };
-  }
-
   /** First sights on the field (v0.11.1): the field holds still and a card says what the new thing is, until the
    *  player taps (Navid, 3 Nov: no more dimmed screen and words that vanish in three seconds). Once each. */
   private watchField(now: number): void {
@@ -1372,11 +1362,8 @@ export class GameApp {
     if (!seen.mThief && (p.crows || []).length) return void card('mThief', '🐦', t('A thief crow'), t('It steals coins from your jar. Swipe it before it flies off and you get them back.'));
     if (!seen.mProp && (p.props || []).length) return void card('mProp', '🎁', t('Something to grab'), t('Swipe over it for a bonus.'));
     if (!seen.mBolt && p.bolts > 0) return void card('mBolt', '⚡', t('Lightning'), t('Your crits throw lightning at crops nearby.'));
-    // the HUD: the rival's record, the chain bonus, a harvest rush
+    // the HUD: the chain bonus, a harvest rush
     const h = engine().hud();
-    const rv = this.rivalToday();
-    if (!seen.mRival && rv && p.today.earned > 0 && p.time < 15)
-      return void card('mRival', '👑', t('Beat {amt} today', { amt: money(rv.record) }), t("That's {rival}'s best day on this farm. Earn more in one day and the city's crown is yours.", { rival: rv.name }));
     if (!seen.mChain && h.tiers.length > 1 && h.combo >= h.tiers[1].count)
       return void card('mChain', '🔗', t('Chain bonus!'), t('Cut crops quickly, one after another: every crop in a long chain pays more.'));
     // the power meter, half full: what it does with the tool in hand (once for each tool, v0.12)
@@ -1605,7 +1592,7 @@ export class GameApp {
    *  you're on, on the day you're on. It used to be one of your own recent days, from any farm. */
   private coinsReward(): number {
     const cityId = this.g.run ? this.g.run.cityId : nextCity(this.g);
-    const p = planFor(cityId);
+    const p = this.planOf(cityId);
     let day = 1;
     try {
       if (this.g.run) day = engine().state().day;
@@ -1613,7 +1600,8 @@ export class GameApp {
       /* engine not ready */
     }
     void coinsForDays;
-    return Math.max(20, Math.round((0.5 * avgDay(p.index, day) * p.billMul) / 10) * 10);
+    // 0.15: in step with the player's bills (they follow the pace)
+    return Math.max(20, Math.round((0.5 * avgDay(p.index, day) * p.billMul * p.scale) / 10) * 10);
   }
 
   private async adCoins(): Promise<void> {
@@ -2270,7 +2258,7 @@ export class GameApp {
     return `<div class="bg fit"><img class="art" id="dbdWorldArt" src="${ART.world}" alt="${t('World map with the farm route')}">${pins}${clouds}</div>
       <div class="grp tl" style="width: 330px; height: 64px"><button type="button" class="st-btn st-sq top-btn" data-act="go" data-arg="menu" aria-label="${t('Back to menu')}">${ICON.back()}</button>
         <h2 class="st-chip top-chip">${t('World map')}</h2></div>
-      <div class="grp tr" style="width: 150px; height: 64px"><button type="button" class="st-chip top-chip right crown-chip" data-act="crowns" aria-label="${t('City crowns')}">${ICON.crown('#FFC23D', 24)}<span>${crownCount(this.g)} / ${ROUTE.length}</span><i class="info-i">i</i></button></div>
+      <div class="grp tr" style="width: 150px; height: 64px"><button type="button" class="st-chip top-chip right crown-chip" data-act="pen" aria-label="${t('The Pen')}">${PEN_ICON(24)}<span>${workerCount(this.g.pen)} / ${ROUTE.length}</span></button></div>
       <div class="grp br" style="width: 300px; height: 200px"><div class="st-chip country-card">${card}</div></div>`;
   }
 
@@ -2346,7 +2334,7 @@ export class GameApp {
   private cityCardHtml(cityId: string): string {
     const ct = cityById(cityId)!;
     const c = countryOf(ct.country);
-    const plan = planFor(cityId);
+    const plan = this.planOf(cityId);
     const p = cityProgress(this.g, cityId);
     const lock = cityLock(this.g, cityId);
     const n = c.cities.findIndex(x => x.id === cityId) + 1;
@@ -2367,7 +2355,7 @@ export class GameApp {
       h += `<p class="cc-desc">${esc(t(ct.desc))}</p>`;
     }
     h += `<div class="stat2"><div class="statbox"><div class="k">${t('{n} BILLS', { n: plan.bills.length })}</div><div class="v">${tn(plan.totalDays, '{n} day', '{n} days')}</div></div>
-      <div class="statbox"><div class="k">${t('CITY CROWN')}</div><div class="v">${p.crown ? t('Yours!') : money(plan.record)}</div></div></div>`;
+      <div class="statbox"><div class="k">${t('BIG BILL')}</div><div class="v">${money(plan.bills[plan.bills.length - 1].amt)}</div></div></div>`;
     if (p.bestDay > 0) h += `<p class="cc-best">${t('Your best day here:')} <b>${money(p.bestDay)}</b></p>`;
     // 0.14: the town's runaway (caught ones are in the Pen)
     const rw = plan.runaway;
@@ -2389,7 +2377,7 @@ export class GameApp {
     const e = engine();
     const st = e.state(), b = e.bill();
     const ct = cityById(run.cityId)!;
-    const plan = planFor(run.cityId);
+    const plan = this.farmPlan(run);
     // the one big button: start the day, or pay tonight's bill, or face the bank
     let main: string;
     // short on the bill: a late day (an ad) is the big choice while there are late days left; the bank is the small one
@@ -2431,10 +2419,8 @@ export class GameApp {
       boss && !boss.down
         ? `<div class="dc-boss${b.bossBlock ? ' hot' : ''}">${ICON.crown('#FFC23D', 18)}<b>${esc(t(boss.name))}</b><span class="nb-bar"><i style="width: ${(clamp(boss.hp / Math.max(1, boss.max), 0, 1) * 100).toFixed(1)}%"></i></span></div>`
         : '';
-    // the city's rival and the record to beat for the crown (Navid, 30 Oct: "who is Captain Arsenault?")
-    const p = cityProgress(this.g, run.cityId);
-    // v0.12: a new crop every morning; on those days it takes the rival's place on the card. Short on tonight's bill,
-    // the place says what a late day costs (v0.12.1, Navid: not a sentence in a button)
+    // v0.12: a new crop every morning. Short on tonight's bill, the place says what a late day costs (v0.12.1, Navid:
+    // not a sentence in a button)
     const lateRow = extraLeft
       ? `<p class="dc-late">${t('One more day for an ad: Grumble & Sons keep {p}% of what you earn that day. After 3 late days, the bank takes the farm.', { p: Math.round(100 * ((st as unknown as { lateNext?: number }).lateNext ?? [0.2, 0.4, 0.6][late])) })}</p>`
       : '';
@@ -2443,10 +2429,6 @@ export class GameApp {
       ? `<div class="dc-repair">${ICON.wrench(24)}<span>${esc(t(run.repair.what))}</span><button type="button" class="st-btn gold btn-sm" data-act="repair">${t('Fix {amt}', { amt: money(run.repair.amt) })}</button></div>`
       : '';
     const newRow = bossRow || lateRow || repairRow ? '' : this.newTodayRow();
-    const rivalRow =
-      !bossRow && !newRow && !lateRow && !repairRow && !p.crown
-        ? `<div class="dc-rival">${rivalFace(ct.rival, 28)}<span class="dc-rn">${esc(ct.rival)}</span><span class="dc-rec">${ICON.crown('#FFC23D', 18)}<b>${money(plan.record)}</b></span></div>`
-        : '';
     // the tiles: what is waiting behind each
     const ups = this.upgradesReady();
     const job = this.g.workshop.job;
@@ -2472,7 +2454,7 @@ export class GameApp {
         <div class="dc-city"><span>${esc(ct.short)}</span>${plan.boss ? `<i class="dc-boss-tag">${t('BOSS')}</i>` : ''}</div>
         <h2 class="dc-day">${t('Day {day}', { day: st.day })}</h2>
         <div class="dc-dots${total > 20 ? ' many' : ''}" role="img" aria-label="${t('Day {day} of {n}', { day: st.day, n: total })}">${dots}</div>
-        ${billRow}${bossRow}${lateRow}${repairRow}${newRow}${rivalRow}
+        ${billRow}${bossRow}${lateRow}${repairRow}${newRow}
         <div class="dc-go-row">${extra}${main}</div>
       </div></div>
       <div class="grp mr" style="width: 160px; height: 316px"><div class="fh-col">
@@ -2600,7 +2582,7 @@ export class GameApp {
   private billsList(): string {
     const e = engine();
     const st = e.state();
-    const plan = this.g.run ? planFor(this.g.run.cityId) : null;
+    const plan = this.g.run ? this.farmPlan(this.g.run) : null;
     // the field's vegetables, each with its level (0.13, the road)
     const cuts = this.g.cropCuts || {};
     const now = plan && plan.stages.filter(x => x.stage <= st.billsPaid).map(x => cropChip(x.type, cropLevel(cuts[x.type] || 0), 22)).join('');
@@ -2630,11 +2612,8 @@ export class GameApp {
     if (!d || !run) return '';
     const e = engine();
     const b = e.bill();
-    const ct = cityById(run.cityId)!;
-    const plan = planFor(run.cityId);
-    const p = cityProgress(this.g, run.cityId);
+    const plan = this.farmPlan(run);
     const earned = Math.round(d.today.earned);
-    const pct = Math.round(clamp(p.bestDay / plan.record, 0, 9) * 100);
     const amtTxt = money(b.amt) + '.00';
     const dots = ' ' + new Array(Math.max(2, 31 - t(b.name).length - amtTxt.length)).join('.') + ' ';
     const cashNow = e.state().cash;
@@ -2649,19 +2628,12 @@ export class GameApp {
     else if (boss && !boss.down)
       bossLine = `<div class="sd-boss">${ICON.crown('#FFC23D', 18)}<span>${t('{boss}: {n}% left', { boss: esc(t(boss.name)), n: Math.max(1, Math.round((boss.hp / Math.max(1, boss.max)) * 100)) })}</span><span class="nb-bar"><i style="width: ${(clamp(boss.hp / Math.max(1, boss.max), 0, 1) * 100).toFixed(1)}%"></i></span></div>`;
     const dueLine = b.tonight ? t('Due tonight.') : tn(b.left, 'Due in {n} day.', 'Due in {n} days.');
-    const crownLine = d.crownToday
-      ? `👑 ${t('New city crown! You beat {rival}.', { rival: esc(ct.rival) })}`
-      : p.crown
-        ? `👑 ${t('{farm} is yours. Best day {amt}.', { farm: esc(ct.short), amt: money(p.bestDay) })}`
-        : t('City record: {have} of {rec}', { have: money(p.bestDay), rec: money(plan.record) });
     const dbl = !d.doubled && earned > 0 && canOffer(this.g, 'double')
       ? `<button type="button" class="st-btn blue btn-md flex1 ad-btn" data-act="ad-double">${ICON.play()}<span>${t('Double it: +{amt}', { amt: money(earned) })}</span></button>`
       : '';
-    // v0.11.1 (Navid, 3 Nov: less text, bigger numbers): what the day earned, big; the bill on one line; crops, the
-    // chain and the city record behind the "i"
+    // v0.11.1 (Navid, 3 Nov: less text, bigger numbers): what the day earned, big; the bill on one line; crops and the
+    // chain behind the "i"
     void dots;
-    void crownLine;
-    void pct;
     // a late day: what Grumble & Sons took at sunset (v0.12)
     const fee = (d.today as { fee?: number }).fee || 0, feeRate = (d.today as { feeRate?: number }).feeRate || 0;
     const feeLine = fee > 0 ? `<div class="sd-fee">${t('Late fee: Grumble & Sons took {amt} ({p}%)', { amt: money(fee), p: Math.round(feeRate * 100) })}</div>` : '';
@@ -2673,7 +2645,6 @@ export class GameApp {
     const lvNow = d.levelUps && d.levelUps.length
       ? `<div class="sd-lv">${d.levelUps.slice(0, 5).map(u => `<span class="sd-lvup">${cropChip(u.type, u.level, 24)}<i>▲</i></span>`).join('')}</div>`
       : '';
-    const crownNow = d.crownToday ? `<div class="sd-crown">👑 ${t('New city crown! You beat {rival}.', { rival: esc(ct.rival) })}${d.crownBonus ? ` <b class="money">+${money(d.crownBonus)}</b>` : ''}</div>` : '';
     // v0.12.1 (Navid: "it doesn't show how much money i have left"): the jar is on the card. v0.13.1 (Navid, 14 Nov:
     // "the money in the jar should be less bold than what we earned today. also what we earned today should come on
     // top"): today's harvest is the big number, the jar a smaller line under it
@@ -2684,7 +2655,7 @@ export class GameApp {
       <div class="sd-hero"><span class="sd-today"><b class="sd-big money">+${money(earned)}</b>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('today')}</span></span>
         <span class="sd-cash"><span class="money">${money(cashNow)}</span><span class="sd-lbl">${t('in the jar')}</span></span></div>
       <div class="sd-bill">${billIcon(plan.bills[b.index]?.kind, 26)}<span class="sb-what"><span class="sb-name">${esc(t(b.name))}</span><span class="sb-due">${dueLine}</span></span><b class="sb-amt">${money(b.amt)}</b>${stamp}</div>
-      ${feeLine}${d.collector ? `<div class="sd-fee">${ICON.notice(18)}<span>${t('The collector took {amt} for the tax.', { amt: money(d.collector) })}</span></div>` : ''}${crownNow}${bossLine}${lvNow}
+      ${feeLine}${d.collector ? `<div class="sd-fee">${ICON.notice(18)}<span>${t('The collector took {amt} for the tax.', { amt: money(d.collector) })}</span></div>` : ''}${bossLine}${lvNow}
       <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house sd-ups" data-act="tree" aria-label="${t('Upgrades')}">${ICON.wrench(28)}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
     </div></div>`;
   }
@@ -2699,17 +2670,18 @@ export class GameApp {
     if (r.kind === 'won') {
       const next = ROUTE[routeIndex(r.cityId) + 1];
       const nextOpen = next && cityLock(this.g, next.id).open;
-      // star 2 is shown as the piggy bank filling past the farm's goal; star 3 as the rival's face
+      // star 2 is shown as the piggy bank filling past the town's goal; star 3 (0.15) is a first-try catch
       const kept = Math.max(0, r.kept ?? r.banked + r.mark);
-      const top = Math.max(kept, plan.spare) * 1.25;
+      const goal = r.goal ?? plan.spare;
+      const top = Math.max(kept, goal) * 1.25;
       const keptPct = Math.min(100, (kept / Math.max(1, top)) * 100);
-      const goalPct = Math.min(100, (plan.spare / Math.max(1, top)) * 100);
+      const goalPct = Math.min(100, (goal / Math.max(1, top)) * 100);
       const starRow = [
         `<div class="star-row ok" style="animation-delay: .25s">${ICON.star(true, 26)}<span>${t('Paid the big bill')}</span></div>`,
         `<div class="star-row spare-row${r.spare ? ' ok' : ''}" style="animation-delay: .5s">${ICON.star(r.spare, 26)}<span class="sp-pig">${ICON.piggy(24)}</span>
-          <span class="sp-bar" aria-label="${t('Kept {amt} after the big bill; the goal is {goal}', { amt: money(kept), goal: money(plan.spare) })}"><i style="--w: ${keptPct.toFixed(1)}%"></i><b style="left: ${goalPct.toFixed(1)}%"></b></span>
-          <span class="sp-amt">${money(kept)}<small> / ${money(plan.spare)}</small></span></div>`,
-        `<div class="star-row rival-row${r.crown ? ' ok' : ''}" style="animation-delay: .75s">${ICON.star(r.crown, 26)}<span class="rv-face${r.crown ? ' down' : ''}">${rivalFace(ct.rival, 30)}</span><span>${t('Beat {rival}', { rival: esc(ct.rival) })}</span></div>`,
+          <span class="sp-bar" aria-label="${t('Kept {amt} after the big bill; the goal is {goal}', { amt: money(kept), goal: money(goal) })}"><i style="--w: ${keptPct.toFixed(1)}%"></i><b style="left: ${goalPct.toFixed(1)}%"></b></span>
+          <span class="sp-amt">${money(kept)}<small> / ${money(goal)}</small></span></div>`,
+        `<div class="star-row try-row${r.firstTry ? ' ok' : ''}" style="animation-delay: .75s">${ICON.star(r.firstTry, 26)}<span>${t('Caught on the first try')}</span></div>`,
       ].join('');
       const gains =
         (r.ribbons ? `<button type="button" class="dia dia-btn" data-act="barn" aria-label="${t('Spend ribbons in the Bling Barn')}">${ribbonIcon(18)} +${r.ribbons}</button>` : '') +
@@ -3054,11 +3026,11 @@ export class GameApp {
     const rows = (list: Array<[string, string]>) =>
       `<div class="info-rows">${list.map(([k, v]) => `<div class="ir"><span>${k}</span><b>${v}</b></div>`).join('')}</div>`;
     if (what === 'day' && this.day && run) {
-      const d = this.day, plan = planFor(run.cityId), p = cityProgress(this.g, run.cityId), b = engine().bill();
+      const d = this.day, p = cityProgress(this.g, run.cityId), b = engine().bill();
       this.openModal('info', `<h2 class="m-title">${t('Today')}</h2>${rows([
         [t('Crops cut'), String(d.today.count)],
         [t('Best chain'), '×' + d.today.best],
-        [t('City record'), p.crown ? t('Yours! Best day {amt}', { amt: money(p.bestDay) }) : `${money(p.bestDay)} / ${money(plan.record)}`],
+        [t('Your best day here:'), money(p.bestDay)],
         [t('Bill'), t('Notice {n} of {m}', { n: b.index + 1, m: b.count })],
       ])}<button type="button" class="st-btn gold btn-md" data-act="close">${t('Got it')}</button>`, 380);
       return;
@@ -3076,20 +3048,9 @@ export class GameApp {
     this.openModal('info', `<p class="m-text info-text">${ICON.coin(18)} ${txt}</p><button type="button" class="st-btn gold btn-md" data-act="close">${t('Got it')}</button>`, 380);
   }
 
-  private openCrowns(): void {
-    const rows = COUNTRIES.map(c => {
-      const n = c.cities.filter(x => cityProgress(this.g, x.id).crown).length;
-      return `<div class="crown-row"><span>${esc(t(c.name))}</span><span>${ICON.crown(n ? '#FFC23D' : '#E4DACA', 18)} ${n}/${c.cities.length}</span></div>`;
-    }).join('');
-    this.openModal('crowns', `<h2 class="m-title">${ICON.crown('#FFC23D', 24)} ${t('City crowns')}</h2>
-      <p class="m-text">${t("Every farm has a rival who holds the city's record: their best day. Earn more than that in a single day on that farm and the crown is yours, with ribbons for the Bling Barn.")}</p>
-      <p class="m-text"><b>${t('Your crowns: {n} of {total}', { n: crownCount(this.g), total: ROUTE.length })}</b></p>
-      <div class="crown-grid">${rows}</div><button type="button" class="st-btn gold btn-md" data-act="close">${t('Done')}</button>`, 400);
-  }
-
   private confirmReset(): void {
     this.openModal('confirm', `<h2 class="m-title">${t('Start over?')}</h2>
-      <p class="m-text">${t("This wipes every farm, star, crown and upgrade on this device. It can't be undone.")}</p>
+      <p class="m-text">${t("This wipes every town, star and upgrade on this device. It can't be undone.")}</p>
       <div class="m-row"><button type="button" class="st-btn" data-act="close">${t('Keep my game')}</button><button type="button" class="st-btn red" data-act="reset-yes">${t('Start over')}</button></div>`);
   }
 

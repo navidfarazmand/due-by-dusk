@@ -166,6 +166,8 @@ export interface EngineApi {
   setSfxVolume(v: number, sample?: boolean): void;
   /** A sound for the shell's own screens (0.13.1). */
   uiSound?(name: 'buy' | 'build' | 'click'): void;
+  /** 0.15: how much the town's perks raise a day's pay, roughly (5% a wooden perk, 10% silver, 15% gold), for the pace. */
+  perkBoost?(): number;
   /** Settings → Finger offset: how far above a finger the sickle sits, in CSS px (0 = under the finger). */
   setTouchLift(px: number): void;
   /** Where a finger has to touch (client px) to put the sickle at client point (x, y). */

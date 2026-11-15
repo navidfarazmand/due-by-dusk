@@ -32,7 +32,9 @@ const power = (L) => {
   const reach = 1 + FX.reach * L.swing;
   return dmg * tick * (1 + crit * 1.8) * reach * reach;
 };
-const expected = (k) => { let v = 3.43 * 1.35 ** Math.min(6, Math.max(0, k)); for (let i = 7; i <= k; i++) v *= i <= 12 ? 1.5 : i <= 17 ? 1.2 : 1.07; return v; };
+// expectedPower(k) comes from the game (0.15: the towns per country changed, plan.ts maps them onto its curves)
+let EXPECTED = [];
+const expected = (k) => EXPECTED[k];
 // a typical way to spend: blade first, then handle and hands, and some of the rest
 const levels = (a) => ({ scythe: Math.round(a), swing: Math.round(a / 2), hands: Math.round(a / 2), clover: Math.round(a / 3), soil: Math.round(a / 3), days: Math.min(20, Math.round(a / 4)), market: Math.round(a / 3) });
 function buildFor(k) {
@@ -42,8 +44,8 @@ function buildFor(k) {
 function saveFor(k, cropCuts = {}) {
   const cities = {};
   for (let i = 0; i < k; i++) cities[ROUTE[i]] = { won: true, stars: 3, bestDay: 0, crown: false, bestDays: 3, plays: 1, paid: 0 };
-  // treeV 1: a 0.13 save (without it the game would turn these wins into tree credit, as for an older save); econ 11 (0.14)
-  return { v: 3, econ: 11, treeV: 1, createdAt: 1, cities, run: null, wallet: 0, cropCuts,
+  // treeV 1: a 0.13 save (without it the game would turn these wins into tree credit, as for an older save); econ 12 (0.15)
+  return { v: 3, econ: 12, treeV: 1, createdAt: 1, cities, run: null, wallet: 0, cropCuts,
     workshop: { levels: buildFor(k), job: null }, tools: { owned: ['sickle'], equipped: 'sickle', mods: {} },
     ads: { date: '', coins: 0, doubles: 0, finishes: 0, lastCoinsAt: 0 },
     settings: { music: false, haptics: false, lang: 'en' }, seen: { intro: true, practice: true, start: true }, totals: { days: 9, crops: 500, earned: 2000 } };
@@ -125,7 +127,7 @@ const opts = process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM
 const browser = await chromium.launch(opts);
 const out = [];
 for (const k of FARMS) {
-  const build = buildFor(k);
+  let build = null;
   for (const skill of SKILLS) {
     for (let rep = 0; rep < REPS; rep++) {
       const ctx = await browser.newContext({ viewport: { width: 844, height: 390 } });
@@ -141,7 +143,11 @@ for (const k of FARMS) {
       await page.addInitScript(installBots);
       await page.goto(URL + '/?testads=1');
       await page.waitForFunction(() => !!(window.__DBD_APP && window.__DBD_ENGINE));
-      if (!ROUTE.length) ROUTE = await page.evaluate(() => window.__DBD_ROUTE_IDS.slice());
+      if (!ROUTE.length) {
+        ROUTE = await page.evaluate(() => window.__DBD_ROUTE_IDS.slice());
+        EXPECTED = await page.evaluate(() => window.__DBD_ROUTE_IDS.map((_, i) => window.__DBD_PLANS.expectedPower(i)));
+      }
+      build = buildFor(k);
       // v0.13 (the road): a typical player's vegetable levels when this farm starts (about 100 cuts of each vegetable
       // of every farm before it, and half a farm's worth of the ones it opens with), and the day each bill is due
       const road = await page.evaluate((k) => {

@@ -7,9 +7,11 @@ import { todayKey, type GameSave } from '../game/progress';
 
 export type OfferKind = 'double' | 'coins' | 'finish' | 'extraDay' | 'ribbon' | 'daily' | 'chest' | 'pen';
 
-/** Daily caps, so ads stay a bonus and never become the game (the daily farm keeps its own count). Six doubles a
- * day: with twelve, a bot that took every ad won every farm with three stars. */
-export const CAPS: Record<OfferKind, number> = { double: 6, coins: 6, finish: 8, extraDay: 99, ribbon: 3, daily: 99, chest: 6, pen: 4 };
+/** Daily caps, so ads stay a bonus and never become the game (the daily farm keeps its own count). Doubles: six
+ * until 0.14 (with twelve, a bot that took every ad won every farm with three stars); twelve from 0.15, when the bills
+ * follow the player's own days and an average player is meant to need about six ads in ten minutes from the fourth
+ * town (Navid, 15 Nov), so the doubles last a session of about twenty minutes. */
+export const CAPS: Record<OfferKind, number> = { double: 12, coins: 6, finish: 8, extraDay: 99, ribbon: 3, daily: 99, chest: 6, pen: 4 };
 /** Minutes between two free-coin ads. */
 export const COINS_COOLDOWN_MIN = 20;
 

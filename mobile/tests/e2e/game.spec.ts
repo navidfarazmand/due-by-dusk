@@ -2,14 +2,15 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 type Save = Record<string, unknown>;
 
-const CA = ['ca_charlottetown', 'ca_gatineau', 'ca_toronto', 'ca_leamington', 'ca_saskatoon', 'ca_kelowna'];
+// 0.15 (Navid, 15 Nov): Canada has five towns, Kelowna (King Russet) the last
+const CA = ['ca_charlottetown', 'ca_gatineau', 'ca_toronto', 'ca_saskatoon', 'ca_kelowna'];
 
 function seeded(won: string[], wallet: number, extra: Save = {}): Save {
   const cities: Record<string, unknown> = {};
-  for (const id of won) cities[id] = { won: true, stars: 2, bestDay: 200, crown: false, bestDays: 3, plays: 1, paid: 0 };
+  for (const id of won) cities[id] = { won: true, stars: 2, bestDay: 200, bestDays: 3, plays: 1, paid: 0 };
   return {
-    // treeV 1: a save of 0.13 (the tree is the one upgrade system); a test of the migration leaves it out. econ 11: 0.14
-    v: 3, econ: 11, treeV: 1, createdAt: 1, cities, run: null, wallet,
+    // treeV 1: a save of 0.13 (the tree is the one upgrade system); a test of the migration leaves it out. econ 12: 0.15
+    v: 3, econ: 12, treeV: 1, createdAt: 1, cities, run: null, wallet,
     workshop: { levels: { scythe: 6, swing: 2, hands: 2, days: 2, soil: 2, market: 2, clover: 1 }, job: null },
     tools: { owned: ['sickle'], equipped: 'sickle', mods: {} },
     ads: { date: '', coins: 0, doubles: 0, finishes: 0, lastCoinsAt: 0 },
@@ -81,7 +82,7 @@ test('menu to the first farm and through one day', async ({ page }) => {
 });
 
 test('the farmhouse fits the screen: the day card between the tiles, and every panel tab', async ({ page }) => {
-  await boot(page, seeded(CA.slice(0, 5), 3000, { tools: { owned: ['sickle', 'scythe'], equipped: 'sickle', mods: {} } }));
+  await boot(page, seeded(CA.slice(0, 4), 3000, { tools: { owned: ['sickle', 'scythe'], equipped: 'sickle', mods: {} } }));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_kelowna'));
   await expect(page.locator('.scr-farmhouse')).toBeVisible();
   const boxes2 = (sels: string[]) =>
@@ -142,7 +143,7 @@ test('tools: buy the scythe, put it in hand and add an attachment', async ({ pag
 });
 
 test('boss farm: the big bill waits until the boss is knocked out', async ({ page }) => {
-  const errors = await boot(page, seeded(CA.slice(0, 5), 0));
+  const errors = await boot(page, seeded(CA.slice(0, 4), 0));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_kelowna'));
   await expect(page.locator('.scr-farmhouse .dc-boss')).toContainText('King Russet');
   // pay every bill but the last with test money (each on its due evening) so the big bill is the current one
@@ -193,6 +194,8 @@ test('boss farm: the big bill waits until the boss is knocked out', async ({ pag
   await act(page, 'pay');
   // 0.14: the big bill paid, the town's runaway is caught
   await expect(page.locator('.scr-won .r-caught')).toContainText('Caught');
+  // 0.15: rivals are gone; the third star is a first-try catch (the bank never came here)
+  await expect(page.locator('.scr-won .try-row.ok')).toContainText('Caught on the first try');
   await expect(page.locator('.scr-won .r-boss')).toContainText("Canada's boss is out cold");
   expect(errors).toEqual([]);
 });
@@ -649,6 +652,34 @@ test('a caught town is not played again: a toast says so, and its card opens the
   await expect(page.locator('.scr-pen .pen-count')).toContainText('1 of 28 caught');
   await page.locator('.scr-pen [data-act="pen-back"]').click();
   await expect(page.locator('.scr-country')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("bills follow the player's own days (0.15): a strong pace makes a town's bills bigger, in clean amounts, set once per town", async ({ page }) => {
+  const errors = await boot(page, seeded(['ca_charlottetown'], 0, { pace: 1.6 }));
+  const exp = await page.evaluate(() => {
+    const P = (window as any).__DBD_PLANS;
+    const s = P.paceMul(1.6);
+    return { scale: s, base: P.planFor('ca_gatineau').bills.map((b: any) => b.amt), strong: P.planFor('ca_gatineau', s).bills.map((b: any) => b.amt) };
+  });
+  expect(exp.scale).toBeGreaterThan(1.2);
+  for (let i = 0; i < exp.base.length; i++) expect(exp.strong[i]).toBeGreaterThan(exp.base[i]);
+  // the map's card shows the big bill this player would get there
+  await page.evaluate(() => (window as any).__DBD_APP.show('world'));
+  await act(page, 'enter', 'CA');
+  await act(page, 'city', 'ca_gatineau');
+  await expect(page.locator('.scr-country .city-card')).toContainText('$' + exp.strong[exp.strong.length - 1].toLocaleString('en-US'));
+  // starting the town sets its bills for the whole run
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_gatineau'));
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.scale)).toBe(exp.scale);
+  expect((await E(page, 'bills')).map((b: any) => b.amt)).toEqual(exp.strong);
+  await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('$' + exp.strong[0].toLocaleString('en-US'));
+  // a day moves the pace (a day with nothing cut pulls it down), but this town's bills stay as they were
+  await act(page, 'start');
+  await fast(page);
+  await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.pace)).toBeLessThan(1.6);
+  expect((await E(page, 'bills')).map((b: any) => b.amt)).toEqual(exp.strong);
   expect(errors).toEqual([]);
 });
 
@@ -1581,6 +1612,8 @@ test('Good lawyer lowers the late fees, Cashback pays 8% of a bill back the next
   });
   expect(saved.wallet).toBe(300);
   expect(saved.paid).toBe(300);
+  // 0.15: the bank came, so this town can no longer get the third star
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.cities.ca_toronto.fails)).toBe(1);
   await expect(page.locator('.scr-lost .result-card')).toContainText('$300');
   await expect(page.locator('.scr-lost .r-title')).toContainText('a quarter of your jar');
   expect(errors).toEqual([]);
@@ -1668,8 +1701,8 @@ test('tree tricks, batch five: bleeding, splinters, bees and honey, the hen, the
   expect(errors).toEqual([]);
 });
 
-test("Armour breaker hurts the boss through its armour, and Rival's envy pays half the record with the crown (0.13)", async ({ page }) => {
-  const errors = await boot(page, seeded(CA.slice(0, 5), 0, { tree: { m10: 1 } }));
+test('Armour breaker hurts the boss through its armour (0.13), and the Tax lawyer halves a tax (0.15)', async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 4), 0, { tree: { m10: 1 } }));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_kelowna'));
   await expect(page.locator('.scr-farmhouse .dc-day')).toBeVisible();
   await act(page, 'start');
@@ -1690,14 +1723,24 @@ test("Armour breaker hurts the boss through its armour, and Rival's envy pays ha
   await fx(page, { b14: 2 });
   await E(page, 'devHit', idx, 100);
   expect(b0.hp - (await boss()).hp).toBeCloseTo(60, 6);
-  // Rival's envy: today beats the city's record, and Sundown shows the crown and half the record on top
-  const record = await page.evaluate(() => (window as any).__DBD_PLAN.record);
-  await page.evaluate(r => {
-    const e = (window as any).__DBD_ENGINE;
-    for (let k = 0; k < 400 && e.peek().today.earned < r + 50; k++) e.devCut(e.devCrop('carrot', {}));
-    e.devClock({ endDay: true });
-  }, record);
-  await expect(page.locator('.scr-sundown .sd-crown')).toContainText('$' + Math.round(record / 2).toLocaleString('en-US'), { timeout: 15_000 });
+  await E(page, 'devClock', { endDay: true });
+  await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 15_000 });
+  await act(page, 'farmhouse');
+  // the Tax lawyer (m10): a tax costs half (in clean money)
+  const tax = await page.evaluate(() => (window as any).__DBD_APP.farmPlan((window as any).__DBD_APP.g.run).tax);
+  expect(tax).toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const w = window as any;
+    delete w.__DBD_NO_SURPRISES;
+    w.__DBD_SURPRISE = 'tax';
+    w.__DBD_ENGINE.setCash(1_000_000);
+    w.__DBD_APP.show('farmhouse');
+  });
+  await act(page, 'start');
+  await expect(page.locator('.scr-modal .sp-card.tax')).toBeVisible();
+  const paid = 1_000_000 - (await E(page, 'state')).cash;
+  expect(paid).toBeGreaterThan(tax * 0.4);
+  expect(paid).toBeLessThan(tax * 0.6);
   expect(errors).toEqual([]);
 });
 
@@ -1882,7 +1925,7 @@ test("a purchase that leaves too little for tonight's bill asks on a card over a
 });
 
 test('the boss eats crops, its armour is off only after it eats, and thief crows give coins back when shooed (v0.12)', async ({ page }) => {
-  const errors = await boot(page, seeded(CA.slice(0, 5), 0));
+  const errors = await boot(page, seeded(CA.slice(0, 4), 0));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_kelowna'));
   await expect(page.locator('.scr-farmhouse .dc-boss')).toContainText('King Russet');
   await page.evaluate(() => { (window as any).__DBD_ENGINE.devDay(5); (window as any).__DBD_ENGINE.addCash(500); });

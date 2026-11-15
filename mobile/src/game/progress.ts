@@ -1,4 +1,4 @@
-// Progress across the whole game: which farms are won, stars, crowns, the workshop and ad counters.
+// Progress across the whole game: which towns are won, stars, the workshop and ad counters.
 // The farm being played (day, bills, cash in hand) lives in the engine's own save; this one is the game's.
 
 import { isLang, t } from '../i18n/i18n';
@@ -19,8 +19,10 @@ export interface CityProgress {
   stars: number;
   /** Best single day in this city. */
   bestDay: number;
-  /** Beat the rival's record day at least once. */
-  crown: boolean;
+  /** Before 0.15: beat the rival's record day once (rivals and city crowns left the game in 0.15; kept for old saves). */
+  crown?: boolean;
+  /** 0.15: times the bank came in this town (a town caught with none gets the third star). */
+  fails?: number;
   /** Fewest days to pay off the farm. */
   bestDays: number;
   plays: number;
@@ -43,7 +45,7 @@ export interface RunInfo {
   /** How much tougher this farm's crops are for the player's build when it started (plan.ts, toughnessFor). */
   tough?: number;
   /** The player already owned this farm when the run started (0.13, the road): its cash pays its bills and nothing
-   *  else (no upgrades, no savings), and its cuts don't raise a vegetable's level. Stars, the crown and ribbons count. */
+   *  else (no upgrades, no savings), and its cuts don't raise a vegetable's level. Stars and ribbons count. */
   own?: boolean;
   /** Bills paid when the last day started: the morning after a bill, the day card shows the vegetable it brought. */
   stageSeen?: number;
@@ -52,6 +54,9 @@ export interface RunInfo {
   debt?: number;
   repair?: { what: string; amt: number } | null;
   surpriseDay?: number;
+  /** 0.15: this town's bills, tax, repairs and bounty, as a share of its own (paceMul of the player's pace when it
+   *  started; the bills never change while the town runs). */
+  scale?: number;
 }
 
 export interface AdCounters {
@@ -103,8 +108,9 @@ export const DEFAULT_TOUCH_LIFT = 40;
 export const MAX_TOUCH_LIFT = 80;
 
 /** Economy version. 10: v0.10's longer farms and small-step workshop (older workshop levels are refunded). */
-/** 0.14 (11): the runaways' road: a town in progress is closed and its cash goes to savings (no refund). */
-export const ECONOMY = 11;
+/** 0.14 (11): the runaways' road: a town in progress is closed and its cash goes to savings (no refund).
+ *  0.15 (12): the towns per country and the bills changed again (bills follow the player's own days): the same. */
+export const ECONOMY = 12;
 /** 1: the 0.13 tree is the one upgrade system (diamond skills are its nodes, diamonds its credit). */
 export const TREE_V = 1;
 
@@ -118,6 +124,8 @@ export interface GameSave {
    * (what is left after each deed, free-coin ads between farms) buy upgrades and tools. */
   /** What the last few days on the route earned (newest last, v0.11.1): the free-coins ad pays about one of them. */
   recentEarn?: number[];
+  /** 0.15: the player's pace, what their recent days earned against an average player's day (plan.ts, updatePace). */
+  pace?: number;
   wallet: number;
   /** Set once the save uses separate savings (v0.9). Older saves kept savings inside a running farm's cash. */
   splitWallet: boolean;
@@ -210,7 +218,8 @@ export function parseGame(raw: string | null): GameSave {
         won: !!p.won,
         stars: Math.max(0, Math.min(3, Math.floor(num(p.stars)))),
         bestDay: Math.max(0, num(p.bestDay)),
-        crown: !!p.crown,
+        ...(p.crown ? { crown: true } : {}),
+        ...(num(p.fails) > 0 ? { fails: Math.floor(num(p.fails)) } : {}),
         bestDays: Math.max(0, Math.floor(num(p.bestDays))),
         plays: Math.max(0, Math.floor(num(p.plays))),
         paid: Math.max(0, num(p.paid)),
@@ -229,6 +238,7 @@ export function parseGame(raw: string | null): GameSave {
       ...(o.run.own ? { own: true } : {}),
       ...(num(o.run.stageSeen) > 0 ? { stageSeen: Math.floor(num(o.run.stageSeen)) } : {}),
       ...(num(o.run.debt) > 0 ? { debt: Math.round(num(o.run.debt)) } : {}),
+      ...(num(o.run.scale) > 0 ? { scale: Math.min(3, Math.max(0.3, num(o.run.scale))) } : {}),
       ...(o.run.repair && typeof o.run.repair === 'object' && typeof o.run.repair.what === 'string' && num(o.run.repair.amt) > 0
         ? { repair: { what: o.run.repair.what.slice(0, 40), amt: Math.round(num(o.run.repair.amt)) } }
         : {}),
@@ -265,7 +275,7 @@ export function parseGame(raw: string | null): GameSave {
     g.migratedRefund = refund;
   } else if (num(o.econ) < ECONOMY) {
     // 0.14: the towns' bills changed (2 to 7 of them, 2 to 7 days each), so a town in progress starts again; its cash
-    // goes to savings, which now carry into the next town (one jar)
+    // goes to savings, which now carry into the next town (one jar). 0.15: towns and bills changed again, the same.
     g.migratedFarm = !!g.run;
     g.run = null;
     g.migratedRefund = 0;
@@ -308,6 +318,7 @@ export function parseGame(raw: string | null): GameSave {
     g.cropCuts = cc;
   }
   if (Array.isArray(o.recentEarn)) g.recentEarn = o.recentEarn.map(num).filter((v: number) => v >= 0).slice(-RECENT_DAYS);
+  if (num(o.pace) > 0) g.pace = Math.min(5, Math.max(0.2, num(o.pace)));
   g.flair = parseFlair(o.flair);
   if (o.daily && typeof o.daily === 'object' && typeof o.daily.date === 'string') {
     g.daily = {
@@ -368,7 +379,7 @@ export function parseGame(raw: string | null): GameSave {
 }
 
 export function cityProgress(g: GameSave, cityId: string): CityProgress {
-  return g.cities[cityId] || { won: false, stars: 0, bestDay: 0, crown: false, bestDays: 0, plays: 0, paid: 0 };
+  return g.cities[cityId] || { won: false, stars: 0, bestDay: 0, bestDays: 0, plays: 0, paid: 0 };
 }
 
 /** Farm cash that can buy upgrades and tools during a run: what is above the farm's mark. */
@@ -397,9 +408,6 @@ export function totalStars(g: GameSave): number {
   return ROUTE.reduce((a, c) => a + cityProgress(g, c.id).stars, 0);
 }
 
-export function crownCount(g: GameSave): number {
-  return ROUTE.filter(c => cityProgress(g, c.id).crown).length;
-}
 
 /** Stars the previous country must hold (out of 3 per farm) to open the next one. */
 export function starGate(code: CountryCode): number {
@@ -479,19 +487,18 @@ export function nextCity(g: GameSave): string {
 export interface StarResult {
   stars: number;
   win: boolean;
-  /** Kept the farm's spare-cash goal after paying the deed. */
   spare: boolean;
-  crown: boolean;
+  firstTry: boolean;
 }
 
 /**
- * Stars for a farm: one for winning, one for keeping money to spare after the deed (`spare` or more; bills are paid
- * on their due day, so a farm always runs its full length), one for the crown.
+ * Stars for a town: one for catching its runaway, one for keeping money to spare after the big bill (`spare` or more),
+ * one for catching it on the first try (0.15: the bank never came in this town; it replaced the rival's crown).
  */
-export function starsFor(opts: { won: boolean; cashLeft: number; spare: number; crown: boolean }): StarResult {
-  if (!opts.won) return { stars: 0, win: false, spare: false, crown: opts.crown };
+export function starsFor(opts: { won: boolean; cashLeft: number; spare: number; firstTry: boolean }): StarResult {
+  if (!opts.won) return { stars: 0, win: false, spare: false, firstTry: false };
   const spare = opts.cashLeft >= opts.spare;
-  return { stars: 1 + (spare ? 1 : 0) + (opts.crown ? 1 : 0), win: true, spare, crown: opts.crown };
+  return { stars: 1 + (spare ? 1 : 0) + (opts.firstTry ? 1 : 0), win: true, spare, firstTry: opts.firstTry };
 }
 
 /** After a foreclosure the bank keeps this farm's earnings: you leave with at most what you came with. */
