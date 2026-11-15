@@ -156,10 +156,20 @@ describe('savings', () => {
     const now = parseGame(JSON.stringify({ v: 3, wallet: 500, splitWallet: true, run: { cityId: 'ca_toronto', startCash: 0, startedAt: 1, bestDay: 0 } }));
     expect(now.wallet).toBe(500);
     expect(now.run).toBeNull();
-    // v0.10 with a farm running: kept
-    const cur = parseGame(JSON.stringify({ v: 3, econ: 10, wallet: 70, splitWallet: true, run: { cityId: 'ca_toronto', startCash: 0, startedAt: 1, bestDay: 0, mark: 30, spent: 5 } }));
-    expect(cur.run!.mark).toBe(30);
+    // v0.10-0.13 with a farm running: 0.14 changed the towns' bills, so the town is closed and its cash goes to
+    // savings (no refund: upgrades are kept)
+    const v13 = parseGame(JSON.stringify({ v: 3, econ: 10, wallet: 70, splitWallet: true, workshop: { levels: { scythe: 4 } }, run: { cityId: 'ca_toronto', startCash: 0, startedAt: 1, bestDay: 0, mark: 30, spent: 5 } }));
+    expect(v13.run).toBeNull();
+    expect(v13.migratedFarm).toBe(true);
+    expect(v13.migratedRefund).toBe(0);
+    expect(v13.wallet).toBe(70);
+    expect(v13.workshop.levels.scythe).toBe(4);
+    // 0.14 with a town running (one jar: savings went into it): kept
+    const cur = parseGame(JSON.stringify({ v: 3, econ: 11, wallet: 0, splitWallet: true, run: { cityId: 'ca_toronto', startCash: 70, startedAt: 1, bestDay: 0, mark: 0, spent: 5, debt: 12, repair: { what: 'The fence broke', amt: 40 } } }));
+    expect(cur.run!.startCash).toBe(70);
     expect(cur.run!.spent).toBe(5);
+    expect(cur.run!.debt).toBe(12);
+    expect(cur.run!.repair).toEqual({ what: 'The fence broke', amt: 40 });
     expect(cur.migratedFarm).toBeUndefined();
   });
 });

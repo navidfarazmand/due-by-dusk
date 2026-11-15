@@ -1,80 +1,87 @@
-// The road (0.13; Navid, 10 Nov): the 30 farms are one road, not 30 fresh starts.
+// The road (0.14; Navid, 14-15 Nov 2026): the runaways.
 //
-// Until 0.12 every farm began again on carrots and climbed the same ladder, so a player with a strong sickle met
-// easy carrots in every city ("we reset the difficulty for each farm… we introduce some common vegetables and then
-// some country-based ones again and again from zero to the full set"). Now a vegetable is met once:
-//   - Charlottetown brings one with each bill: carrots, then radishes, the Hoser Russet, Lord Cabbage ("introduce only
-//     carrot in first bill then second bill with the new vegetable and so on");
-//   - every farm after it opens with vegetables the player already knows and brings one new one, its own, once the
-//     first bill is paid ("previously unlocked vegetables as well as one new specific vegetable at the new bill");
-//   - the long countries' boss farms bring none (the boss is the event).
+// The player's vegetables ran away around the world; the player follows them, paying the bank on the way. Every town
+// is one runaway: a vegetable of that country. It is spotted after the town's first bill, everywhere by the middle of
+// the town, and caught when the town's big bill is paid (then it works in the Pen, src/game/pen.ts).
+//   - A country's vegetables stay in that country (Navid: "its ridiculous to have pineapple in egypt"): crossing a
+//     border, the field starts again with the new country's first runaway.
+//   - Inside a country the field keeps the runaways already caught there (the newest few), so it grows town by town
+//     and never starts again until the border.
+//   - Towns per country follow the cities on the maps: Canada 6, Brazil 5, France 5, the others 3 (28 in all), one
+//     vegetable each; the last town of a country is its capital, with the King.
 // A player's own cutting of a vegetable raises what it pays (its level), and levels never reset.
 // Pure data and maths, no DOM.
 
 import { ROUTE } from './world';
 
-/** The vegetable(s) each farm brings to the road, in the order they join its field. A country's three debut on its
- *  own farms (each in the city known for it); the common ones fill the farms in between. */
-export const DEBUT: Record<string, string[]> = {
-  ca_charlottetown: ['carrot', 'radish', 'pei_russet', 'cabbage'],
-  ca_gatineau: ['fiddlehead'], ca_toronto: ['onion'], ca_leamington: ['pumpkin'], ca_saskatoon: ['saskaberry'], ca_kelowna: [],
-  us_austin: ['habanero'], us_desmoines: ['sweetcorn'], us_vidalia: ['brisket_onion'],
-  br_belem: ['mandioca'], br_petrolina: ['abacaxi'], br_sinop: ['guarana'], br_ribeirao: ['berry'], br_bento: [],
-  ma_marrakech: ['chickpea'], ma_meknes: ['olive'], ma_fes: ['eggplant'],
-  fr_avignon: ['lavender'], fr_beaune: ['echalote'], fr_tours: ['artichaut'], fr_roscoff: ['potato'], fr_agen: [],
-  cn_guilin: ['bittermelon'], cn_hangzhou: ['lotusroot'], cn_chengdu: ['bokchoy'],
-  jp_sapporo: ['kabocha'], jp_aomori: ['daikon'], jp_shizuoka: ['wasabi'], jp_kyoto: [], jp_kagoshima: [],
+/** Each town's runaway: the vegetable it brings. */
+export const RUNAWAY: Record<string, string> = {
+  ca_charlottetown: 'carrot', ca_gatineau: 'radish', ca_toronto: 'fiddlehead', ca_leamington: 'pumpkin', ca_saskatoon: 'saskaberry', ca_kelowna: 'pei_russet',
+  us_austin: 'habanero', us_desmoines: 'sweetcorn', us_vidalia: 'brisket_onion',
+  br_belem: 'mandioca', br_petrolina: 'abacaxi', br_sinop: 'guarana', br_ribeirao: 'berry', br_bento: 'onion',
+  ma_marrakech: 'chickpea', ma_meknes: 'olive', ma_fes: 'eggplant',
+  fr_avignon: 'lavender', fr_beaune: 'echalote', fr_tours: 'artichaut', fr_roscoff: 'cabbage', fr_agen: 'potato',
+  cn_guilin: 'bittermelon', cn_hangzhou: 'lotusroot', cn_chengdu: 'bokchoy',
+  jp_sapporo: 'kabocha', jp_shizuoka: 'wasabi', jp_kagoshima: 'daikon',
 };
 
-/** Every vegetable met before farm k, in the order the road brought them. */
-export function knownBefore(k: number): string[] {
+/** Kept for older callers: the vegetables a town brings (one, its runaway). */
+export const DEBUT: Record<string, string[]> = Object.fromEntries(Object.entries(RUNAWAY).map(([k, v]) => [k, [v]]));
+
+/** The runaways caught before town k in the same country, oldest first. */
+export function countryKnown(k: number): string[] {
+  const c = ROUTE[k];
+  if (!c) return [];
   const out: string[] = [];
-  for (let i = 0; i < k && i < ROUTE.length; i++) out.push(...(DEBUT[ROUTE[i].id] || []));
+  for (let i = 0; i < k; i++) if (ROUTE[i].country === c.country && RUNAWAY[ROUTE[i].id]) out.push(RUNAWAY[ROUTE[i].id]);
   return out;
 }
 
-/** The farm (route index) a vegetable is first met on, or -1. */
+/** Every vegetable met before town k, in road order (all countries). */
+export function knownBefore(k: number): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < k && i < ROUTE.length; i++) if (RUNAWAY[ROUTE[i].id]) out.push(RUNAWAY[ROUTE[i].id]);
+  return out;
+}
+
+/** The town (route index) a vegetable is first met in, or -1. */
 export function debutFarm(type: string): number {
-  return ROUTE.findIndex(c => (DEBUT[c.id] || []).includes(type));
+  return ROUTE.findIndex(c => RUNAWAY[c.id] === type);
 }
 
 export interface FieldKind {
   type: string;
-  /** Bills paid on the farm before it joins the field (0: there from the first morning). */
+  /** Bills paid in the town before it joins the field (0: there from the first morning). */
   stage: number;
-  /** New to the road on this farm. */
+  /** This town's runaway. */
   debut: boolean;
+  /** The runaway: bills paid before it is everywhere (it is rare from `stage` until then). */
+  common?: number;
 }
 
-/** How many of the newest known vegetables a field always carries; older ones take turns in what room is left. */
-const RECENT = 3;
+/** The most kinds a field holds: the runaway and the newest caught ones of its country. */
+export const FIELD_KINDS = 5;
 
 /**
- * The vegetables of farm k's field, smallest first: `size` kinds in all (a farm has as many as it has bills).
- * Known ones are there from the first morning: the three newest, and older ones taking turns farm by farm, so a
- * carrot still turns up in Japan. The farm's own new vegetable joins when the first bill is paid and is the biggest
- * crop of the field. Charlottetown, where nothing is known yet, brings one with each bill.
+ * Town k's field, smallest first: the country's runaways caught so far (the newest four) from the first morning, then
+ * the town's own runaway, the biggest crop. With others on the field it is spotted (rare) once the first bill is paid
+ * and everywhere from the middle bill on; in a country's first town it is there from the start.
  */
-export function fieldKinds(k: number, size: number): FieldKind[] {
-  const own = DEBUT[ROUTE[k].id] || [];
-  const known = knownBefore(k);
-  if (!known.length) return own.map((type, i) => ({ type, stage: i, debut: true }));
-  const room = Math.max(1, size - own.length);
-  const recent = known.slice(-Math.min(RECENT, room));
-  const older = known.slice(0, known.length - recent.length);
-  // older vegetables take turns: a different run of them on each farm, kept in the order the road brought them
-  const want = Math.min(older.length, room - recent.length);
-  const turns = new Set<string>();
-  for (let j = 0; j < want; j++) turns.add(older[(k * 3 + j) % older.length]);
-  const pick = older.filter(t => turns.has(t));
-  return [...pick, ...recent].map(type => ({ type, stage: 0, debut: false })).concat(own.map((type, i) => ({ type, stage: i + 1, debut: true })));
+export function fieldKinds(k: number, bills: number): FieldKind[] {
+  const own = RUNAWAY[ROUTE[k].id];
+  const known = countryKnown(k).slice(-(FIELD_KINDS - 1));
+  const out: FieldKind[] = known.map(type => ({ type, stage: 0, debut: false }));
+  if (own) {
+    if (!known.length) out.push({ type: own, stage: 0, debut: true, common: 0 });
+    else out.push({ type: own, stage: 1, debut: true, common: Math.max(1, Math.ceil(bills / 2)) });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- levels: what the player's own cutting earns
 
-/** A vegetable's level rises with the player's own cuts of it on farms they do not own yet (a farm already won, a
- *  daily farm or a duel does not count, so an easy old farm can't be ground for levels). Each level above the first
- *  pays 8% more; ten levels. */
+/** A vegetable's level rises with the player's own cuts of it (a daily farm or a duel does not count). Each level
+ *  above the first pays 8% more; ten levels. */
 export const CROP_LEVEL_MAX = 10;
 export const CROP_LEVEL_PAY = 0.08;
 const LEVEL_FIRST = 25;
@@ -116,11 +123,11 @@ export function cropPayTable(cuts: Record<string, number> | undefined): Record<s
   return out;
 }
 
-/** A typical player's cuts of each vegetable when farm k starts (for the bots that tune the bills): the average bot
- *  cuts about 20 crops a day, so about 100 of each vegetable of a field over a farm. */
+/** A typical player's cuts of each vegetable when town k starts (for the bots that tune the bills): the average bot
+ *  cuts about 20 crops a day, so about 100 of each vegetable of a field over a town. */
 export const TYPICAL_CUTS = 100;
-export function typicalCuts(k: number, sizeOf: (i: number) => number): Record<string, number> {
+export function typicalCuts(k: number, billsOf: (i: number) => number): Record<string, number> {
   const out: Record<string, number> = {};
-  for (let i = 0; i < k; i++) for (const f of fieldKinds(i, sizeOf(i))) out[f.type] = (out[f.type] || 0) + TYPICAL_CUTS;
+  for (let i = 0; i < k; i++) for (const f of fieldKinds(i, billsOf(i))) out[f.type] = (out[f.type] || 0) + TYPICAL_CUTS;
   return out;
 }

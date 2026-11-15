@@ -8,6 +8,8 @@ import { migrateSkills, treeListValue, treeNode } from './tree';
 import { newTools, parseTools, toolDef, type ToolId, type ToolsState } from './tools';
 import { newFlair, parseFlair, type FlairState } from './flair';
 import { newDaily, type DailyState } from './daily';
+import { addWorker, parsePen, type PenState } from './pen';
+import { RUNAWAY } from './road';
 
 export const GAME_SAVE_KEY = 'dbd-game-v3';
 
@@ -45,6 +47,11 @@ export interface RunInfo {
   own?: boolean;
   /** Bills paid when the last day started: the morning after a bill, the day card shows the vegetable it brought. */
   stageSeen?: number;
+  /** 0.14 surprises: tax still owed (the collector takes it from the next harvests), a repair waiting to be paid
+   *  (fewer crops until then), and the last day a surprise was rolled for (so a reload doesn't roll again). */
+  debt?: number;
+  repair?: { what: string; amt: number } | null;
+  surpriseDay?: number;
 }
 
 export interface AdCounters {
@@ -57,6 +64,8 @@ export interface AdCounters {
   ribbons: number;
   /** Chest upgrades. */
   chests?: number;
+  /** Doubled Pen collections (0.14). */
+  pens?: number;
   lastCoinsAt: number;
 }
 
@@ -94,7 +103,8 @@ export const DEFAULT_TOUCH_LIFT = 40;
 export const MAX_TOUCH_LIFT = 80;
 
 /** Economy version. 10: v0.10's longer farms and small-step workshop (older workshop levels are refunded). */
-export const ECONOMY = 10;
+/** 0.14 (11): the runaways' road: a town in progress is closed and its cash goes to savings (no refund). */
+export const ECONOMY = 11;
 /** 1: the 0.13 tree is the one upgrade system (diamond skills are its nodes, diamonds its credit). */
 export const TREE_V = 1;
 
@@ -129,6 +139,8 @@ export interface GameSave {
   /** Cuts of each vegetable on farms not yet owned (0.13, the road): a vegetable's level, which raises what it pays
    *  (road.ts). Never reset. */
   cropCuts?: Record<string, number>;
+  /** The Pen (0.14): caught runaways at work (pen.ts). */
+  pen?: PenState;
   /** Set by the 0.13 migration for one message; not saved again once shown. */
   migratedTree?: { credit: number; nodes: number };
   /** County-fair ribbons for the Bling Barn, and what's bought there. */
@@ -144,6 +156,8 @@ export interface GameSave {
   /** Set by the v0.10 migration for one message; not saved again once shown. */
   migratedRefund?: number;
   migratedFarm?: boolean;
+  /** 0.14: the save came from before the runaways' towns (its town in progress starts again). */
+  migratedRoad?: boolean;
 }
 
 export function newGame(now = Date.now()): GameSave {
@@ -214,6 +228,11 @@ export function parseGame(raw: string | null): GameSave {
       ...(num(o.run.tough) > 0 ? { tough: Math.min(4, Math.max(0.5, num(o.run.tough))) } : {}),
       ...(o.run.own ? { own: true } : {}),
       ...(num(o.run.stageSeen) > 0 ? { stageSeen: Math.floor(num(o.run.stageSeen)) } : {}),
+      ...(num(o.run.debt) > 0 ? { debt: Math.round(num(o.run.debt)) } : {}),
+      ...(o.run.repair && typeof o.run.repair === 'object' && typeof o.run.repair.what === 'string' && num(o.run.repair.amt) > 0
+        ? { repair: { what: o.run.repair.what.slice(0, 40), amt: Math.round(num(o.run.repair.amt)) } }
+        : {}),
+      ...(num(o.run.surpriseDay) > 0 ? { surpriseDay: Math.floor(num(o.run.surpriseDay)) } : {}),
     };
   }
   g.wallet = Math.max(0, num(o.wallet));
@@ -235,7 +254,7 @@ export function parseGame(raw: string | null): GameSave {
   }
   // v0.10 rebuilt the workshop (small steps, new prices) and the farms (longer, with a crop ladder): older
   // upgrades are refunded into savings at what they cost, and a farm in progress is closed with its cash saved
-  if (num(o.econ) < ECONOMY) {
+  if (num(o.econ) < 10) {
     const refund = oldWorkshopRefund(o.workshop && o.workshop.levels ? o.workshop.levels : {}, o.workshop ? o.workshop.job : null);
     g.workshop = { levels: emptyLevels(), job: null };
     g.wallet += refund;
@@ -244,6 +263,13 @@ export function parseGame(raw: string | null): GameSave {
     g.migratedFarm = !!g.run;
     g.run = null;
     g.migratedRefund = refund;
+  } else if (num(o.econ) < ECONOMY) {
+    // 0.14: the towns' bills changed (2 to 7 of them, 2 to 7 days each), so a town in progress starts again; its cash
+    // goes to savings, which now carry into the next town (one jar)
+    g.migratedFarm = !!g.run;
+    g.run = null;
+    g.migratedRefund = 0;
+    g.migratedRoad = true;
   }
   g.econ = ECONOMY;
   g.tools = parseTools(o.tools);
@@ -273,6 +299,9 @@ export function parseGame(raw: string | null): GameSave {
     if (m.credit > 0 || m.nodes.length) g.migratedTree = { credit: m.credit, nodes: m.nodes.length };
   }
   g.treeV = TREE_V;
+  // the Pen (0.14): a save from before it has its won towns' runaways put to work, starting now
+  g.pen = parsePen(o.pen);
+  if (!o.pen) for (const c of ROUTE) if (cityProgress(g, c.id).won && RUNAWAY[c.id]) addWorker(g.pen, RUNAWAY[c.id]);
   if (o.cropCuts && typeof o.cropCuts === 'object') {
     const cc: Record<string, number> = {};
     for (const [k, v] of Object.entries(o.cropCuts as Record<string, unknown>)) if (/^[a-z_]{3,30}$/.test(k) && Number.isFinite(v as number) && (v as number) > 0) cc[k] = Math.min(10_000_000, Math.floor(v as number));
@@ -299,6 +328,7 @@ export function parseGame(raw: string | null): GameSave {
       finishes: Math.floor(num(o.ads.finishes)),
       ribbons: Math.floor(num(o.ads.ribbons)),
       chests: Math.floor(num(o.ads.chests)),
+      pens: Math.floor(num(o.ads.pens)),
       lastCoinsAt: num(o.ads.lastCoinsAt),
     };
   }
@@ -389,11 +419,10 @@ export function countryLock(g: GameSave, code: CountryCode): CountryLock {
   if (i <= 0) return { open: true, reason: '', needStars: 0, haveStars: 0 };
   const prev = COUNTRIES[i - 1];
   const boss = prev.cities[prev.cities.length - 1];
-  const need = starGate(prev.code), have = countryStars(g, prev.code);
-  const bossWon = cityProgress(g, boss.id).won;
-  if (bossWon && have >= need) return { open: true, reason: '', needStars: need, haveStars: have };
-  const reason = !bossWon ? t('Win {farm} in {country}', { farm: boss.short, country: t(prev.name) }) : t('{n} more ★ in {country}', { n: need - have, country: t(prev.name) });
-  return { open: false, reason, needStars: need, haveStars: have };
+  // 0.14: beating the King opens the next country (a town is never played again, so no stars are needed)
+  const have = countryStars(g, prev.code);
+  if (cityProgress(g, boss.id).won) return { open: true, reason: '', needStars: 0, haveStars: have };
+  return { open: false, reason: t('Win {farm} in {country}', { farm: boss.short, country: t(prev.name) }), needStars: 0, haveStars: have };
 }
 
 export interface CityLock {
@@ -468,6 +497,12 @@ export function starsFor(opts: { won: boolean; cashLeft: number; spare: number; 
 /** After a foreclosure the bank keeps this farm's earnings: you leave with at most what you came with. */
 export function walletAfterForeclosure(cashNow: number, startCash: number): number {
   return Math.max(0, Math.min(cashNow, startCash));
+}
+
+/** 0.14 (one jar): when the bank takes a town, half the jar is kept (three quarters with the tree's Insurance) and
+ *  the town is tried again. */
+export function jarAfterForeclosure(cash: number, insured: boolean): number {
+  return Math.max(0, Math.round(cash * (insured ? 0.75 : 0.5)));
 }
 
 export function todayKey(d = new Date()): string {

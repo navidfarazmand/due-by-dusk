@@ -1,4 +1,4 @@
-// The world in play order: 7 countries, 30 cities. Names, rivals and crops come from Gemini's v0.6.05 data;
+// The world in play order: 7 countries, 28 towns (0.14: Aomori and Kyoto left the road; Japan has three runaways). Names, rivals and crops come from Gemini's v0.6.05 data;
 // the order (route), the country trios and the short names are Claude's. Rivals named after real historical
 // people were renamed to fictional ones. Generated once, edit freely.
 
@@ -376,17 +376,6 @@ export const COUNTRIES: CountryDef[] = [
         desc: "Wide northern volcanic plains in Hokkaido—renowned for sumo-sized Rikishi Kabocha winter squash, Sensei Daikon, and Shinobi Wasabi.",
       },
       {
-        id: 'jp_aomori',
-        name: "Aomori (Tsugaru)",
-        short: "Aomori",
-        province: "Tōhoku · 40.8°N, 140.7°E",
-        country: 'JP',
-        rival: "Elder Soma",
-        subTheme: "tohoku",
-        crops: ["daikon","wasabi","kabocha","carrot","radish","berry","cabbage","potato"],
-        desc: "Crisp northern orchards and mountain-stream valleys where Shinobi Wasabi and Sensei Daikon train in the snow.",
-      },
-      {
         id: 'jp_shizuoka',
         name: "Shizuoka (Mt. Fuji)",
         short: "Shizuoka",
@@ -396,17 +385,6 @@ export const COUNTRIES: CountryDef[] = [
         subTheme: "fuji",
         crops: ["daikon","kabocha","wasabi","carrot","radish","cabbage","pumpkin","potato"],
         desc: "Emerald terraced slopes & cold mountain streams at the foot of Mount Fuji—home to Sensei Daikon, sumo Rikishi Kabocha, and stealthy Shinobi Wasabi!",
-      },
-      {
-        id: 'jp_kyoto',
-        name: "Kyoto (Kamo Basin)",
-        short: "Kyoto",
-        province: "Kansai · 35.0°N, 135.8°E",
-        country: 'JP',
-        rival: "Lady Hanazono",
-        subTheme: "kyoto",
-        crops: ["wasabi","daikon","kabocha","carrot","radish","onion","cabbage","pumpkin"],
-        desc: "Historic misty valley surrounded by towering bamboo groves and vermilion torii gates—famed for Kyo-yasai Sensei Daikon, Shinobi Wasabi, and Rikishi Kabocha.",
       },
       {
         id: 'jp_kagoshima',

@@ -22,7 +22,8 @@ const FARMS = (process.argv[2] || '0').split(',').map(Number);
 const DAYS = (process.argv[3] || '1,3,6').split(',').map(Number);
 const REPS = Number(process.argv[4] || 1);
 const SKILLS = (process.env.BOT_SKILLS || 'strong,average,weak').split(',');
-const ROUTE = ['ca_charlottetown', 'ca_gatineau', 'ca_toronto', 'ca_leamington', 'ca_saskatoon', 'ca_kelowna', 'us_austin', 'us_desmoines', 'us_vidalia', 'br_belem', 'br_petrolina', 'br_sinop', 'br_ribeirao', 'br_bento', 'ma_marrakech', 'ma_meknes', 'ma_fes', 'fr_avignon', 'fr_beaune', 'fr_tours', 'fr_roscoff', 'fr_agen', 'cn_guilin', 'cn_hangzhou', 'cn_chengdu', 'jp_sapporo', 'jp_aomori', 'jp_shizuoka', 'jp_kyoto', 'jp_kagoshima'];
+// the route comes from the game (0.14: 28 towns); filled in from the page before the first town
+let ROUTE = [];
 
 // ---- an on-track build: the field power expectedPower(k) asks for (mirrors power.ts and plan.ts, sickle only)
 const FX = { dmg: 1.04, reach: 0.02, speed: 0.02, crit: 0.008 };
@@ -41,8 +42,8 @@ function buildFor(k) {
 function saveFor(k, cropCuts = {}) {
   const cities = {};
   for (let i = 0; i < k; i++) cities[ROUTE[i]] = { won: true, stars: 3, bestDay: 0, crown: false, bestDays: 3, plays: 1, paid: 0 };
-  // treeV 1: a 0.13 save (without it the game would turn these wins into tree credit, as for an older save)
-  return { v: 3, econ: 10, treeV: 1, createdAt: 1, cities, run: null, wallet: 0, cropCuts,
+  // treeV 1: a 0.13 save (without it the game would turn these wins into tree credit, as for an older save); econ 11 (0.14)
+  return { v: 3, econ: 11, treeV: 1, createdAt: 1, cities, run: null, wallet: 0, cropCuts,
     workshop: { levels: buildFor(k), job: null }, tools: { owned: ['sickle'], equipped: 'sickle', mods: {} },
     ads: { date: '', coins: 0, doubles: 0, finishes: 0, lastCoinsAt: 0 },
     settings: { music: false, haptics: false, lang: 'en' }, seen: { intro: true, practice: true, start: true }, totals: { days: 9, crops: 500, earned: 2000 } };
@@ -134,10 +135,13 @@ for (const k of FARMS) {
       await page.addInitScript(() => {
         window.__DBD_NO_COACH = true;
         window.__DBD_NO_WEATHER = true;
+        // 0.14: no tax or repairs while measuring what a day earns
+        window.__DBD_NO_SURPRISES = true;
       });
       await page.addInitScript(installBots);
       await page.goto(URL + '/?testads=1');
       await page.waitForFunction(() => !!(window.__DBD_APP && window.__DBD_ENGINE));
+      if (!ROUTE.length) ROUTE = await page.evaluate(() => window.__DBD_ROUTE_IDS.slice());
       // v0.13 (the road): a typical player's vegetable levels when this farm starts (about 100 cuts of each vegetable
       // of every farm before it, and half a farm's worth of the ones it opens with), and the day each bill is due
       const road = await page.evaluate((k) => {

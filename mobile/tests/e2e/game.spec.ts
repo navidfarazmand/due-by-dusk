@@ -8,8 +8,8 @@ function seeded(won: string[], wallet: number, extra: Save = {}): Save {
   const cities: Record<string, unknown> = {};
   for (const id of won) cities[id] = { won: true, stars: 2, bestDay: 200, crown: false, bestDays: 3, plays: 1, paid: 0 };
   return {
-    // treeV 1: a save of 0.13 (the tree is the one upgrade system); a test of the migration leaves it out
-    v: 3, econ: 10, treeV: 1, createdAt: 1, cities, run: null, wallet,
+    // treeV 1: a save of 0.13 (the tree is the one upgrade system); a test of the migration leaves it out. econ 11: 0.14
+    v: 3, econ: 11, treeV: 1, createdAt: 1, cities, run: null, wallet,
     workshop: { levels: { scythe: 6, swing: 2, hands: 2, days: 2, soil: 2, market: 2, clover: 1 }, job: null },
     tools: { owned: ['sickle'], equipped: 'sickle', mods: {} },
     ads: { date: '', coins: 0, doubles: 0, finishes: 0, lastCoinsAt: 0 },
@@ -22,6 +22,8 @@ async function boot(page: Page, save?: Save, coach = false): Promise<string[]> {
   await page.addInitScript(([s, c]) => {
     // the coach (intro, lessons, first sights) holds the field still for the player: most tests turn it off
     if (!c) (window as any).__DBD_NO_COACH = true;
+    // 0.14: a morning's tax or repair is a card over the farmhouse; only the surprise tests let them come
+    if (!(window as any).__DBD_SURPRISE) (window as any).__DBD_NO_SURPRISES = true;
     if (sessionStorage.getItem('dbd-e2e')) return;
     localStorage.clear();
     if (s) localStorage.setItem('dbd-game-v3', s);
@@ -63,12 +65,12 @@ test('menu to the first farm and through one day', async ({ page }) => {
   await act(page, 'play');
   // the day card: the day, the bill coming up, and one big button
   await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Day 1');
-  await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('Seed loan');
+  await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('Bank loan');
   await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('Due day 2');
   // the first bill is paid on the evening it is due, not before: the button starts the day
   await expect(page.locator('.scr-farmhouse .dc-go[data-act="start"]')).toBeVisible();
-  // the first farm is 19 days (bills of 2, 3, 4, 5 and 5 days)
-  await expect(page.locator('.scr-farmhouse .dc-dots i')).toHaveCount(19);
+  // 0.14: the first town is 9 days (bills of 2, 3 and 4 days: the bank, rent, the big bill)
+  await expect(page.locator('.scr-farmhouse .dc-dots i')).toHaveCount(9);
   await fast(page);
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
@@ -139,12 +141,13 @@ test('tools: buy the scythe, put it in hand and add an attachment', async ({ pag
   expect(g.tools.mods['scythe.wide']).toBe(1);
 });
 
-test('boss farm: the deed waits until the boss is knocked out', async ({ page }) => {
+test('boss farm: the big bill waits until the boss is knocked out', async ({ page }) => {
   const errors = await boot(page, seeded(CA.slice(0, 5), 0));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_kelowna'));
   await expect(page.locator('.scr-farmhouse .dc-boss')).toContainText('King Russet');
-  // pay the first five bills with test money (each on its due evening) so the deed is the current bill
-  for (let i = 0; i < 5; i++) {
+  // pay every bill but the last with test money (each on its due evening) so the big bill is the current one
+  const n = await page.evaluate(() => (window as any).__DBD_PLANS.planFor('ca_kelowna').bills.length);
+  for (let i = 0; i < n - 1; i++) {
     await page.evaluate(() => {
       const e = (window as any).__DBD_ENGINE;
       e.addCash(50_000);
@@ -156,7 +159,7 @@ test('boss farm: the deed waits until the boss is knocked out', async ({ page })
     await expect(page.locator('.scr-modal')).toBeHidden();
   }
   const bill = await page.evaluate(() => (window as any).__DBD_ENGINE.bill());
-  expect(bill.name).toBe('The deed');
+  expect(bill.name).toBe('The big bill');
   expect(bill.bossBlock).toBe(true);
   expect(bill.canPay).toBe(false);
   // the deed waits in the boss's pocket: the boss row is lit and the day can still start
@@ -188,7 +191,8 @@ test('boss farm: the deed waits until the boss is knocked out', async ({ page })
   await page.evaluate(() => (window as any).__DBD_ENGINE.devDue());
   await page.evaluate(() => (window as any).__DBD_APP.refresh());
   await act(page, 'pay');
-  await expect(page.locator('.scr-won .result-card')).toContainText('Kelowna');
+  // 0.14: the big bill paid, the town's runaway is caught
+  await expect(page.locator('.scr-won .r-caught')).toContainText('Caught');
   await expect(page.locator('.scr-won .r-boss')).toContainText("Canada's boss is out cold");
   expect(errors).toEqual([]);
 });
@@ -247,7 +251,7 @@ test('languages: German from Settings, the whole game follows, kept after a relo
   await expect(page.locator('.scr-menu [data-act="play"]')).toContainText('Spielen');
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
   await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Tag 1');
-  await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('Saatkredit');
+  await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('Bankkredit');
   // from Settings the list has Back as well
   await page.evaluate(() => (window as any).__DBD_APP.openSettings());
   await expect(page.locator('.scr-modal')).toContainText('Soundeffekte');
@@ -547,11 +551,11 @@ test('perks from silver and gold chests survive a reload', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('the first farm: carrots only on day 1, a bill paid on its evening opens a chest, and each bill brings a new crop', async ({ page }) => {
+test('the first town: carrots only, and a bill paid on its evening opens a chest (0.14)', async ({ page }) => {
   const errors = await boot(page);
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
   await expect(page.locator('.scr-farmhouse')).toBeVisible();
-  // the field holds carrots only before the first bill
+  // the first town's field is its runaway, the carrot
   const types0 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().crops.map((c: any) => c.type));
   expect(new Set(types0)).toEqual(new Set(['carrot']));
   await page.evaluate(() => {
@@ -563,7 +567,6 @@ test('the first farm: carrots only on day 1, a bill paid on its evening opens a 
   });
   await expect(page.locator('.scr-modal .chest-box')).toBeVisible();
   await expect(page.locator('.scr-modal .chest-box')).toContainText('A wooden chest');
-  // v0.12: crops come by day, so the chest no longer names one
   await expect(page.locator('.scr-modal .chest-new')).toHaveCount(0);
   await expect(page.locator('.scr-modal [data-act="perk"]').first()).toBeHidden();
   await act(page, 'chest-open');
@@ -580,43 +583,195 @@ test('the first farm: carrots only on day 1, a bill paid on its evening opens a 
   const st = await page.evaluate(() => (window as any).__DBD_ENGINE.state());
   expect(st.billsPaid).toBe(1);
   expect(st.perks).toHaveLength(1);
-  // day 3: the day card names the crop the bill brought (v0.13: radishes), and the field holds it with the carrots
+  // the next morning: still the carrot town (golden corn can come up), nothing new on the day card
   await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Day 3');
-  await expect(page.locator('.scr-farmhouse .dc-new')).toContainText('New today');
-  const fresh = await page.locator('.scr-farmhouse .dc-new').getAttribute('data-crop');
-  expect(fresh).toBe('radish');
+  await expect(page.locator('.scr-farmhouse .dc-new')).toHaveCount(0);
   const seen = new Set<string>();
-  for (let i = 0; i < 8 && !seen.has(fresh!); i++) {
+  for (let i = 0; i < 6; i++) {
     const t = await page.evaluate(() => {
       (window as any).__DBD_ENGINE.refreshStats();
       return (window as any).__DBD_ENGINE.peek().crops.map((c: any) => c.type);
     });
     t.forEach((x: string) => seen.add(x));
   }
-  // golden corn can come up from day 3 too
-  expect([...seen].every(x => x === 'carrot' || x === 'radish' || x === 'golden' || x === fresh)).toBe(true);
-  expect(seen.has(fresh!)).toBe(true);
+  expect([...seen].every(x => x === 'carrot' || x === 'golden')).toBe(true);
   expect(errors).toEqual([]);
 });
 
-test('a farm you own pays its own bills and nothing else: its cash buys no upgrades and none goes to savings (0.13)', async ({ page }) => {
-  const save = seeded([], 0);
-  (save.cities as any).ca_charlottetown = { won: true, stars: 1, bestDay: 200, crown: false, bestDays: 10, plays: 1, paid: 500 };
-  const errors = await boot(page, save);
+test('the next town: the field opens with the runaways caught in the country, and its own runaway turns up after the first bill (0.14)', async ({ page }) => {
+  const errors = await boot(page, seeded(['ca_charlottetown'], 0));
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_gatineau'));
+  await expect(page.locator('.scr-farmhouse')).toBeVisible();
+  const types0 = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().crops.map((c: any) => c.type));
+  expect(new Set(types0)).toEqual(new Set(['carrot']));
+  await page.evaluate(() => {
+    const e = (window as any).__DBD_ENGINE;
+    e.addCash(5000);
+    e.devDue();
+    (window as any).__DBD_APP.payBill();
+  });
+  await page.locator('.scr-modal [data-act="chest-open"]').click();
+  await takePerk(page.locator('.scr-modal [data-act="perk"]').first());
+  await expect(page.locator('.scr-modal')).toBeHidden();
+  // the morning after: the day card shows the radish, and the field grows it among the carrots
+  await expect(page.locator('.scr-farmhouse .dc-new')).toContainText('New today');
+  expect(await page.locator('.scr-farmhouse .dc-new').getAttribute('data-crop')).toBe('radish');
+  const seen = new Set<string>();
+  for (let i = 0; i < 12 && !seen.has('radish'); i++) {
+    const t = await page.evaluate(() => {
+      (window as any).__DBD_ENGINE.refreshStats();
+      return (window as any).__DBD_ENGINE.peek().crops.map((c: any) => c.type);
+    });
+    t.forEach((x: string) => seen.add(x));
+  }
+  expect(seen.has('radish')).toBe(true);
+  expect([...seen].every(x => x === 'carrot' || x === 'radish' || x === 'golden')).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('a caught town is not played again: a toast says so, and its card opens the Pen (0.14)', async ({ page }) => {
+  const errors = await boot(page, seeded(['ca_charlottetown'], 0));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
-  expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.own)).toBe(true);
-  await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(5000));
-  await page.evaluate(() => (window as any).__DBD_APP.refresh());
-  // the note behind the "i" says so
-  await act(page, 'panel', 'tools');
-  await page.locator('.scr-modal .up-info').click();
-  await expect(page.locator('.scr-modal .info-text')).toContainText('already yours');
-  await act(page, 'close');
-  // $5,000 on the farm buys nothing: the tree shows $0 to spend
-  await expect(page.locator('.scr-farmhouse .ft-badge')).toHaveCount(0);
-  await act(page, 'tree');
-  await expect(page.locator('.scr-tree .tr-cash')).toContainText('$0');
-  await expect(page.locator('.scr-tree .tr-nd.ready')).toHaveCount(0);
+  await expect(page.locator('.shell-toast')).toContainText('already caught');
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.run)).toBeNull();
+  // on the map, the caught town's card says so and its button opens the Pen; the next town's card chases its runaway
+  await page.evaluate(() => (window as any).__DBD_APP.show('world'));
+  await act(page, 'enter', 'CA');
+  await act(page, 'city', 'ca_gatineau');
+  await expect(page.locator('.scr-country .cc-runaway')).toContainText('Runaway');
+  await expect(page.locator('.scr-country .city-card [data-act="farm"]')).toContainText('Chase it');
+  await act(page, 'city', 'ca_charlottetown');
+  await expect(page.locator('.scr-country .cc-runaway')).toContainText('Caught');
+  await page.locator('.scr-country .city-card [data-act="pen"]').click();
+  await expect(page.locator('.scr-pen .pen-wrap')).toBeVisible();
+  // the carrot works there (an older save's catches are put to work when it loads)
+  await expect(page.locator('.scr-pen .pen-cell:not(.out)')).toHaveCount(1);
+  await expect(page.locator('.scr-pen .pen-count')).toContainText('1 of 28 caught');
+  await page.locator('.scr-pen [data-act="pen-back"]').click();
+  await expect(page.locator('.scr-country')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('the Pen: caught runaways earn while you are away, a tap collects, an ad doubles, and a worker levels up (0.14)', async ({ page }) => {
+  const H = 3_600_000;
+  const save = seeded(['ca_charlottetown', 'ca_gatineau'], 5000, {
+    pen: { workers: { carrot: { level: 1, at: 1 }, radish: { level: 1, at: 1 } }, since: Date.now() - 2 * H },
+  });
+  const errors = await boot(page, save);
+  // back in the game: what the Pen earned meanwhile, on a card over the menu
+  await expect(page.locator('.scr-modal')).toContainText('Your runaways earned this');
+  const held = await page.evaluate(() => {
+    const a = (window as any).__DBD_APP, P = (window as any).__DBD_PLANS;
+    // two level-1 workers for two hours, in the money of the farthest town reached (Toronto)
+    return Math.floor(2 * 2 * 0.04 * P.avgDay(2, 3));
+  });
+  expect(held).toBeGreaterThan(0);
+  await page.locator('.scr-modal [data-act="pen-collect"]').click();
+  await expect(page.locator('.shell-toast')).toContainText('from the Pen');
+  const w1 = await page.evaluate(() => (window as any).__DBD_APP.g.wallet);
+  expect(w1).toBeGreaterThanOrEqual(5000 + held - 1);
+  expect(w1).toBeLessThanOrEqual(5000 + held + 1);
+  // the Pen from the menu's signpost: empty now, Collect off; a worker levels up for its price
+  await page.locator('.scr-menu [data-act="pen"]').click();
+  await expect(page.locator('.scr-pen .pen-wrap')).toBeVisible();
+  await expect(page.locator('.scr-pen [data-act="pen-collect"]')).toBeDisabled();
+  await expect(page.locator('.scr-pen .pen-cell:not(.out)')).toHaveCount(2);
+  await expect(page.locator('.scr-pen .pen-cell.out')).toHaveCount(26);
+  const cost = await page.evaluate(() => {
+    const P = (window as any).__DBD_PLANS;
+    void P;
+    return Number(document.querySelector('.scr-pen [data-act="pen-up"][data-arg="carrot"] span')!.textContent!.replace(/[^0-9]/g, ''));
+  });
+  expect(cost).toBeGreaterThan(0);
+  await page.locator('.scr-pen [data-act="pen-up"][data-arg="carrot"]').click();
+  await expect(page.locator('.scr-pen .pen-cell .pen-lv').first()).toHaveText('2');
+  const g = await page.evaluate(() => (window as any).__DBD_APP.g);
+  expect(g.pen.workers.carrot.level).toBe(2);
+  expect(g.wallet).toBe(w1 - cost);
+  // two more hours: the test ad doubles the collection
+  await page.evaluate(h => {
+    const a = (window as any).__DBD_APP;
+    a.g.pen.since = Date.now() - 2 * h;
+    a.show('pen');
+  }, H);
+  const before = await page.evaluate(() => (window as any).__DBD_APP.g.wallet);
+  const held2 = Number((await page.locator('.scr-pen .pen-held').textContent())!.replace(/[^0-9]/g, ''));
+  expect(held2).toBeGreaterThan(0);
+  await page.locator('.scr-pen [data-act="pen-double"]').click();
+  await expect.poll(async () => page.evaluate(() => (window as any).__DBD_APP.g.wallet), { timeout: 8000 }).toBeGreaterThanOrEqual(before + 2 * held2 - 2);
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.ads.pens)).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('surprises: a tax comes out of the jar at sunrise, a short jar leaves the collector a share of the harvest, a repair waits in the farmhouse (0.14)', async ({ page }) => {
+  const errors = await boot(page, seeded(['ca_charlottetown'], 0));
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_gatineau'));
+  await expect(page.locator('.scr-farmhouse .dc-day')).toHaveText('Day 1');
+  const plan = await page.evaluate(() => {
+    const p = (window as any).__DBD_PLANS.planFor('ca_gatineau');
+    return { tax: p.tax, repair: p.repair };
+  });
+  expect(plan.tax).toBeGreaterThan(0);
+  expect(plan.repair).toBeGreaterThan(plan.tax);
+  /** Jumps to a morning (no bill due tonight) with `cash` in the jar and this surprise forced, then starts the day. */
+  const morning = async (day: number, paid: number, cash: number, kind: string) => {
+    await page.evaluate(([d, n, c, k]) => {
+      const w = window as any;
+      delete w.__DBD_NO_SURPRISES;
+      w.__DBD_SURPRISE = k;
+      w.__DBD_ENGINE.devDay(d, n);
+      w.__DBD_ENGINE.setCash(c);
+      w.__DBD_APP.show('farmhouse');
+    }, [day, paid, cash, kind] as const);
+    await act(page, 'start');
+  };
+  const endDay = async (cash = 0) => {
+    await page.locator('.scr-modal [data-act="surprise-ok"]').click();
+    await expect(page.locator('#dbdHud')).toBeVisible();
+    if (cash) await E(page, 'addCash', cash);
+    await page.evaluate(() => {
+      const w = window as any;
+      w.__DBD_SURPRISE = '';
+      w.__DBD_NO_SURPRISES = true;
+    });
+    await fast(page);
+    await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
+  };
+  // a tax with money in the jar: it is taken at once, and the card's button starts the day
+  await morning(2, 0, 1000, 'tax');
+  await expect(page.locator('.scr-modal .sp-card.tax')).toContainText('Tax day');
+  expect((await E(page, 'state')).cash).toBe(1000 - plan.tax);
+  await endDay();
+  await act(page, 'farmhouse');
+  // a tax with an empty jar: the collector takes it from the day's harvest, with 20% on top
+  await morning(4, 1, 0, 'tax');
+  await expect(page.locator('.scr-modal .sp-card.tax')).toContainText('collector');
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.debt)).toBe(Math.round(plan.tax * 1.2));
+  await endDay(1000);
+  await expect(page.locator('.scr-sundown .sd-fee')).toContainText('collector took');
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.debt)).toBe(0);
+  await act(page, 'farmhouse');
+  // a repair: fewer crops grow until it is paid; Later starts the day, and the farmhouse keeps a Fix button
+  const full = (await E(page, 'stats')).max;
+  await morning(5, 1, 0, 'repair');
+  await expect(page.locator('.scr-modal .sp-card.repair')).toBeVisible();
+  await expect(page.locator('.scr-modal [data-act="repair-now"]')).toBeDisabled();
+  await page.locator('.scr-modal [data-act="surprise-ok"]').click();
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  expect((await E(page, 'stats')).max).toBeLessThan(full);
+  await page.evaluate(() => ((window as any).__DBD_NO_SURPRISES = true));
+  await fast(page);
+  await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
+  await act(page, 'farmhouse');
+  await expect(page.locator('.scr-farmhouse .dc-repair')).toBeVisible();
+  await page.evaluate(r => {
+    (window as any).__DBD_ENGINE.addCash(r + 100);
+    (window as any).__DBD_APP.show('farmhouse');
+  }, plan.repair);
+  await page.locator('.scr-farmhouse .dc-repair [data-act="repair"]').click();
+  await expect(page.locator('.scr-farmhouse .dc-repair')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.repair)).toBeNull();
+  expect((await E(page, 'stats')).max).toBe(full);
   expect(errors).toEqual([]);
 });
 
@@ -828,7 +983,9 @@ test('the upgrade tree from the farmhouse: opens on the trunk, a track level is 
   const g = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g.workshop.levels.scythe).toBe(7);
   expect(g.tree.b1).toBeUndefined();
-  expect(g.wallet).toBe(400 - cost);
+  // 0.14 (one jar): the town took the savings along, so the tree is paid from the farm's cash
+  expect(g.wallet).toBe(0);
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().cash)).toBe(400 - cost);
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().shed.scythe)).toBe(7);
   await expect(card).toContainText('Lv 7');
   // a node that is not built yet and is next in line says so, without a version number, and has no Buy button (one
@@ -945,8 +1102,9 @@ test('the tree: one gold money and no reset; nodes not next to one you own are l
 
 /** A day on Toronto with the clock stopped and no finger on the field, for testing the tree's tricks one by one:
  *  `fx` sets the tree levels the engine reads (window.__DBD_TREEFX), `E` calls an engine hook. */
-async function trickDay(page: Page, day = 1, paid?: number): Promise<string[]> {
-  const errors = await boot(page, seeded(CA.slice(0, 2), 0));
+async function trickDay(page: Page, day = 1, paid?: number, won = 2): Promise<string[]> {
+  // (Toronto by default: the first two towns won)
+  const errors = await boot(page, seeded([...CA, 'us_austin'].slice(0, won), 0));
   await act(page, 'play');
   await expect(page.locator('.scr-farmhouse .dc-day')).toBeVisible();
   if (day > 1) {
@@ -1050,9 +1208,9 @@ test('tree tricks, blade and swing speed: each does what its text says (0.13)', 
 });
 
 test('tree tricks, what crops pay and the field: each does what its text says (0.13)', async ({ page }) => {
-  // day 5 on Toronto: a market day for Market day, and the morning after the first bill (due day 4), when the farm's
-  // own new vegetable joins the field (v0.13)
-  const errors = await trickDay(page, 5, 1);
+  // 0.14: day 10 on Des Moines, a market day for Market day and the morning after its third bill (due day 9), when its
+  // runaway, the sweet corn, is everywhere
+  const errors = await trickDay(page, 10, 3, 7);
   const len = (await E(page, 'state')).dayLen;
   const mid = { time: len / 2 };
   await E(page, 'devClock', mid);
@@ -1372,7 +1530,7 @@ test('tree tricks, the ranch and the bank: each does what its text says (0.13)',
   expect(errors).toEqual([]);
 });
 
-test('Good lawyer lowers the late fees, Cashback pays 8% of a bill back the next morning, Insurance saves a quarter (0.13)', async ({ page }) => {
+test('Good lawyer lowers the late fees, Cashback pays 8% of a bill back the next morning, Insurance keeps three quarters of the jar (0.14)', async ({ page }) => {
   const errors = await boot(page, seeded(CA.slice(0, 2), 0));
   await act(page, 'play');
   await expect(page.locator('.scr-farmhouse .dc-day')).toBeVisible();
@@ -1414,16 +1572,17 @@ test('Good lawyer lowers the late fees, Cashback pays 8% of a bill back the next
   await expect(page.locator('#dbdHud')).toBeVisible();
   expect((await E(page, 'state')).cash).toBeGreaterThanOrEqual(Math.round(bill * 0.08));
   expect((await E(page, 'state')).cash).toBeLessThan(Math.round(bill * 0.08) + 1);
-  // Insurance: the bank takes the farm with $400 on it, $100 of them above... no mark here, so a quarter is saved
+  // Insurance (0.14, one jar): the bank comes with $400 in the jar and takes a quarter instead of half
   const saved = await page.evaluate(() => {
     const a = (window as any).__DBD_APP;
     a.g.tree.m12 = 1;
-    a.foreclosed({ bill: 'New fence', short: 50, days: 4, cash: 400 });
+    a.foreclosed({ bill: 'Rent', short: 50, days: 4, cash: 400 });
     return { wallet: a.g.wallet, paid: a.g.cities.ca_toronto.paid };
   });
-  expect(saved.wallet).toBe(100);
-  expect(saved.paid).toBe(100);
-  await expect(page.locator('.scr-lost .result-card')).toContainText('$100');
+  expect(saved.wallet).toBe(300);
+  expect(saved.paid).toBe(300);
+  await expect(page.locator('.scr-lost .result-card')).toContainText('$300');
+  await expect(page.locator('.scr-lost .r-title')).toContainText('a quarter of your jar');
   expect(errors).toEqual([]);
 });
 
@@ -1578,7 +1737,7 @@ test('Report a problem: from Settings and by one strong shake; no typing in the 
   await expect(page.locator('.scr-modal textarea, .scr-modal input[type="text"]')).toHaveCount(0);
   await expect(page.locator('.scr-modal [data-act="report-send"]')).toHaveText('Open email');
   const details = await page.evaluate(() => (window as any).__DBD_APP.reportText());
-  expect(details).toContain('Due by Dusk 0.13');
+  expect(details).toMatch(/Due by Dusk \d+\.\d+\.\d+/);
   await act(page, 'close');
   // a gentle movement does nothing; one strong shake opens it (and pauses a day)
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));

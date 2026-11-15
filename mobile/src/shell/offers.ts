@@ -5,11 +5,11 @@
 import { rewardedAdReady, showRewardedAd, ADS_CHANGED_EVENT } from '../platform/ads';
 import { todayKey, type GameSave } from '../game/progress';
 
-export type OfferKind = 'double' | 'coins' | 'finish' | 'extraDay' | 'ribbon' | 'daily' | 'chest';
+export type OfferKind = 'double' | 'coins' | 'finish' | 'extraDay' | 'ribbon' | 'daily' | 'chest' | 'pen';
 
 /** Daily caps, so ads stay a bonus and never become the game (the daily farm keeps its own count). Six doubles a
  * day: with twelve, a bot that took every ad won every farm with three stars. */
-export const CAPS: Record<OfferKind, number> = { double: 6, coins: 6, finish: 8, extraDay: 99, ribbon: 3, daily: 99, chest: 6 };
+export const CAPS: Record<OfferKind, number> = { double: 6, coins: 6, finish: 8, extraDay: 99, ribbon: 3, daily: 99, chest: 6, pen: 4 };
 /** Minutes between two free-coin ads. */
 export const COINS_COOLDOWN_MIN = 20;
 
@@ -35,7 +35,7 @@ export function onAdsChanged(fn: () => void): void {
 
 function counters(g: GameSave): GameSave['ads'] {
   const d = todayKey();
-  if (g.ads.date !== d) g.ads = { date: d, coins: 0, doubles: 0, finishes: 0, ribbons: 0, chests: 0, lastCoinsAt: g.ads.lastCoinsAt || 0 };
+  if (g.ads.date !== d) g.ads = { date: d, coins: 0, doubles: 0, finishes: 0, ribbons: 0, chests: 0, pens: 0, lastCoinsAt: g.ads.lastCoinsAt || 0 };
   return g.ads;
 }
 
@@ -46,6 +46,7 @@ export function canOffer(g: GameSave, kind: OfferKind, now = Date.now()): boolea
   if (kind === 'finish') return c.finishes < CAPS.finish;
   if (kind === 'ribbon') return c.ribbons < CAPS.ribbon;
   if (kind === 'chest') return (c.chests || 0) < CAPS.chest;
+  if (kind === 'pen') return (c.pens || 0) < CAPS.pen;
   if (kind === 'coins') return c.coins < CAPS.coins && now - c.lastCoinsAt >= COINS_COOLDOWN_MIN * 60_000;
   return true;
 }
@@ -87,6 +88,7 @@ export async function watch(g: GameSave, kind: OfferKind): Promise<boolean> {
   else if (kind === 'finish') c.finishes++;
   else if (kind === 'ribbon') c.ribbons++;
   else if (kind === 'chest') c.chests = (c.chests || 0) + 1;
+  else if (kind === 'pen') c.pens = (c.pens || 0) + 1;
   else if (kind === 'coins') {
     c.coins++;
     c.lastCoinsAt = Date.now();

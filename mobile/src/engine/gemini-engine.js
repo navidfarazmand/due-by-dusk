@@ -16865,12 +16865,14 @@ export function startGeminiEngine() {
       planVal();
     const dens =
       (worldW ? FarmScene_clamp(((worldW * (HW - FIELD_TOP)) / (900 * 412)) * 0.62, 0.8, 1.3) : 1) * (pl.density || 1);
+    // v0.14: a repair waiting to be paid closes part of the field (the shell sets window.__DBD_REPAIR)
+    const repair = window.__DBD_REPAIR > 0 && window.__DBD_REPAIR < 1 ? window.__DBD_REPAIR : 1;
     return {
       dmg: dmg < 10 ? Math.round(dmg * 100) / 100 : Math.round(dmg * 10) / 10,
       tick,
       R,
       day,
-      max: Math.round(maxCrops * dens * FIELD.count),
+      max: Math.max(3, Math.round(maxCrops * dens * FIELD.count * repair)),
       spawn: spawnRate / dens / (pl.spawn || 1) / FIELD.spawn,
       vm,
       cc: Math.min(0.65, 0.04 + FX.crit * shed.clover + 0.02 * n('clover') + 0.04 * n('clover2') + (T.crit || 0)),

@@ -2,8 +2,9 @@
 // The daily changes every date (the same farm, tool and crops for everyone); a duel is two players on one
 // phone playing the same seeded day in turn.
 
-import { ROUTE, cityById, routeIndex } from './world';
-import { dayRef, expectedPower, planFor, type CityPlan, type CropWeight } from './plan';
+import { ROUTE, cityById, countryOf, routeIndex } from './world';
+import { LADDER_HP, LADDER_VAL, dayRef, expectedPower, planFor, type CityPlan, type CropWeight } from './plan';
+import { RUNAWAY } from './road';
 import type { Levels } from './workshop';
 import { newTools, toolStats, type ToolId } from './tools';
 import { fieldPower } from './power';
@@ -85,19 +86,32 @@ export function sidePlan(cityId: string, tool?: ToolId, levels?: Levels): CityPl
     const r = fieldPower(levels, st, []) / expectedPower(base.index);
     if (r > 0 && Number.isFinite(r)) p = { ...base, hp: base.hp * Math.min(10, Math.max(0.1, r)) };
   }
-  const name = cityById(cityId)?.short || 'the farm';
-  // a one-day farm has the first five crops of its ladder out from the start
-  const crops: CropWeight[] = p.crops.slice(0, 5).map(([t, w]) => [t, w, 0]);
+  const city = cityById(cityId);
+  const name = city?.short || 'the farm';
+  // a one-day farm has its country's runaways out from the start (0.14: a town's own field may hold one kind only)
+  const types = (city ? countryOf(city.country).cities.map(x => RUNAWAY[x.id]) : []).filter(Boolean).slice(0, 5);
+  const stages = types.length ? types.map((type, i) => ({ type, stage: 0, val: LADDER_VAL[i], hp: LADDER_HP[i] })) : p.stages.slice(0, 5);
+  const crops: CropWeight[] = stages.map(s => [s.type, 20, 0]);
+  const cropVal: Record<string, number> = {};
+  const cropHp: Record<string, number> = {};
+  for (const s of stages) {
+    cropVal[s.type] = s.val;
+    cropHp[s.type] = s.hp;
+  }
   return {
     ...p,
     boss: false,
     bossFight: undefined,
-    bills: [{ name: 'Best day', amt: 999_999_999, days: 99, note: `One day on the ${name} farm.` }],
+    bills: [{ name: 'Best day', kind: 'big', amt: 999_999_999, days: 99, note: `One day on the ${name} farm.` }],
     totalDays: 1,
     spare: 0,
     crops,
-    stages: p.stages.slice(0, 5),
+    stages,
+    cropVal,
+    cropHp,
     goldAt: 0,
+    tax: 0,
+    repair: 0,
   };
 }
 

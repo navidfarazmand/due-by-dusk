@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BILL_COUNT, BORDER_STEP, BOSSES, DAY_SECONDS, billDays, borders, goldCredit, LADDER_HP, LADDER_VAL, allPlans, cropName, planFor, dayRef, expectedPower, toughnessFor, winCredit } from '../src/game/plan';
+import { ECONOMY } from '../src/game/progress';
+import { BILL_NAME, BILL_RATE, BORDER_STEP, BOSSES, DAY_SECONDS, billDays, billDueDay, billPressure, billSchedule, borders, goldCredit, LADDER_HP, LADDER_VAL, allPlans, cropName, planFor, dayRef, expectedPower, toughnessFor, winCredit } from '../src/game/plan';
 import {
-  CROP_LEVEL_MAX, CROP_LEVEL_PAY, DEBUT, TYPICAL_CUTS, cropLevel, cropLevelProgress, cropPay, cropPayTable, cutsForLevel, debutFarm, knownBefore, typicalCuts,
+  CROP_LEVEL_MAX, CROP_LEVEL_PAY, FIELD_KINDS, RUNAWAY, TYPICAL_CUTS, countryKnown, cropLevel, cropLevelProgress, cropPay, cropPayTable, cutsForLevel, debutFarm, typicalCuts,
 } from '../src/game/road';
 import { BLASTER_RANGE_GAIN, bestPower, fieldPower } from '../src/game/power';
 import { COUNTRIES, ROUTE, isBossCity } from '../src/game/world';
@@ -23,33 +24,85 @@ function winAll(g: GameSave, ids: string[], stars = 3): void {
 describe('city plans', () => {
   const plans = allPlans();
 
-  it('covers all 30 farms in route order', () => {
-    expect(ROUTE).toHaveLength(30);
+  it('covers all 28 towns in route order', () => {
+    expect(ROUTE).toHaveLength(28);
+    expect(COUNTRIES.map(c => c.cities.length)).toEqual([6, 3, 5, 3, 5, 3, 3]);
     expect(plans.map(p => p.index)).toEqual(ROUTE.map((_, i) => i));
   });
 
-  it('gives the first farm bills of 2, 3, 4, then 5 days and later farms 4 days a bill, from the seed loan to the deed', () => {
-    expect([0, 1, 2, 3, 4, 5, 6].map(i => billDays(i))).toEqual([2, 3, 4, 5, 5, 5, 5]);
-    expect([0, 1, 2, 6].map(i => billDays(i, 3))).toEqual([4, 4, 4, 4]);
+  it('gives each town 2 to 7 bills of 2 to 7 days, short at the start and long at the end, the last one the big bill', () => {
+    // Navid (15 Nov): "something between 2-7 bills, each between 2-7 days"; the first town still teaches (2, 3, 4)
+    expect(billSchedule(0)).toEqual([2, 3, 4]);
+    expect(plans[0].totalDays).toBe(9);
     for (const p of plans) {
-      expect(p.bills.length).toBe(BILL_COUNT[p.country] + (p.boss ? 1 : 0));
-      expect(p.bills.length).toBeGreaterThanOrEqual(5);
-      p.bills.forEach((b, i) => expect(b.days).toBe(billDays(i, p.index)));
+      const s = billSchedule(p.index);
+      expect(s.length).toBeGreaterThanOrEqual(2);
+      expect(s.length).toBeLessThanOrEqual(7);
+      expect(p.bills.length).toBe(s.length);
+      // a country's first town is short (one kind of crop), its capital long
+      const list = COUNTRIES.find(c => c.code === p.country)!.cities;
+      const pos = list.findIndex(x => x.id === p.cityId);
+      if (p.index > 0 && pos === 0) expect(s.length).toBeLessThanOrEqual(3);
+      if (pos === list.length - 1) expect(s.length).toBeGreaterThanOrEqual(5);
+      p.bills.forEach((b, i) => {
+        expect(b.days).toBe(s[i]);
+        expect(b.days).toBe(billDays(i, p.index));
+        expect(b.days).toBeGreaterThanOrEqual(2);
+        expect(b.days).toBeLessThanOrEqual(7);
+      });
+      expect(s[0]).toBeLessThanOrEqual(3);
+      if (p.index > 0 && s.length >= 3) expect(s[s.length - 1]).toBeGreaterThanOrEqual(5);
+      expect(s[s.length - 1]).toBe(Math.max(...s));
+      expect(billDueDay(s.length - 1, p.index)).toBe(p.totalDays);
       expect(p.totalDays).toBe(p.bills.reduce((a, b) => a + b.days, 0));
-      expect(p.bills[0].name).toBe('Seed loan');
-      expect(p.bills[p.bills.length - 1].name).toBe('The deed');
-      expect(new Set(p.bills.map(b => b.name)).size).toBe(p.bills.length);
-      // the second star: keep about half the deed after paying it
-      const deed = p.bills[p.bills.length - 1].amt;
-      expect(p.spare).toBeGreaterThan(deed * 0.45);
-      expect(p.spare).toBeLessThan(deed * 0.55);
-      for (let i = 0; i < p.bills.length; i++) {
-        expect(p.bills[i].amt).toBeGreaterThan(0);
-        if (i) expect(p.bills[i].amt).toBeGreaterThan(p.bills[i - 1].amt);
-      }
+      // rent or the bank's loan, then the big bill
+      p.bills.forEach((b, i) => {
+        expect(b.kind).toBe(i === p.bills.length - 1 ? 'big' : b.kind);
+        if (i < p.bills.length - 1) expect(['rent', 'bank']).toContain(b.kind);
+        expect(b.name).toBe(BILL_NAME[b.kind][0]);
+      });
+      // the second star: keep about half the big bill after paying it
+      const big = p.bills[p.bills.length - 1].amt;
+      expect(p.spare).toBeGreaterThan(big * 0.45);
+      expect(p.spare).toBeLessThan(big * 0.55);
     }
-    // Navid (5 Nov): bills of 2, 3, 4 and 5 days, so a five-bill farm runs 19 days
-    expect(plans[0].totalDays).toBe(19);
+    // the same town always has the same bills
+    expect(billSchedule(7)).toEqual(billSchedule(7));
+  });
+
+  it('never asks less per day than the bill before, all along the road, in round money', () => {
+    const step = (v: number) => (v >= 1_000_000 ? Math.pow(10, Math.floor(Math.log10(v)) - 2) : v < 100 ? 5 : v < 1000 ? 10 : v < 10000 ? 50 : v < 100000 ? 100 : 500);
+    let prev = 0;
+    for (const p of plans)
+      for (const b of p.bills) {
+        expect(b.amt).toBeGreaterThan(0);
+        expect(b.amt / b.days).toBeGreaterThanOrEqual(prev - 1e-9);
+        prev = b.amt / b.days;
+        const st = step(b.amt);
+        expect(Math.abs(b.amt / st - Math.round(b.amt / st))).toBeLessThan(1e-9);
+      }
+  });
+
+  it('needs no ad in the first two towns and stops getting harder from the fifth', () => {
+    // a bill asks this share of an average day: under one leaves money for upgrades
+    expect(billPressure(0)).toBeLessThan(0.9);
+    expect(billPressure(1)).toBeLessThan(0.9);
+    expect(billPressure(2)).toBeGreaterThan(billPressure(1));
+    expect(billPressure(3)).toBeGreaterThan(billPressure(2));
+    expect(billPressure(4)).toBeGreaterThan(billPressure(3));
+    expect(billPressure(4)).toBe(BILL_RATE);
+    expect(billPressure(27)).toBe(BILL_RATE);
+    // about one ad a bill for an average player, never a wall
+    expect(BILL_RATE).toBeLessThanOrEqual(1.2);
+  });
+
+  it('sizes the surprises: none in the first town, a tax of about half a day and a repair a little under one', () => {
+    expect(plans[0].tax).toBe(0);
+    expect(plans[0].repair).toBe(0);
+    for (const p of plans.slice(1)) {
+      expect(p.tax).toBeGreaterThan(0);
+      expect(p.repair).toBeGreaterThan(p.tax);
+    }
   });
 
   it('gets harder city by city', () => {
@@ -60,7 +113,6 @@ describe('city plans', () => {
     }
     const first = plans[0], last = plans[plans.length - 1];
     expect(last.totalDays).toBeGreaterThan(first.totalDays);
-    expect(last.bills.length).toBeGreaterThan(first.bills.length);
   });
 
   it('puts one boss on the last farm of each country', () => {
@@ -75,53 +127,46 @@ describe('city plans', () => {
     }
   });
 
-  it('meets each vegetable once along the road: one a bill in Charlottetown, then one a farm', () => {
-    // Charlottetown: carrots, then one more with each bill paid
-    const first = plans[0];
-    expect(first.stages.map(s => [s.type, s.stage])).toEqual([['carrot', 0], ['radish', 1], ['pei_russet', 2], ['cabbage', 3]]);
-    expect(first.crops.filter(c => c[2] <= 0).map(c => c[0])).toEqual(['carrot']);
-    const met = new Set<string>();
+  it('brings one runaway per town, kept in its own country, spotted after the first bill', () => {
+    const seen = new Set<string>();
     plans.forEach((p, k) => {
-      const own = DEBUT[p.cityId];
-      const known = knownBefore(k);
-      expect(p.cropBy).toBe('bill');
-      // a vegetable is new only once, and a country's three are first met on its own farms
-      for (const t of own) {
-        expect(met.has(t)).toBe(false);
-        met.add(t);
-        expect(debutFarm(t)).toBe(k);
-      }
+      const own = RUNAWAY[p.cityId];
+      expect(own).toBeTruthy();
+      expect(seen.has(own)).toBe(false);
+      seen.add(own);
+      expect(debutFarm(own)).toBe(k);
+      expect(p.runaway).toBe(own);
+      // the field: the country's runaways caught so far (the newest four), then the town's own, the biggest crop
+      const known = countryKnown(k);
       const types = p.stages.map(s => s.type);
-      expect(new Set(types).size).toBe(types.length);
-      if (k > 0) {
-        // a later farm opens with vegetables the player knows (the three newest among them) and brings its own new
-        // one when the first bill is paid; it has as many vegetables as bills when the road has that many
-        expect(types.length).toBe(Math.min(p.bills.length, known.length + own.length));
-        const open = p.stages.filter(s => s.stage === 0).map(s => s.type);
-        for (const t of open) expect(known).toContain(t);
-        for (const t of known.slice(-3)) expect(open).toContain(t);
-        expect(p.stages.filter(s => s.stage > 0).map(s => s.type)).toEqual(own);
-        for (const s of p.stages) expect(s.stage).toBe(own.includes(s.type) ? 1 : 0);
-        // the farm's own vegetable is the biggest crop of its field
-        if (own.length) expect(types[types.length - 1]).toBe(own[0]);
+      expect(types[types.length - 1]).toBe(own);
+      expect(types.slice(0, -1)).toEqual(known.slice(-(FIELD_KINDS - 1)));
+      expect(types.length).toBeLessThanOrEqual(FIELD_KINDS);
+      // never a vegetable of another country (Navid: no pineapple in Egypt)
+      for (const t of types) expect(ROUTE[debutFarm(t)].country).toBe(p.country);
+      // spotted (rare) after the first bill, everywhere from the middle of the town; alone in a country's first town
+      const rw = p.crops.filter(c => c[0] === own);
+      if (!known.length) expect(rw).toEqual([[own, rw[0][1], 0]]);
+      else {
+        expect(rw.map(c => c[2])).toEqual([1, Math.max(1, Math.ceil(p.bills.length / 2))].filter((v, i, a) => a.indexOf(v) === i || i === 0).slice(0, rw.length));
+        expect(rw[0][1]).toBeLessThan(rw.length > 1 ? rw[1][1] : Infinity);
       }
-      // sizes: smallest first, each worth more and tougher than the one before
-      p.crops.forEach(([type, , at], i) => {
-        expect(type).toBe(p.stages[i].type);
-        expect(at).toBe(p.stages[i].stage);
-        expect(p.cropVal[type]).toBe(LADDER_VAL[i]);
-        expect(p.cropHp[type]).toBe(LADDER_HP[i]);
-      });
-      expect(p.goldAt).toBe(p.unlock + 2);
+      // bigger crops pay more and take more cuts
+      for (let i = 1; i < p.stages.length; i++) {
+        expect(p.stages[i].val).toBeGreaterThan(p.stages[i - 1].val);
+        expect(p.stages[i].hp).toBeGreaterThan(p.stages[i - 1].hp);
+      }
     });
+    expect(seen.size).toBe(28);
+    // the first town is carrots alone, falling to one swipe
+    expect(plans[0].stages).toEqual([{ type: 'carrot', stage: 0, debut: true, val: LADDER_VAL[0], hp: LADDER_HP[0] }]);
+    // every country's three signature vegetables are runaways of that country
     for (const c of COUNTRIES) for (const t of c.trio) expect(ROUTE[debutFarm(t)].country).toBe(c.code);
-    // every boss is a vegetable the player has met before its farm ends
-    for (const c of COUNTRIES) expect(debutFarm(BOSSES[c.code].type)).toBeLessThanOrEqual(ROUTE.findIndex(x => x.id === c.cities[c.cities.length - 1].id));
-    // the long countries' boss farms bring nothing new
-    for (const id of ['ca_kelowna', 'br_bento', 'fr_agen', 'jp_kagoshima']) expect(DEBUT[id]).toEqual([]);
-    for (let i = 1; i < LADDER_VAL.length; i++) {
-      expect(LADDER_VAL[i]).toBeGreaterThan(LADDER_VAL[i - 1]);
-      expect(LADDER_HP[i]).toBeGreaterThan(LADDER_HP[i - 1]);
+    // the King is a vegetable of its own country, met by the capital
+    for (const c of COUNTRIES) {
+      const cap = c.cities[c.cities.length - 1].id;
+      expect(debutFarm(BOSSES[c.code].type)).toBeLessThanOrEqual(ROUTE.findIndex(x => x.id === cap));
+      expect(ROUTE[debutFarm(BOSSES[c.code].type)].country).toBe(c.code);
     }
     expect(cropName('radish')).toBe('Runaway Radish');
     expect(cropName('pei_russet')).toBe('Hoser Russet');
@@ -133,15 +178,14 @@ describe('city plans', () => {
     COUNTRIES.slice(1).forEach(c => {
       const k = ROUTE.findIndex(x => x.id === c.cities[0].id);
       const here = plans[k], before = plans[k - 1];
-      // a new country's first bill is more than the deed of the farm before it, and its crops pay several times more
-      expect(here.bills[0].amt).toBeGreaterThan(before.bills[before.bills.length - 1].amt);
+      // a new country's bills ask several times more per day than the town before (about the border step: the measured
+      // average days differ a little town by town), and its crops pay several times more
+      const rate = (p: typeof here) => p.bills[0].amt / p.bills[0].days;
+      expect(rate(here) / (before.bills[before.bills.length - 1].amt / before.bills[before.bills.length - 1].days)).toBeGreaterThan(0.8 * BORDER_STEP);
       expect(here.val / before.val).toBeGreaterThan(BORDER_STEP);
     });
-    // bills never get cheaper: within a farm, and from one farm's deed to the next farm's first bill
-    plans.forEach((p, k) => {
-      for (let i = 1; i < p.bills.length; i++) expect(p.bills[i].amt).toBeGreaterThan(p.bills[i - 1].amt);
-      if (k > 0) expect(p.bills[0].amt).toBeGreaterThan(plans[k - 1].bills[plans[k - 1].bills.length - 1].amt);
-    });
+    // the big bill is the biggest of its town
+    for (const p of plans) expect(p.bills[p.bills.length - 1].amt).toBe(Math.max(...p.bills.map(b => b.amt)));
     // upgrades: Canada's levels cost what they did; the first level of the USA's reach costs BORDER_STEP times the
     // old curve, and one country's money can't buy the next one's
     expect(upgradeTier('scythe', 25)).toBe(0);
@@ -180,10 +224,10 @@ describe('city plans', () => {
     expect(cropLevelProgress(1e9)).toBe(1);
     expect(cropPayTable({ carrot: 0, radish: 25, onion: 1e9 })).toEqual({ radish: cropPay(2), onion: cropPay(CROP_LEVEL_MAX) });
     expect(cropPayTable(undefined)).toEqual({});
-    // the bots' typical player: about a hundred cuts of each vegetable of a field per farm
+    // the bots' typical player: about a hundred cuts of each vegetable of a field per town
     const cuts = typicalCuts(2, i => plans[i].bills.length);
     expect(cuts.carrot).toBe(TYPICAL_CUTS * 2);
-    expect(cuts.fiddlehead).toBe(TYPICAL_CUTS);
+    expect(cuts.radish).toBe(TYPICAL_CUTS);
   });
 
   it('gives days of 15 seconds before upgrades', () => {
@@ -309,12 +353,12 @@ describe('progress', () => {
     expect(nextCity(g)).toBe('us_austin');
   });
 
-  it('holds the next country until the star gate is met', () => {
+  it('opens the next country when its King is beaten, however many stars (a town is never played again)', () => {
     const g = newGame();
-    winAll(g, COUNTRIES[0].cities.map(c => c.id), 1);
-    const lock = countryLock(g, 'US');
-    expect(lock.open).toBe(false);
-    expect(lock.reason).toMatch(/more ★/);
+    winAll(g, COUNTRIES[0].cities.slice(0, -1).map(c => c.id), 1);
+    expect(countryLock(g, 'US').open).toBe(false);
+    winAll(g, [COUNTRIES[0].cities[COUNTRIES[0].cities.length - 1].id], 1);
+    expect(countryLock(g, 'US').open).toBe(true);
   });
 
   it('scores stars for winning, money to spare after the deed and the crown', () => {
@@ -356,8 +400,8 @@ describe('progress', () => {
     expect(back.wallet).toBe(50 + 394);
     expect(back.workshop.levels.scythe).toBe(0);
     expect(back.migratedRefund).toBe(394);
-    expect(back.econ).toBe(10);
-    // a v0.10 save is left alone
+    expect(back.econ).toBe(ECONOMY);
+    // a save of this version is left alone
     const again = parseGame(JSON.stringify({ ...back, migratedRefund: undefined }));
     expect(again.wallet).toBe(back.wallet);
     expect(again.migratedRefund).toBeUndefined();

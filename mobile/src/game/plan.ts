@@ -1,4 +1,9 @@
-// City plans: what each of the 30 farms asks of the player. Pure data and maths, no DOM, so it can be tested.
+// Town plans: what each of the 28 towns asks of the player. Pure data and maths, no DOM, so it can be tested.
+//
+// 0.14 (Navid, 15 Nov 2026): a town is 2 to 7 bills, each 2 to 7 days, random but short at the start of a town and
+// long at its end; a bill is rent, the bank's loan, or the town's big bill (the last one, which catches the runaway).
+// Every bill asks more per day than the one before, all the way along the road. Tax and repairs come as surprises
+// (src/shell/app.ts) and are sized here. Older notes follow.
 //
 // A farm is a run of bills; the last one is the deed. v0.12 (Navid, 5 Nov): the first bill is due after 2 days, the
 // next after 3, then 4, then 5 (and 5 from then on). v0.13 (Navid, 10 Nov; src/game/road.ts): the farms are one road.
@@ -9,10 +14,14 @@
 // every border money steps up (BORDER_STEP): what crops pay, the bills and the upgrades of that country's reach.
 
 import { COUNTRIES, ROUTE, type CityDef, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from './world';
-import { fieldKinds } from './road';
+import { FIELD_KINDS, fieldKinds } from './road';
+
+/** Rent and the bank's loan come and go; the big bill is a town's last, and paying it catches the runaway. */
+export type BillKind = 'rent' | 'bank' | 'big';
 
 export interface Bill {
   name: string;
+  kind: BillKind;
   amt: number;
   /** Days from the previous bill (or the start of the farm) until this one is due at sunset. */
   days: number;
@@ -76,6 +85,11 @@ export interface CityPlan {
   cropBy?: 'bill';
   /** The farm's vegetables, smallest first, each with the bills paid before it joins (road.ts). */
   stages: StageCrop[];
+  /** The town's runaway (road.ts): spotted after `stage` bills, everywhere after `common`. */
+  runaway: string;
+  /** Surprises (0.14): sizes of a tax and a repair here, or 0 where none come (the first town). */
+  tax: number;
+  repair: number;
   /** Base value and toughness per crop type on this farm (the engine uses these instead of the crop's own). */
   cropVal: Record<string, number>;
   cropHp: Record<string, number>;
@@ -105,21 +119,70 @@ export const BOSSES: Record<CountryCode, { type: string; name: string }> = {
   JP: { type: 'kabocha', name: 'King Kabocha' },
 };
 
-/** Bills per farm in each country (the boss farm has one more). */
+/** 0.14: kept for older callers; a town's bills come from billSchedule. */
 export const BILL_COUNT: Record<CountryCode, number> = { CA: 5, US: 5, BR: 6, MA: 6, FR: 6, CN: 7, JP: 7 };
-/** Days a bill gives you, from the one before (Navid, 5 Nov: 2, 3, 4, 5, then 5). */
-export function billDays(i: number, k = 0): number {
-  // v0.13 (Navid, 11 Nov: "bills will get cheap with new city/farm"): the 2, 3, 4, 5 days stay on the first farm,
-  // where they teach the game; from the second farm on every bill gives 4 days, so a farm's first bill is not a
-  // small two-day bill after the last farm's five-day deed
-  if (k > 0) return LATER_BILL_DAYS;
-  return Math.min(5, 2 + Math.max(0, i));
+
+/** A small seeded random number source (mulberry32), so a town's bills are the same every time it is played. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
-export const LATER_BILL_DAYS = 4;
-/** The farm's day on which bill `i` is due. */
+function hashId(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/** The first town's bills: 2, 3 and 4 days (the game is still teaching). */
+export const FIRST_TOWN_DAYS = [2, 3, 4];
+const SCHEDULES = new Map<number, number[]>();
+/**
+ * Town k's bills, as the days each one gives (Navid, 15 Nov: "something between 2-7 bills, each between 2-7 days").
+ * Random but the same every time: a country's first town has 2 or 3 bills, its capital 5 to 7, the others 3 to 6;
+ * a town's first bill gives 2 or 3 days, its big bill 5 to 7, and the ones between lean longer as the town goes on.
+ */
+export function billSchedule(k: number): number[] {
+  const cached = SCHEDULES.get(k);
+  if (cached) return cached;
+  const city = ROUTE[Math.max(0, Math.min(ROUTE.length - 1, k))];
+  let days: number[];
+  if (k <= 0) days = FIRST_TOWN_DAYS.slice();
+  else {
+    const rnd = seeded(hashId(city.id));
+    const list = countryOf(city.country).cities;
+    const pos = list.findIndex(x => x.id === city.id);
+    // a country's first town has one kind of crop (its runaway), so it is short
+    const [lo, hi] = pos === 0 ? [2, 3] : pos === list.length - 1 ? [5, 7] : [3, 6];
+    const n = lo + Math.floor(rnd() * (hi - lo + 1));
+    days = [];
+    for (let i = 0; i < n; i++) {
+      const t = n > 1 ? i / (n - 1) : 1;
+      let d = Math.round(2 + 4 * t + (rnd() - 0.5) * 2.4);
+      if (i === 0) d = Math.min(d, 3);
+      // the big bill is the longest (and so the biggest) of its town
+      if (i === n - 1) d = Math.max(d, 5, ...days);
+      days.push(Math.max(2, Math.min(7, d)));
+    }
+  }
+  SCHEDULES.set(k, days);
+  return days;
+}
+/** Days bill `i` of town k gives you, from the one before (or the start of the town). */
+export function billDays(i: number, k = 0): number {
+  const s = billSchedule(k);
+  return s[Math.max(0, Math.min(s.length - 1, i))];
+}
+/** The town's day on which bill `i` is due. */
 export function billDueDay(i: number, k = 0): number {
+  const s = billSchedule(k);
   let d = 0;
-  for (let j = 0; j <= i; j++) d += billDays(j, k);
+  for (let j = 0; j <= Math.min(i, s.length - 1); j++) d += s[j];
   return d;
 }
 /** Seconds of daylight with no upgrades. v0.12 (Navid, 5 Nov): 15 s; Longer days and skills add up to about 30. */
@@ -297,10 +360,12 @@ export function valMul(k: number): number {
 // v0.13 (the road): from the second farm on the field opens with vegetables the player knows, so the days are about
 // even: bots on 11 Nov (two runs a farm through the USA, one on every other later farm) earned about 40% more on
 // day 1 (a fresh field) in Canada and the USA and an even day from Brazil on.
+// 0.14: a town's field opens with the runaways already caught in the country (or, in a country's first town, its
+// runaway) and value per cut is about the same for every crop size, so a town's days are about even.
+// Bots on 15 Nov: the first town's days are even too (carrots only, all town long).
 const DAY_SHAPES: Array<[k: number, days: number[], later: number]> = [
-  [0, [0.61, 0.88, 1.15, 1.13, 1.11], 0.96],
-  [8, [1.4, 1.1, 1.0, 1.0, 1.0], 1],
-  [13, [1.0, 1.0, 1.0, 1.0, 1.0], 1],
+  [0, [1, 1, 1, 1, 1], 1],
+  [1, [1, 1, 1, 1, 1], 1],
 ];
 function shapeRow(i: number, d: number): number {
   const [, days, later] = DAY_SHAPES[i];
@@ -318,11 +383,13 @@ export function dayShape(d: number, k = 0): number {
 }
 /** An average player's settled day on farm k, as a share of dayRef(k) (measured on 25 s days before v0.12). */
 const AVG_POINTS: Array<[k: number, share: number]> = [
-  // v0.13 (the road, bots on 11 Nov): the field no longer starts again on carrots, so an average day pays about a
-  // third more than 0.12's measurements (×1.15 on Gatineau, ×1.38 on the rest of Canada, ×1.33 in the USA, ×1.4 in
-  // Brazil, ×1.27 after); Charlottetown, which still brings a vegetable with each bill, is as it was
-  [0, 0.307], [1, 0.392], [2, 0.349], [3, 0.442], [4, 0.414], [5, 0.406], [6, 0.327], [7, 0.41], [8, 0.334],
-  [9, 0.406], [13, 0.37], [14, 0.364], [19, 0.277], [29, 0.182],
+  // 0.14 (the runaways, bots on 15 Nov: average and strong players, on-track builds, days 1 to 5, about 300 days):
+  // a town's field is the country's runaways caught so far plus its own, so a town's day no longer follows the old
+  // ladder. Charlottetown (carrots only) pays about half the old share; Saskatoon, Kelowna, Austin and the capitals
+  // more. Towns in between are interpolated.
+  [0, 0.172], [1, 0.349], [2, 0.328], [3, 0.403], [4, 0.521], [5, 0.484], [6, 0.445], [7, 0.331], [8, 0.303],
+  [9, 0.39], [11, 0.552], [13, 0.455], [14, 0.459], [16, 0.481], [17, 0.351], [19, 0.287], [21, 0.336], [22, 0.284],
+  [24, 0.385], [25, 0.24], [27, 0.315],
 ];
 export function avgDayShare(k: number): number {
   const P = AVG_POINTS;
@@ -334,10 +401,24 @@ export function avgDayShare(k: number): number {
 export function avgDay(k: number, d: number): number {
   return dayRef(k) * avgDayShare(k) * dayShape(d, k);
 }
-/** A bill asks for an average player's days plus this share of the best of them: one doubled day (an ad) covers it,
- *  so an average player pays with one ad, a computer-strong one with none, and a weak one not even with an ad. */
-export const BILL_OVER = 0.5;
-/** Each bill of a farm asks this much more than the one before, for the same days: upgrades should keep up. */
+/**
+ * How hard town k's bills are (0.14; Navid, 14 Nov: "less ads in the beginning of the game, and then after some
+ * cities the difficulty increases... stop the ad rise at medium 6 or 7 per 10 minute even less its ok"): what a bill
+ * asks per day, against an average player's day there (AVG_POINTS, measured with on-track builds). The first two towns
+ * leave money over for upgrades, so they need no ad; the third and fourth ask most of a day; from the fifth a bill asks
+ * a whole average day. With the surprises (about 8% of a day) an average player who keeps up with upgrades is short
+ * about 10% of a day, two ads in ten minutes, and one who falls behind (crops soften for a weaker build, but not all
+ * the way) about six; a strong one needs none. It stops rising there.
+ */
+export const BILL_RATE = 1;
+export function billPressure(k: number): number {
+  if (k <= 0) return 0.7;
+  if (k === 1) return 0.75;
+  if (k === 2) return 0.9;
+  if (k === 3) return 0.95;
+  return BILL_RATE;
+}
+/** Each bill of a town asks this much more per day than the one before: upgrades should keep up. */
 export const BILL_CLIMB = 0.01;
 /** The rival's record: this many average settled days in one. The strong bot's best day (day 3, golden corn) is 1.8 to
  *  3 of them from Gatineau on, the average one's 1.15 to 1.5; on the first farms the two are close, so the record
@@ -353,43 +434,37 @@ function roundMoney(v: number): number {
   const st = moneyStep(v);
   return v < 100 ? Math.max(10, Math.round(v / st) * st) : Math.round(v / st) * st;
 }
-/** At least a little more than `p`, in round money (each bill of a farm asks more than the one before). */
-function moreThan(p: number): number {
-  const v = roundMoney(p * 1.01 + 5);
-  return v > p ? v : p + moneyStep(p);
+/** The smallest round amount that is at least `p` (a bill never asks less per day than the one before). */
+function atLeast(p: number): number {
+  const st = moneyStep(p);
+  return Math.ceil(p / st - 1e-9) * st;
 }
 
-function pickBillNames(city: CityDef, k: number, n: number): Array<[string, string]> {
-  const local = LOCAL_BILLS[city.country];
-  const pool: Array<[string, string]> = [];
-  // Mix the country's own bills with the classics, rotating so neighbouring cities differ.
-  for (let i = 0; i < Math.max(local.length, GENERIC_BILLS.length); i++) {
-    if (i < local.length) pool.push(local[(i + k) % local.length]);
-    if (i < GENERIC_BILLS.length) pool.push(GENERIC_BILLS[(i + k * 2) % GENERIC_BILLS.length]);
-  }
-  const seen = new Set<string>();
-  const out: Array<[string, string]> = [];
-  // the first bill of every farm is the seed loan: the carrots have to come from somewhere
-  out.push(GENERIC_BILLS[0]);
-  seen.add(GENERIC_BILLS[0][0]);
-  for (const b of pool) {
-    if (out.length >= n - 1) break;
-    if (seen.has(b[0])) continue;
-    seen.add(b[0]);
-    out.push(b);
-  }
-  out.length = Math.min(out.length, n - 1);
-  out.push(['The deed', `Pay this and the ${city.short} farm is yours. Forever. Probably.`]);
+/** Rent or the bank's loan for every bill but the last, which is the town's big bill (the same every time). */
+function billKinds(city: CityDef, k: number, n: number): BillKind[] {
+  const rnd = seeded(hashId(city.id) ^ 0x9e3779b9);
+  const out: BillKind[] = [];
+  for (let i = 0; i < n - 1; i++) out.push(k === 0 && i === 0 ? 'bank' : rnd() < 0.5 ? 'rent' : 'bank');
+  out.push('big');
   return out;
 }
+export const BILL_NAME: Record<BillKind, [string, string]> = {
+  rent: ['Rent', 'The landlord wants his field rent.'],
+  bank: ['Bank loan', 'Grumble & Sons want their payment.'],
+  big: ['The big bill', 'Pay it and the runaway is caught.'],
+};
+// (the country lists of funny bills from 0.12 stay for the daily farm and future use)
+void GENERIC_BILLS;
+void LOCAL_BILLS;
 
-const DEEDS = new Map<number, number>();
-/** What farm k's deed asks (cached: each farm's bills start above the farm before). */
-function deedOf(k: number): number {
-  let v = DEEDS.get(k);
+const LAST_RATE = new Map<number, number>();
+/** What town k's last bill asks per day (cached: every bill asks more per day than the one before). */
+function lastRate(k: number): number {
+  let v = LAST_RATE.get(k);
   if (v == null) {
     const b = planFor(ROUTE[k].id).bills;
-    DEEDS.set(k, (v = b[b.length - 1].amt));
+    const last = b[b.length - 1];
+    LAST_RATE.set(k, (v = last.amt / last.days));
   }
   return v;
 }
@@ -398,37 +473,46 @@ export function planFor(cityId: string): CityPlan {
   if (k < 0) throw new Error('unknown city ' + cityId);
   const city = ROUTE[k];
   const boss = isBossCity(cityId);
-  const n = BILL_COUNT[city.country] + (boss ? 1 : 0);
+  const schedule = billSchedule(k);
+  const n = schedule.length;
   const ref = dayRef(k);
   const mul = billMul(cityId);
-  const names = pickBillNames(city, k, n);
-  // v0.13 (Navid, 11 Nov): bills never get cheaper from one farm to the next: the first bill asks more than the
-  // farm before asked for its deed
-  let prevAmt = k > 0 ? deedOf(k - 1) : 0;
-  const bills: Bill[] = names.map((nm, i) => {
+  const kinds = billKinds(city, k, n);
+  const press = billPressure(k);
+  // 0.14 (Navid, 11 Nov: "bills will get cheap with new city/farm"): a short bill asks less money than a long one, but
+  // no bill asks less per day than the one before it, here and in the town before (each asks 1% more before rounding)
+  let prevRate = k > 0 ? lastRate(k - 1) : 0;
+  const bills: Bill[] = kinds.map((kind, i) => {
+    const days = schedule[i];
     const from = i ? billDueDay(i - 1, k) + 1 : 1, to = billDueDay(i, k);
-    let sum = 0,
-      best = 0;
-    for (let d = from; d <= to; d++) {
-      const v = avgDay(k, d);
-      sum += v;
-      best = Math.max(best, v);
-    }
-    return {
-      name: nm[0],
-      note: nm[1],
-      days: billDays(i, k),
-      // a boss farm: time spent on the boss earns nothing, so its bills are lighter; the bounty helps with the deed
-      // later bills climb a little (a perk comes with every bill paid, and upgrades keep coming)
-      amt: (prevAmt = Math.max(roundMoney((sum + BILL_OVER * best) * (1 + BILL_CLIMB * i) * mul * (boss ? (i === n - 1 ? 1 : 0.85) : 1)), moreThan(prevAmt))),
-    };
+    let sum = 0;
+    for (let d = from; d <= to; d++) sum += avgDay(k, d);
+    // a boss town: time spent on the King earns nothing, so its bills are lighter; the bounty helps with the big bill
+    const raw = sum * press * (1 + BILL_CLIMB * i) * mul * (boss && i < n - 1 ? 0.85 : 1);
+    let amt = roundMoney(raw);
+    if (amt / days < prevRate) amt = atLeast(prevRate * days);
+    prevRate = amt / days;
+    return { name: BILL_NAME[kind][0], note: BILL_NAME[kind][1], kind, days, amt };
   });
   // the goat and the crows come after two bills on the first farms, from the start later on
   const unlock = Math.min(5, Math.floor(k / 2));
-  // the field's vegetables, smallest first (road.ts): the ones the player knows, then this farm's own new one
+  // the field (road.ts): the country's runaways caught so far, then this town's, the biggest crop. Sizes come from the
+  // ladder; a field of one or two kinds uses its middle (a country's first town is not all tiny crops), except the
+  // very first town, whose carrots fall to one swipe
+  const kindsHere = fieldKinds(k, n);
   const top = LADDER_VAL.length - 1;
-  const stages: StageCrop[] = fieldKinds(k, n).map((f, i) => ({ type: f.type, stage: f.stage, debut: f.debut, val: LADDER_VAL[Math.min(top, i)], hp: LADDER_HP[Math.min(top, i)] }));
-  const crops: CropWeight[] = stages.map((s, i) => [s.type, LADDER_W[Math.min(top, i)], s.stage]);
+  const start = k === 0 ? 0 : Math.max(0, 3 - kindsHere.length);
+  const stages: StageCrop[] = kindsHere.map((f, i) => ({ type: f.type, stage: f.stage, debut: f.debut, val: LADDER_VAL[Math.min(top, start + i)], hp: LADDER_HP[Math.min(top, start + i)] }));
+  const crops: CropWeight[] = [];
+  kindsHere.forEach((f, i) => {
+    const w = LADDER_W[Math.min(top, start + i)];
+    // the runaway: rare once spotted, everywhere from the middle of the town
+    if (f.common != null && f.common > f.stage) {
+      crops.push([f.type, w * 0.3, f.stage]);
+      crops.push([f.type, w * 0.7, f.common]);
+    } else crops.push([f.type, w, f.stage]);
+  });
+  void FIELD_KINDS;
   const cropVal: Record<string, number> = {};
   const cropHp: Record<string, number> = {};
   for (const s of stages) {
@@ -436,6 +520,7 @@ export function planFor(cityId: string): CityPlan {
     cropHp[s.type] = s.hp;
   }
   const totalDays = billDueDay(n - 1, k);
+  const avgHere = ref * avgDayShare(k);
   // Bosses take longer in later countries: 14 s of steady hitting in Canada, 38 s in Japan.
   const ci = COUNTRIES.findIndex(c => c.code === city.country);
   const bossFight: BossFight | undefined = boss
@@ -461,6 +546,10 @@ export function planFor(cityId: string): CityPlan {
     crops,
     cropBy: 'bill',
     stages,
+    runaway: kindsHere.length ? kindsHere[kindsHere.length - 1].type : '',
+    // surprises (0.14): none in the first town; a tax about half an average day, a repair a little under a day
+    tax: k > 0 ? roundMoney(avgHere * 0.5 * mul) : 0,
+    repair: k > 0 ? roundMoney(avgHere * 0.8 * mul) : 0,
     cropVal,
     cropHp,
     // the rival's best day: about a good day with the whole ladder out, a little more on later farms, so a good
