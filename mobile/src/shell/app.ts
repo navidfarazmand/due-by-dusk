@@ -2359,14 +2359,11 @@ export class GameApp {
     // the farm's days: the ones played, today, and the days a bill is due
     const bills = e.bills();
     const dueDays = new Set<number>();
-    const dueOf: number[] = [];
     let d = st.due;
     dueDays.add(d);
-    dueOf[st.bill] = d;
     for (let i = st.bill + 1; i < bills.length; i++) {
       d += bills[i].days;
       dueDays.add(d);
-      dueOf[i] = d;
     }
     const total = Math.max(d, st.day);
     let dots = '';
@@ -2407,55 +2404,31 @@ export class GameApp {
     const tool = TOOL_ICON[this.g.tools.equipped];
     // 0.15 (Navid, 15 Nov: "the Day card ... why not updated with our new setting? ... adding pen and removing one of
     // these"; 23:44: "put perk instead of bills. also why on earth the two right boxes are not same size as two left
-    // boxes"): four tiles of one size, Perks and the Pen on the left, Skills and Tools on the right; the bill on the
-    // card opens the town's bills. (Designs 2 to 4, window.__DBD_FH, are for Navid's pick: "please also design more
-    // different designs".)
+    // boxes ... please also design more different designs"; 16 Nov, of four designs: "i pick this one"): one board,
+    // the day on the left (the bill on it opens the town's bills) and four tiles of one size in a square on the right:
+    // Skills, Tools, the Pen (how full it is, a coin when it is worth a look) and the town's Perks.
     const pen = this.g.pen, penN = workerCount(pen), pfill = penFill(pen, Date.now());
     const badge = ups ? `<i class="ft-badge" aria-label="${tn(ups, '{n} upgrade ready to buy', '{n} upgrades ready to buy')}">${ups}</i>` : '';
     const penBadge = this.penReady() ? '<i class="ft-badge">$</i>' : '';
     const penBar = `<span class="ft-pen" aria-label="${Math.round(pfill * 100)}%"><i style="width: ${(penN ? pfill * 100 : 0).toFixed(0)}%"></i></span>`;
-    const skillsTile = `<button type="button" class="st-btn fh-tile" data-act="tree">${ICON.wrench(48)}<b>${t('Skills')}</b>${jobLine}${badge}</button>`;
-    const toolsTile = `<button type="button" class="st-btn fh-tile" data-act="panel" data-arg="tools">${tool ? tool(46) : ''}<b>${t('Tools')}</b></button>`;
-    const penTile = `<button type="button" class="st-btn fh-tile" data-act="pen">${PEN_ICON(48)}<b>${t('Pen')}</b>${penBar}${penBadge}</button>`;
-    const perksTile = `<button type="button" class="st-btn fh-tile" data-act="panel" data-arg="perks">${ICON.chest(48)}<b>${t('Perks')}</b>${perkIcons ? `<span class="ft-perks">${perkIcons}</span>` : ''}</button>`;
-    const head = `<div class="dc-head"><div class="dc-city"><span>${esc(ct.short)}</span>${plan.boss ? `<i class="dc-boss-tag">${t('BOSS')}</i>` : ''}</div>
-        <h2 class="dc-day">${t('Day {day}', { day: st.day })}</h2>
-        <div class="dc-dots${total > 20 ? ' many' : ''}" role="img" aria-label="${t('Day {day} of {n}', { day: st.day, n: total })}">${dots}</div></div>`;
-    const body = `<div class="dc-body">${billRow}${bossRow}${lateRow}${repairRow}${newRow}
-        <div class="dc-go-row">${extra}${main}</div></div>`;
-    const top = (w: number, more = '') => `<div class="wood"></div>
-      <div class="grp tl" style="width: ${w}px; height: 64px"><div class="fh-top">
+    return `<div class="wood"></div>
+      <div class="grp tl" style="width: 420px; height: 64px"><div class="fh-top">
         <button type="button" class="st-btn st-sq" data-act="map" data-arg="${run.cityId}" aria-label="${t('Back to the map')}">${ICON.back()}</button>
-        ${this.walletChip()}${coinsOffer}${more}</div></div>`;
-    const design = Number((window as any).__DBD_FH) || 1;
-    // 2, the shelf: a wide card on top, the four tiles in a row under it
-    if (design === 2)
-      return `${top(420)}<div class="grp mcb fh-v2" style="width: 680px; height: 316px"><div class="st-chip day-card">${head}${body}</div>
-        <div class="fh-shelf">${skillsTile}${toolsTile}${penTile}${perksTile}</div></div>`;
-    // 3, the board: one panel, the day on the left and the four tiles in a square on the right
-    if (design === 3)
-      return `${top(420)}<div class="grp mcb fh-v3" style="width: 800px; height: 316px"><div class="st-chip fh-board"><div class="day-card">${head}${body}</div>
-        <div class="fb-grid">${skillsTile}${toolsTile}${penTile}${perksTile}</div></div></div>`;
-    // 4, the town sheet: the four as buttons in the top row; a wide card with every bill of the town
-    if (design === 4) {
-      const pill = (act: string, arg: string, icon: string, label: string, more = '') =>
-        `<button type="button" class="st-chip fh-pill" data-act="${act}"${arg ? ` data-arg="${arg}"` : ''}>${icon}<span>${label}</span>${more}</button>`;
-      const pills = `<span class="fh-pills">${pill('tree', '', ICON.wrench(26), t('Skills'), badge)}${pill('panel', 'tools', tool ? tool(26) : '', t('Tools'))}${pill('pen', '', PEN_ICON(26), t('Pen'), penBadge)}${pill('panel', 'perks', ICON.chest(26), t('Perks'), perkIcons ? `<span class="ft-perks">${perkIcons}</span>` : '')}</span>`;
-      const list = bills
-        .map((bb, i) => {
-          const k = plan.bills[i]?.kind;
-          const cls = i < st.billsPaid ? 'paid' : i === st.bill ? 'now' : '';
-          return `<div class="dl-bill ${cls}">${billIcon(k, 22)}<span>${esc(t(bb.name))}</span><i>${dueOf[i] ? t('Day {day}', { day: dueOf[i] }) : ''}</i><b>${money(bb.amt)}</b>${i < st.billsPaid ? ICON.check(18) : ''}</div>`;
-        })
-        .join('');
-      return `${top(820, pills)}<div class="grp mcb fh-v4" style="width: 720px; height: 316px"><div class="st-chip day-card">
-        <div class="fv4-l">${head}<div class="dc-go-row">${extra}${main}</div></div>
-        <div class="fv4-r">${bossRow}${lateRow}${repairRow}${newRow}<div class="dl-list" data-act="panel" data-arg="bills" role="button" aria-label="${t('Bills')}">${list}</div></div></div></div>`;
-    }
-    return `${top(420)}
-      <div class="grp ml" style="width: 160px; height: 316px"><div class="fh-col">${perksTile}${penTile}</div></div>
-      <div class="grp mcb" style="width: 390px; height: 316px"><div class="st-chip day-card">${head}${body}</div></div>
-      <div class="grp mr" style="width: 160px; height: 316px"><div class="fh-col">${skillsTile}${toolsTile}</div></div>`;
+        ${this.walletChip()}${coinsOffer}</div></div>
+      <div class="grp mcb fh-v3"><div class="st-chip fh-board">
+        <div class="day-card">
+          <div class="dc-city"><span>${esc(ct.short)}</span>${plan.boss ? `<i class="dc-boss-tag">${t('BOSS')}</i>` : ''}</div>
+          <h2 class="dc-day">${t('Day {day}', { day: st.day })}</h2>
+          <div class="dc-dots${total > 20 ? ' many' : ''}" role="img" aria-label="${t('Day {day} of {n}', { day: st.day, n: total })}">${dots}</div>
+          ${billRow}${bossRow}${lateRow}${repairRow}${newRow}
+          <div class="dc-go-row">${extra}${main}</div>
+        </div>
+        <div class="fb-grid">
+          <button type="button" class="st-btn fh-tile" data-act="tree">${ICON.wrench(48)}<b>${t('Skills')}</b>${jobLine}${badge}</button>
+          <button type="button" class="st-btn fh-tile" data-act="panel" data-arg="tools">${tool ? tool(46) : ''}<b>${t('Tools')}</b></button>
+          <button type="button" class="st-btn fh-tile" data-act="pen">${PEN_ICON(48)}<b>${t('Pen')}</b>${penBar}${penBadge}</button>
+          <button type="button" class="st-btn fh-tile" data-act="panel" data-arg="perks">${ICON.chest(48)}<b>${t('Perks')}</b>${perkIcons ? `<span class="ft-perks">${perkIcons}</span>` : ''}</button>
+        </div></div></div>`;
   }
 
   /** Tree nodes the player could buy right now (the badge on the Upgrades tile and the Barn sign). */

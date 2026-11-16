@@ -81,7 +81,7 @@ test('menu to the first farm and through one day', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('the farmhouse fits the screen: the day card between the tiles, and every panel tab', async ({ page }) => {
+test('the farmhouse fits the screen: the day and the four tiles on one board (0.15), and every panel tab', async ({ page }) => {
   await boot(page, seeded(CA.slice(0, 4), 3000, { tools: { owned: ['sickle', 'scythe'], equipped: 'sickle', mods: {} } }));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_kelowna'));
   await expect(page.locator('.scr-farmhouse')).toBeVisible();
@@ -94,17 +94,24 @@ test('the farmhouse fits the screen: the day card between the tiles, and every p
       }
       return { out, vw: innerWidth, vh: innerHeight };
     }, sels);
-  const L = await boxes2(['.scr-farmhouse .fh-top', '.scr-farmhouse .grp.ml', '.scr-farmhouse .day-card', '.scr-farmhouse .grp.mr', '.scr-farmhouse .dc-go']);
-  const [top, left, card, right, go] = Object.values(L.out);
-  expect(left.r).toBeLessThanOrEqual(card.l + 1);
-  expect(card.r).toBeLessThanOrEqual(right.l + 1);
-  expect(top.b).toBeLessThanOrEqual(card.t + 1);
-  for (const b of [left, card, right, go]) {
+  const L = await boxes2(['.scr-farmhouse .fh-top', '.scr-farmhouse .fh-board', '.scr-farmhouse .day-card', '.scr-farmhouse .fb-grid', '.scr-farmhouse .dc-go']);
+  const [top, board, card, grid, go] = Object.values(L.out);
+  expect(card.r).toBeLessThanOrEqual(grid.l + 1);
+  expect(top.b).toBeLessThanOrEqual(board.t + 1);
+  for (const b of [board, card, grid, go]) {
     expect(b.l).toBeGreaterThanOrEqual(0);
     expect(b.r).toBeLessThanOrEqual(L.vw);
     expect(b.b).toBeLessThanOrEqual(L.vh);
   }
   expect(go.b).toBeLessThanOrEqual(card.b);
+  // four tiles of one size (Navid, 15 Nov: "why on earth the two right boxes are not same size as two left boxes")
+  const tiles = await page.evaluate(() => [...document.querySelectorAll('.scr-farmhouse .fb-grid .fh-tile')].map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
+  expect(tiles).toHaveLength(4);
+  for (const [w, h] of tiles) {
+    expect(Math.abs(w - tiles[0][0])).toBeLessThanOrEqual(1);
+    expect(Math.abs(h - tiles[0][1])).toBeLessThanOrEqual(1);
+  }
+  expect(await page.locator('.scr-farmhouse .fb-grid [data-act]').evaluateAll(els => els.map(e => e.getAttribute('data-act') + ':' + (e.getAttribute('data-arg') || '')))).toEqual(['tree:', 'panel:tools', 'pen:', 'panel:perks']);
   await act(page, 'panel', 'tools');
   for (const tab of ['tools', 'perks', 'bills']) {
     // the panel's own tabs (the tiles behind it are covered)
