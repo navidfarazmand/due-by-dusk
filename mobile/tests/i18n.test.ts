@@ -72,6 +72,8 @@ describe('languages', () => {
     for (const n of TREE) {
       texts.add(n.name);
       texts.add(n.effect);
+      // 0.15: a level's own sentence (Scarecrow, Good lawyer); the others keep {v} for the level's number
+      for (const x of n.byLevel || []) if (typeof x === 'string') texts.add(x);
     }
     for (const b of BRANCHES) texts.add(b.name);
     for (const w of FIELD_WORDS) texts.add(w);
@@ -90,8 +92,10 @@ describe('languages', () => {
       expect(tx('BULK ×3')).toBe(d['BULK ×3']);
       expect(d['BULK ×5']).toContain('×5');
       expect(d['MARKET DAY +30%']).toContain('+30%');
-      // a node's name and effect come back translated
+      // a node's name and effect come back translated, a level's number in it
       expect(t('Storm rod')).toBe(d['Storm rod']);
+      expect(t('Every day starts with {v} more ripe crops.', { v: 3 })).toContain('3');
+      expect(d['Every day starts with {v} more ripe crops.']).toContain('{v}');
       expect(t('Crits throw lightning at a crop nearby.')).not.toBe('Crits throw lightning at a crop nearby.');
     }
   });

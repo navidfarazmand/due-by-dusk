@@ -8,7 +8,7 @@
 // A reset is free and gives back everything paid as tree credit. Prices of the tricks are a first guess for the bots
 // to tune. Review page: https://claude.ai/artifact/7t59cN7bWpBkviWoQnjKLF
 
-import { BORDER_STEP } from './plan';
+import { BORDER_STEP, niceMoney } from './plan';
 import { TIMED_EVERY, emptyLevels, settleJob, upgradeCost, upgradeCostFlat, upgradeDef, upgradeDuration, type UpgradeId, type WorkshopState } from './workshop';
 
 export type TreeBranch = 'blade' | 'power' | 'reach' | 'field' | 'market' | 'ranch';
@@ -24,6 +24,8 @@ export interface TreeNode {
   effect: string;
   /** Levels to buy (a track's is its top level). */
   levels: number;
+  /** By level: the number for {v} in `effect`, or the level's whole sentence (see nodeText). */
+  byLevel?: Array<number | string>;
   /** Price of each level. A track lists its first level: a Workshop track's prices are the Workshop's (nodeCost);
    *  Power cell, the one track that is the tree's own, costs 12% more a level. */
   price: number[];
@@ -67,35 +69,37 @@ const SLOTS: Array<{ d: number; s: number; p: number[] }> = [
   { d: 7, s: 1, p: [12, 13] },
 ];
 
-/** [glyph, name, levels ('T60': a track to level 60, 'K': keystone, or 1-3), effect]. A Workshop track's top level
- *  is the Workshop's (a unit test keeps the two the same). */
-type Row = [string, string, string | number, string];
+/** [glyph, name, levels ('T60': a track to level 60, 'K': keystone, or 1-3), effect, by level]. A Workshop track's top
+ *  level is the Workshop's (a unit test keeps the two the same). A trick with levels says only what the level in
+ *  question does (0.15; Navid, 15 Nov: not "3 more ripe crops (then 5, 8)"): its effect has a {v} that takes the
+ *  level's number, or the list holds a whole sentence for each level. */
+type Row = [string, string, string | number, string, Array<number | string>?];
 const ROWS: Record<TreeBranch, Row[]> = {
   blade: [
     ['edge', 'Sharper blade', 'T100', '+4% damage a level.'],
     ['clover', 'Lucky clover', 'T30', '+0.8% crit chance a level.'],
-    ['star', 'Keen edge', 3, 'Crits hit ×3.2 instead of ×2.8 (then ×3.6, ×4).'],
-    ['drop', 'Bleeding cut', 3, 'A crop you hit keeps losing a third of the hit over a second (then a half, two thirds).'],
+    ['star', 'Keen edge', 3, 'Crits hit ×{v} instead of ×2.8.', [3.2, 3.6, 4]],
+    ['drop', 'Bleeding cut', 3, 'A crop you hit keeps losing {v}% of the hit over a second.', [33, 50, 67]],
     ['bolt', 'Storm rod', 1, 'Crits throw lightning at a crop nearby.'],
-    ['sun', 'Honed start', 2, 'For the first 3 s of each day every swing crits (then 5 s).'],
-    ['burst', 'Splinter', 2, 'When a crop falls, half the damage left over jumps to the nearest crop (then all of it).'],
+    ['sun', 'Honed start', 2, 'For the first {v} s of each day every swing crits.', [3, 5]],
+    ['burst', 'Splinter', 2, 'When a crop falls, {v}% of the damage left over jumps to the nearest crop.', [50, 100]],
     ['bolt2', 'Chain lightning', 1, "Storm rod's lightning jumps on to a second crop."],
-    ['weight', 'Heavy hand', 2, '+20% damage on the first hit of every crop (then 40%).'],
-    ['axe', 'Giant slayer', 3, '+30% damage on crops that take 4 or more cuts (then 45%, 60%). Not bosses.'],
+    ['weight', 'Heavy hand', 2, '+{v}% damage on the first hit of every crop.', [20, 40]],
+    ['axe', 'Giant slayer', 3, '+{v}% damage on crops that take 4 or more cuts. Not bosses.', [30, 45, 60]],
     ['scale', "Reaper's verdict", 1, 'Crops under 25% health fall at once (not bosses).'],
     ['stars', 'Crit streak', 1, 'After three crits in a row, the next swing hits ×5.'],
     ['sprout', 'Clean cut', 1, 'A crop you cut down leaves clean soil: the next one there grows 30% faster.'],
-    ['shield', 'Armour breaker', 2, "Hits on the boss's armour still do 20% of their damage (then 40%)."],
+    ['shield', 'Armour breaker', 2, "Hits on the boss's armour still do {v}% of their damage.", [20, 40]],
     ['swirl', 'Twin blade', 'K', 'Every fourth swing goes all the way round.'],
     ['flame', 'Frenzy', 'K', 'Each crop in a chain makes you swing 1.5% faster, up to 40%, until the chain breaks.'],
   ],
   power: [
     ['battery', 'Power cell', 'T20', 'The power meter fills 5% faster a level.'],
-    ['up', 'Big power', 3, 'Your power hits 20% harder (then 40%, 60%).'],
+    ['up', 'Big power', 3, 'Your power hits {v}% harder.', [20, 40, 60]],
     ['link', 'Chain fuel', 1, 'From ×1.5 on, chained crops fill the meter twice as fast.'],
-    ['clock', 'Long rush', 2, 'The rush lasts 1 s longer (then 2 s).'],
+    ['clock', 'Long rush', 2, 'The rush lasts {v} s longer.', [1, 2]],
     ['wave', 'Sundering cleave', 1, 'The meter fills 50% faster and your power hits a wider circle.'],
-    ['half', 'Spark start', 2, 'Each day starts with the meter a quarter full (then half).'],
+    ['half', 'Spark start', 2, 'Each day starts with the meter {v}% full.', [25, 50]],
     ['corn', 'Rush gold', 1, 'During the rush, golden corn comes three times as often.'],
     ['tornado', 'Whirlwind echo', 1, 'Your power leaves a spinning vortex that keeps cutting for 1.8 s.'],
     ['sprout', 'Green thumb', 1, 'Your power ripens the young crops around it.'],
@@ -103,34 +107,34 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['rings', 'Aftershock', 1, 'A second power at half strength fires half a second later in the same place.'],
     ['plus', 'Overcharge', 1, 'The meter keeps filling to 150%; an overcharged power fires twice.'],
     ['seed', 'Rush bloom', 1, 'During the rush, crops sprout twice as fast.'],
-    ['coin', 'Power payout', 2, 'Crops your power cuts down pay 50% more (then double).'],
+    ['coin', 'Power payout', 2, 'Crops your power cuts down pay {v}% more.', [50, 100]],
     ['tool', 'Tool master', 'K', "Each tool's power doubles: a Cleave twice as wide, a Whirlwind twice as long, a Fire wave twice as far, 24 seeds in a Seed storm."],
     ['recycle', 'Chain reaction', 'K', 'Every crop your power cuts down fills the meter by half a cut.'],
   ],
   reach: [
     ['arrows', 'Wider swing', 'T30', '+2% reach a level.'],
     ['chevrons', 'Quicker hands', 'T30', '+2% swing speed a level.'],
-    ['target', 'Sweet spot', 3, 'Crops in the outer half of your swing take 35% more (then 50%, 70%).'],
-    ['wind', 'Wind trail', 2, 'A fast finger stretches the swing by up to 30% (then 50%).'],
-    ['boomerang', 'Boomerang', 3, 'Every sixth swing throws the sickle out and back along your path (then every fifth, fourth).'],
-    ['fan', 'Sweep', 2, 'A swing that hits 4 or more crops pays 25% more (then 50%).'],
-    ['ghost', 'Ghost sickle', 2, 'A ghost sickle follows a moment behind your finger and hits for 40% (then 70%).'],
+    ['target', 'Sweet spot', 3, 'Crops in the outer half of your swing take {v}% more.', [35, 50, 70]],
+    ['wind', 'Wind trail', 2, 'A fast finger stretches the swing by up to {v}%.', [30, 50]],
+    ['boomerang', 'Boomerang', 3, 'One swing in {v} throws the sickle out and back along your path.', [6, 5, 4]],
+    ['fan', 'Sweep', 2, 'A swing that hits 4 or more crops pays {v}% more.', [25, 50]],
+    ['ghost', 'Ghost sickle', 2, 'A ghost sickle follows a moment behind your finger and hits for {v}%.', [40, 70]],
     ['bounce', 'Ricochet', 1, 'The boomerang bounces once off the edge of the field.'],
     ['pause', 'Second wind', 1, 'After 2 s without a cut, your next 5 swings are twice as fast.'],
-    ['arc', 'Wide arc', 2, 'Your swing covers a 25% wider arc (then 50%).'],
+    ['arc', 'Wide arc', 2, 'Your swing covers a {v}% wider arc.', [25, 50]],
     ['spin', 'Spin cycle', 1, 'Every tenth swing that lands hits twice.'],
     ['eye', 'Afterimage', 1, "The ghost sickle's hits can crit."],
     ['tap', 'Quickdraw', 1, 'A swing starts the moment your finger reaches a crop.'],
-    ['feather', 'Featherweight', 2, '+10% swing speed, doubled while the field is nearly full (then +20%).'],
+    ['feather', 'Featherweight', 2, '+{v}% swing speed, doubled while the field is nearly full.', [10, 20]],
     ['orbit', 'Orbit', 'K', 'Two small sickles circle your finger, each hitting for 30%.'],
     ['zigzag', 'Dancer', 'K', 'Swings while your finger moves fast hit twice.'],
   ],
   field: [
-    ['grain', 'Richer soil', 'T24', 'About ¾ of a crop more on the field a level.'],
+    ['grain', 'Richer soil', 'T24', 'Half a crop more on the field and 5% faster sprouting, a level.'],
     ['sun', 'Longer days', 'T20', '+0.5 s of daylight a level.'],
     ['twin', 'Twin germination', 1, 'One new crop in five sprouts with a twin.'],
-    ['sunrise', 'Dawn abundance', 3, 'Every day starts with 3 more ripe crops (then 5, 8).'],
-    ['corn', 'Golden soil', 2, 'Golden corn comes twice as often (then three times).'],
+    ['sunrise', 'Dawn abundance', 3, 'Every day starts with {v} more ripe crops.', [2, 3, 5]],
+    ['corn', 'Golden soil', 2, 'Golden corn comes {v} times as often.', [2, 3]],
     ['roots', 'Deep roots', 1, 'Crops grow 20% bigger and pay 20% more, and take 10% more to cut.'],
     ['flask', 'Artisan compost', 1, 'Fertilizer bags and clover treats show up twice as often.'],
     ['loop', 'Perennial bloom', 1, 'One cut crop in four sprouts again at once.'],
@@ -139,20 +143,20 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['rotate', 'Crop rotation', 1, "The morning's new crop pays 25% more on its first day."],
     ['vault', 'Seed vault', 1, 'The last crop of the ladder joins a day sooner.'],
     ['hourglass', 'Golden hour', 1, 'In the last 5 s of the day, the sun waits while you keep a chain of 10 or more (up to 5 s a day).'],
-    ['leaf', 'Mulch', 2, 'Crops sprout 15% faster (then 30%).'],
+    ['leaf', 'Mulch', 2, 'Crops sprout {v}% faster.', [20, 40]],
     ['moon', 'Harvest moon', 'K', 'In the last 3 s of every day the whole field ripens and pays double.'],
     ['bird', 'Early bird', 'K', 'In the first 4 s of every day every crop pays double.'],
   ],
   market: [
     ['cart', "Farmers' market", 'T60', '+3% crop prices a level.'],
-    ['scroll', 'Retained counsel', 3, 'Every bill costs 4% less (then 8%, 12%).'],
-    ['box', 'Bulk order', 2, 'Every tenth crop in a chain pays ×3 (then ×5).'],
+    ['scroll', 'Retained counsel', 3, 'Every bill costs {v}% less.', [4, 8, 12]],
+    ['box', 'Bulk order', 2, 'Every tenth crop in a chain pays ×{v}.', [3, 5]],
     ['calendar', 'Market day', 1, 'Every fifth day of a farm, every crop pays 30% more.'],
-    ['gavel', 'Good lawyer', 2, 'Late fees are 10 points lower (10%, 30%, 50%). Level 2: the first late day of a farm is free.'],
+    ['gavel', 'Good lawyer', 2, 'Late fees are 10 points lower: 10%, 30%, 50%.', ['Late fees are 10 points lower: 10%, 30%, 50%.', 'Late fees are 10 points lower, and the first late day of a town is free.']],
     ['medal', 'First of the day', 1, 'The first crop of each kind each day pays ×5.'],
-    ['bank', 'Compound reserve', 3, 'Every night, 4% interest on the cash you hold (then 8%, 12%), up to 40% of a good day.'],
+    ['bank', 'Compound reserve', 3, 'Every night, {v}% interest on the cash you hold, up to 40% of a good day.', [4, 8, 12]],
     ['coin', 'Sovereign mint', 1, "Lucky crops and the country's three pay 50% more."],
-    ['percent', 'Coupon book', 3, 'Everything in the tree costs 5% less (then 10%, 15%).'],
+    ['percent', 'Coupon book', 3, 'Everything in the tree costs {v}% less.', [5, 10, 15]],
     ['book', 'Tax lawyer', 1, 'Taxes cost half.'],
     ['jar', 'Tip jar', 1, 'A chain of 20 or more drops a tip: 10% of what the chain paid.'],
     ['umbrella', 'Insurance', 1, 'If the bank comes, it takes a quarter of your jar instead of half.'],
@@ -163,10 +167,10 @@ const ROWS: Record<TreeBranch, Row[]> = {
   ],
   ranch: [
     ['goat', 'Pasture accord', 1, 'The goat never headbutts; it tips you instead.'],
-    ['hat', 'Scarecrow', 2, 'Thief crows take half as much (then nothing: they only come to look).'],
+    ['hat', 'Scarecrow', 2, 'Thief crows take half as much.', ['Thief crows take half as much.', 'Thief crows take nothing: they only come to look.']],
     ['comb', 'Rooster', 1, 'Each day starts with a 2 s rush.'],
     ['paw', 'Farm dog', 1, 'Every 8 s the dog chases a crow off and brings back what it took.'],
-    ['bee', 'Beehive', 2, 'Every 3 s a bee lands on a crop: it pays ×2 (then every 2 s).'],
+    ['bee', 'Beehive', 2, 'Every {v} s a bee lands on a crop: it pays ×2.', [3, 2]],
     ['owl', 'Barn owl', 1, "In the last 3 s of the day crows can't land."],
     ['feather', 'Crow bounty', 1, "A crow you chase off drops coins: 2% of today's harvest."],
     ['egg', 'Hen house', 1, 'A hen lays an egg on the field every 10 s; swipe it for coins.'],
@@ -207,7 +211,7 @@ function build(): TreeNode[] {
   ];
   for (const b of BRANCHES) {
     ROWS[b.id].forEach((row, i) => {
-      const [glyph, name, lv, effect] = row;
+      const [glyph, name, lv, effect, byLevel] = row;
       const slot = SLOTS[i];
       const id = PREFIX[b.id] + (i + 1);
       const kind: NodeKind = typeof lv === 'string' ? (lv === 'K' ? 'key' : 'track') : 'trick';
@@ -215,7 +219,7 @@ function build(): TreeNode[] {
       const base = TIER[slot.d];
       const price = kind === 'track' ? [base] : Array.from({ length: levels }, (_, k) => base * Math.pow(10, k));
       out.push({
-        id, branch: b.id, kind, glyph, name, effect, levels, price, d: slot.d, s: slot.s,
+        id, branch: b.id, kind, glyph, name, effect, levels, price, d: slot.d, s: slot.s, ...(byLevel ? { byLevel } : {}),
         parents: slot.p.length ? slot.p.map(j => PREFIX[b.id] + (j + 1)) : ['trunk'],
         ...(kind === 'key' ? { pair: PREFIX[b.id] + (i === 14 ? 16 : 15) } : {}),
       });
@@ -262,15 +266,60 @@ export function treeNode(id: string): TreeNode | undefined {
   return NODE[id];
 }
 
+/** What a node does at `level` (1 for a one-level node): the text to translate and the number in it. */
+export function nodeText(n: TreeNode, level: number): { text: string; v?: number } {
+  const by = n.byLevel;
+  if (!by || !by.length) return { text: n.effect };
+  const x = by[Math.max(0, Math.min(by.length - 1, level - 1))];
+  return typeof x === 'string' ? { text: x } : { text: n.effect, v: x };
+}
+
 /** Whether a node works in the game (and so can be bought). */
 export function nodeLive(id: string): boolean {
   return !!TREE_WORKSHOP[id] || !!TREE_SKILL[id] || TREE_NEW_LIVE.includes(id);
 }
 
+/**
+ * 0.15 (Navid, 15 Nov: "skill tree many of things are super cheap. like scarecrow is only 2000 and i can make it in 1
+ * day. i can upgrade my whole skill set in one country"): a node costs days of the player's own earnings in the town
+ * they are in (an average day there times their pace, setTreeMoney), so the tree is as dear late as early and as
+ * dear for a strong player as for anyone. By ring from the trunk: 1, 2, 3, 5, 8, 12 days, a keystone 20, a bridge
+ * 8; each further level of a trick 1.7 times the one before, a level of Power cell 12% more. A Workshop
+ * track keeps the Workshop's prices (tuned with the bots against the bills) times the pace, and never less than
+ * 0.4 of the player's day.
+ */
+export const RING_DAYS = [0, 1, 2, 3, 5, 8, 12, 20];
+export const BRIDGE_DAYS = 8;
+export const TRICK_LEVEL_STEP = 1.7;
+/** A Workshop track's level costs at least this many of the player's days (3% more a level). */
+export const TRACK_FLOOR_DAYS = 0.4;
+let TREE_DAY = 0,
+  TREE_SCALE = 1;
+/** The player's own day where they are, and their pace (the shell sets both before the tree is shown or bought). */
+export function setTreeMoney(day: number, scale: number): void {
+  TREE_DAY = Number.isFinite(day) && day > 0 ? day : 0;
+  TREE_SCALE = Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+/** A node's price in the player's days (before the money of the town). */
+export function nodeDays(n: TreeNode, level: number): number {
+  if (n.kind === 'bridge') return BRIDGE_DAYS;
+  if (n.kind === 'key') return RING_DAYS[RING_DAYS.length - 1];
+  const ring = RING_DAYS[Math.max(1, Math.min(RING_DAYS.length - 1, Math.round(n.d)))];
+  if (n.kind === 'track') return ring * Math.pow(1.12, level);
+  return ring * Math.pow(TRICK_LEVEL_STEP, level);
+}
+
 /** The list price of a node's next level, from `level`. A Workshop track costs what the Workshop charges. */
 export function nodeCost(n: TreeNode, level: number): number {
   const w = TREE_WORKSHOP[n.id];
-  if (w) return upgradeCost(w, level) ?? 0;
+  if (w) {
+    const c = upgradeCost(w, level);
+    if (c == null) return 0;
+    const paced = TREE_SCALE === 1 ? c : niceMoney(c * TREE_SCALE);
+    // never less than 0.4 of the player's day (3% more a level): an old country's level is no gift in a new one
+    return TREE_DAY > 0 ? Math.max(paced, niceMoney(TRACK_FLOOR_DAYS * Math.pow(1.03, level) * TREE_DAY)) : paced;
+  }
+  if (TREE_DAY > 0) return niceMoney(nodeDays(n, level) * TREE_DAY);
   if (n.kind === 'track') return Math.round(n.price[0] * Math.pow(1.12, level));
   return n.price[Math.min(level, n.price.length - 1)];
 }
@@ -323,9 +372,12 @@ export function treeDiscount(g: TreeHolder): number {
   return 1 - 0.05 * Math.min(3, treeLevel(g, 'm9'));
 }
 
-/** What the player pays for a node's next level. */
+/** What the player pays for a node's next level (a discount keeps it a round number: two figures). */
 export function nodePrice(g: TreeHolder, n: TreeNode): number {
-  return Math.max(0, Math.round(nodeCost(n, treeLevel(g, n.id)) * treeDiscount(g)));
+  const d = treeDiscount(g), c = nodeCost(n, treeLevel(g, n.id));
+  if (d >= 1 || c < 100) return Math.max(0, Math.round(c * d));
+  const v = c * d, st = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+  return Math.floor(v / st + 1e-9) * st;
 }
 
 export type BuyCheck =

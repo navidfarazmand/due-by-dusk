@@ -16850,13 +16850,16 @@ export function startGeminiEngine() {
       (hasSkill('core_awakening') ? 1 : 0) +
       (hasSkill('soil_sun') ? 2 : 0) +
       (pl.dayBonus || 0);
-    const maxCrops = 7 + FX.crops * shed.soil + n('hungry') + 2 * n('hungry2') + (hasSkill('soil_root') ? 2 : 0);
+    // 0.15 (Navid, 15 Nov: "we should not have that much vegetables that we can just swipe the blade anywhere and
+    // win"; "for low levels it should be very long time between each vegetables unless upgraded or having a perk"):
+    // a bare field holds 3 crops and sprouts one about every 2 s; Richer soil, Mulch and the perks fill it up.
+    const maxCrops = FIELD_BASE + FX.crops * shed.soil + n('hungry') + 2 * n('hungry2') + (hasSkill('soil_root') ? 2 : 0);
     const spawnRate =
-      0.82 /
-      (1 + FX.spawn * shed.soil + 0.03 * n('hungry') + 0.06 * n('hungry2')) /
+      SPROUT_BASE /
+      (1 + FX.spawn * shed.soil + 0.08 * n('hungry') + 0.16 * n('hungry2')) /
       (hasSkill('soil_root') ? 1.12 : 1) /
-      // tree: Mulch (f14), crops sprout 15% faster a level
-      (1 + 0.15 * Math.min(2, tfx('f14')));
+      // tree: Mulch (f14), crops sprout 20% faster a level
+      (1 + 0.2 * Math.min(2, tfx('f14')));
     const vm =
       (1 + FX.price * shed.market) *
       (1 + 0.06 * n('fever') + 0.12 * n('fever2') + 0.18 * n('fever3')) *
@@ -16935,6 +16938,9 @@ export function startGeminiEngine() {
      one at a time. Kept as knobs for tuning; tests can override them with window.__DBD_FIELD before the game loads. */
   // v0.12.4: count 0.85 (Navid: "make the vegetables just a bit fewer"); new crops come as fast as before
   const FIELD = Object.assign({ size: 1.25, count: 0.85, spawn: 1, pay: 1, chain: 1 }, window.__DBD_FIELD || {});
+  /** 0.15: crops a bare field holds (before the screen's size and FIELD.count) and seconds between sprouts. */
+  const FIELD_BASE = 3,
+    SPROUT_BASE = 2.2;
   function cropBaseVal(type) {
     const p = plan();
     return (p && p.cropVal && p.cropVal[type] != null ? p.cropVal[type] : CROP[type].val) * FIELD.pay * cropLevelPay(type);
@@ -17784,8 +17790,15 @@ export function startGeminiEngine() {
     rushTimer = 0,
     rushCharge = 0;
   // v0.12.1 (Navid: once a day is not enough): the power meter fills at 15 and the rush is 3 s
-  const RUSH_GOAL = 15,
-    RUSH_DURATION = 3;
+  // 0.15 (Navid: "power bar doesn't fill up by each hitting ... suddenly it will fill and then release"): every hit
+  // fills the meter by its share of the crop's health (half a cut in all), the cut itself the other half times the
+  // chain; a thinner field has fewer cuts, so the meter is full at 8 cuts' worth
+  const RUSH_GOAL = 8,
+    RUSH_DURATION = 3,
+    HIT_FILL = 0.5,
+    CUT_FILL = 0.5;
+  /** Dawn abundance (f4): ripe crops more at dawn, by level. */
+  const DAWN_EXTRA = [0, 2, 3, 5];
   // with a fuller field (FIELD.chain) a chain is easier to keep going, so each tier asks for a longer chain
   const CHAIN_TIERS = [
     { count: 0, mul: 1 },
@@ -18094,7 +18107,9 @@ export function startGeminiEngine() {
     if (fieldSeed) for (const k in fieldSeq) fieldSeq[k] = 0;
     goatTimer = unlockLevel() >= 2 ? 3 + fieldRng('timer')() * 5 : Infinity;
     goat = null;
-    const initCount = Math.min(cur.max, 4 + Math.floor(cur.max * 0.35) + [0, 3, 5, 8][Math.min(3, tfx('f4'))]);
+    // 0.15 (Navid: "in less than 1 second 15 sheriff habanero popped up from soil"): the day opens on one ripe crop,
+    // and Dawn abundance (f4) adds 2, 3 or 5
+    const initCount = Math.min(cur.max, 1 + DAWN_EXTRA[Math.min(3, tfx('f4'))]);
     for (let i = 0; i < initCount; i++) spawnCrop(0.08 + i * 0.04);
     seeds = [];
     dbdVortexes = [];
@@ -18486,7 +18501,7 @@ export function startGeminiEngine() {
       const pp = Math.min(2, tfx('p14'));
       if (pp) k *= pp > 1 ? 2 : 1.5;
       // Chain reaction (p16): each of them puts half of what a cut gives back into the meter
-      if (tfx('p16')) rushCharge = Math.min(RUSH_GOAL - 1, rushCharge + 0.5);
+      if (tfx('p16')) addCharge(0.5);
     }
     // Early bird (f16): the first 4 s of the day pay double. Harvest moon (f15): the last 3 s.
     if (tfx('f16') && dayLen - time <= 4) k *= 2;
@@ -18551,6 +18566,16 @@ export function startGeminiEngine() {
       }
     }
     chainPaid = 0;
+  }
+  /** Fills the power meter; full fires the power. During the rush it fills on, to half at most. */
+  function addCharge(v) {
+    if (!(v > 0) || mode !== 'day') return;
+    if (rushTimer > 0) {
+      rushCharge = Math.min(RUSH_GOAL * 0.5, rushCharge + v);
+      return;
+    }
+    rushCharge += v;
+    if (rushCharge >= RUSH_GOAL) firePower();
   }
   function powerGain() {
     return (
@@ -18970,6 +18995,9 @@ export function startGeminiEngine() {
       const gs = Math.min(3, tfx('b10'));
       if (gs && c.maxHp >= 4 * cur.dmg) dmg *= [1, 1.3, 1.45, 1.6][gs];
     }
+    // 0.15: every hit fills the power meter, by the share of the crop's health it takes (a boss hit a little)
+    const share = c.boss ? 0.16 : Math.min(1, Math.max(0, Math.min(dmg, c.hp)) / Math.max(1e-6, c.maxHp));
+    addCharge(HIT_FILL * share * (powerGain() / Math.max(1, chainMultiplier())));
     c.hp -= dmg;
     if (c.type === 'onion' && canAdd() && src !== 'flame') {
       for (const dir of [-1, 1]) {
@@ -19229,10 +19257,7 @@ export function startGeminiEngine() {
         spark(pointer.x, pointer.y); // Storm synergy: chain lightning to up to 2 nearby crops!
         if (cur.storm) killed += stormChain(pointer.x, pointer.y);
         // Static (p10): a crit that lands puts half of what a cut gives into the meter
-        if (tfx('p10') && rushTimer <= 0) {
-          rushCharge += 0.5;
-          if (rushCharge >= RUSH_GOAL) firePower();
-        }
+        if (tfx('p10')) addCharge(0.5);
       }
     }
     if (killed) crops = crops.filter((c) => !c.dead);
@@ -20291,10 +20316,7 @@ export function startGeminiEngine() {
     comboTimer = cur.chainGrace;
     today.best = Math.max(today.best, combo);
     // v0.12: a cut fills the power meter by its chain multiplier; full fires the tool's power (and the rush)
-    if (rushTimer <= 0) {
-      rushCharge += powerGain();
-      if (rushCharge >= RUSH_GOAL) firePower();
-    }
+    addCharge(CUT_FILL * powerGain());
     const midas =
       hasSkill('gold_midas') &&
       (c.lucky ||

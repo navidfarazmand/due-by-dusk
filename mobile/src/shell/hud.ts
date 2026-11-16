@@ -280,10 +280,11 @@ export class FarmHud {
     E.Sun.setAttribute('fill', late ? '#FF9A3D' : '#FFD45C');
     E.Secs.textContent = Math.ceil(Math.max(0, h.time)) + 's';
     E.Secs.classList.toggle('late', late);
-    // the power meter: fills left to right as you cut; when it's full the tool's power fires, the bar starts again
-    // from empty and the chip glows for the rush (v0.12.1, Navid: the draining bar read as filling the other way)
+    // the power meter: fills left to right with every hit; when it's full the tool's power fires, the bar starts again
+    // from empty and the chip glows for the rush (v0.12.1, Navid: the draining bar read as filling the other way). 0.15
+    // (Navid: "power bar doesn't fill up by each hitting"): it keeps filling during the rush too, up to half.
     const rushing = h.rushT > 0;
-    const pw = rushing ? 0 : clamp(h.rushCharge / Math.max(1, h.rushGoal), 0, 1);
+    const pw = clamp(h.rushCharge / Math.max(1, h.rushGoal), 0, 1);
     // v0.12.4 (Navid: "why on earth there comes a rush bar exactly on where it should come a power bar"): this chip
     // is the power meter and nothing else. The rush shows on the chain strip (×1.5 and RUSH!).
     E.Rush.classList.toggle('near', !rushing && pw >= 0.8);

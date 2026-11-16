@@ -312,10 +312,13 @@ test('an older save: learned skills become owned tree nodes, diamonds become sav
   await expect(page.locator('.scr-tree .tr-card')).toContainText('Pasture accord');
   await expect(page.locator('.scr-tree .tr-card')).toContainText('Yours');
   await page.locator('.scr-tree .tr-nd[data-arg="a2"]').click();
+  // 0.15: priced in the player's own days (two of them here, ring 2), a round amount
+  const price = Number((await page.locator('.scr-tree [data-act="tree-buy"][data-arg="a2"] b').textContent())!.replace(/[^0-9]/g, ''));
+  expect(price).toBe(await page.evaluate(() => { const P = (window as any).__DBD_PLANS; return P.niceMoney(2 * P.avgDay(3, 3)); }));
   await page.locator('.scr-tree [data-act="tree-buy"][data-arg="a2"]').click();
   const g2 = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g2.tree.a2).toBe(1);
-  expect(g2.wallet).toBe(3000 - 200);
+  expect(g2.wallet).toBe(3000 - price);
   // no diamond anywhere: not on the tree, the menu, the Barn card or the daily farm
   for (const scr of ['menu', 'daily']) {
     await page.evaluate(sc => (window as any).__DBD_APP.show(sc), scr);
@@ -327,14 +330,14 @@ test('an older save: learned skills become owned tree nodes, diamonds become sav
   await page.reload();
   await page.waitForFunction(() => !!(window as any).__DBD_APP);
   const g3 = await page.evaluate(() => (window as any).__DBD_APP.g);
-  expect(g3.wallet).toBe(2800);
+  expect(g3.wallet).toBe(3000 - price);
   expect(g3.treeCredit || 0).toBe(0);
   expect(g3.tree).toEqual({ a1: 1, a2: 1 });
   expect(errors).toEqual([]);
 });
 
-test('Bling Barn: buy a bird with ribbons and the field uses its colours', async ({ page }) => {
-  const errors = await boot(page, seeded(CA.slice(0, 2), 0, { ribbons: 10 }));
+test('Bling Barn: buy a bird with cash (0.15) and the field uses its colours', async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 2), 25_000));
   await act(page, 'barn-menu');
   await page.locator('.scr-modal [data-act="barn"]').click();
   await act(page, 'barn-tab', 'bird');
@@ -346,10 +349,15 @@ test('Bling Barn: buy a bird with ribbons and the field uses its colours', async
     expect(inside(c, L.vw, L.vh)).toBe(true);
     expect(apart(c, panel)).toBe(true);
   }
+  // a dear one says what it costs
+  await act(page, 'barn-pick', 'bird_cardinal');
+  await expect(page.locator('.scr-barn .bb-why')).toContainText('$60,000');
+  await act(page, 'barn-pick', 'bird_jay');
   await act(page, 'barn-buy', 'bird_jay');
-  await expect(page.locator('.scr-barn .bb-ribbons')).toContainText('6');
+  await expect(page.locator('.scr-barn .bb-ribbons')).toContainText('$15,000');
   const g = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g.flair.equipped.bird).toBe('bird_jay');
+  expect(g.wallet).toBe(15_000);
   expect(await page.evaluate(() => (window as any).__DBD_LOOK.bird)).toEqual(['#3b82f6', '#1f2937']);
   expect(errors).toEqual([]);
 });
@@ -683,7 +691,7 @@ test("bills follow the player's own days (0.15): a strong pace makes a town's bi
   expect(errors).toEqual([]);
 });
 
-test('the Pen: caught runaways earn while you are away, a tap collects, an ad doubles, and a worker levels up (0.14)', async ({ page }) => {
+test('the Pen: caught runaways earn while you are away, a tap collects, an ad doubles, and a worker levels with its cuts (0.15)', async ({ page }) => {
   const H = 3_600_000;
   const save = seeded(['ca_charlottetown', 'ca_gatineau'], 5000, {
     pen: { workers: { carrot: { level: 1, at: 1 }, radish: { level: 1, at: 1 } }, since: Date.now() - 2 * H },
@@ -694,7 +702,7 @@ test('the Pen: caught runaways earn while you are away, a tap collects, an ad do
   const held = await page.evaluate(() => {
     const a = (window as any).__DBD_APP, P = (window as any).__DBD_PLANS;
     // two level-1 workers for two hours, in the money of the farthest town reached (Toronto)
-    return Math.floor(2 * 2 * 0.04 * P.avgDay(2, 3));
+    return Math.floor(2 * 2 * 0.006 * P.avgDay(2, 3));
   });
   expect(held).toBeGreaterThan(0);
   await page.locator('.scr-modal [data-act="pen-collect"]').click();
@@ -702,23 +710,20 @@ test('the Pen: caught runaways earn while you are away, a tap collects, an ad do
   const w1 = await page.evaluate(() => (window as any).__DBD_APP.g.wallet);
   expect(w1).toBeGreaterThanOrEqual(5000 + held - 1);
   expect(w1).toBeLessThanOrEqual(5000 + held + 1);
-  // the Pen from the menu's signpost: empty now, Collect off; a worker levels up for its price
+  // the Pen from the menu's signpost: empty now, Collect off; a worker's level is its vegetable's, from the cuts
   await page.locator('.scr-menu [data-act="pen"]').click();
   await expect(page.locator('.scr-pen .pen-wrap')).toBeVisible();
   await expect(page.locator('.scr-pen [data-act="pen-collect"]')).toBeDisabled();
   await expect(page.locator('.scr-pen .pen-cell:not(.out)')).toHaveCount(2);
   await expect(page.locator('.scr-pen .pen-cell.out')).toHaveCount(26);
-  const cost = await page.evaluate(() => {
-    const P = (window as any).__DBD_PLANS;
-    void P;
-    return Number(document.querySelector('.scr-pen [data-act="pen-up"][data-arg="carrot"] span')!.textContent!.replace(/[^0-9]/g, ''));
+  await expect(page.locator('.scr-pen [data-act="pen-up"]')).toHaveCount(0);
+  await expect(page.locator('.scr-pen .pen-cell .pen-lv').first()).toHaveText('1');
+  await page.evaluate(() => {
+    const a = (window as any).__DBD_APP, R = (window as any).__DBD_ROAD;
+    a.g.cropCuts = { carrot: R.cutsForLevel ? R.cutsForLevel(3) : 63 };
+    a.show('pen');
   });
-  expect(cost).toBeGreaterThan(0);
-  await page.locator('.scr-pen [data-act="pen-up"][data-arg="carrot"]').click();
-  await expect(page.locator('.scr-pen .pen-cell .pen-lv').first()).toHaveText('2');
-  const g = await page.evaluate(() => (window as any).__DBD_APP.g);
-  expect(g.pen.workers.carrot.level).toBe(2);
-  expect(g.wallet).toBe(w1 - cost);
+  await expect(page.locator('.scr-pen .pen-cell .pen-lv').first()).toHaveText('3');
   // two more hours: the test ad doubles the collection
   await page.evaluate(h => {
     const a = (window as any).__DBD_APP;
@@ -916,7 +921,8 @@ test('the power meter: a card at half full (once), then the tool\'s power and th
   await page.evaluate(() => (window as any).__DBD_ENGINE.devPower(1));
   const h = await page.evaluate(() => (window as any).__DBD_ENGINE.hud());
   expect(h.rushT).toBeGreaterThan(2);
-  expect(h.rushCharge).toBe(0);
+  // 0.15: the meter starts again, and what the power cuts fills it on during the rush, to half at most
+  expect(h.rushCharge).toBeLessThanOrEqual(h.rushGoal * 0.5);
   const got: string[] = await page.evaluate(() => (window as any).__pw);
   expect(got).toContain('power');
   expect(got).toContain('cleave');
@@ -1114,10 +1120,13 @@ test('the tree: one gold money and no reset; nodes not next to one you own are l
   await page.locator('.scr-tree .tr-nd[data-arg="p1"]').click();
   await expect(page.locator('.scr-tree .tr-card')).toContainText('Power cell');
   expect(await page.evaluate(() => typeof (window as any).__DBD_ENGINE.uiSound)).toBe('function');
+  // 0.15: a day of the player's own earnings where they are (ring 1)
+  const price = Number((await page.locator('.scr-tree [data-act="tree-buy"][data-arg="p1"] b').textContent())!.replace(/[^0-9]/g, ''));
+  expect(price).toBe(await page.evaluate(() => { const P = (window as any).__DBD_PLANS; return P.niceMoney(P.avgDay(2, 3)); }));
   await page.locator('.scr-tree [data-act="tree-buy"][data-arg="p1"]').click();
   const g = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g.tree.p1).toBe(1);
-  expect(g.wallet).toBe(5000 - 20);
+  expect(g.wallet).toBe(5000 - price);
   expect(await page.evaluate(() => (window as any).__DBD_TREEFX.p1)).toBe(1);
   // the node just bought pops once, and the one behind it opens
   await expect(page.locator('.scr-tree .tr-nd[data-arg="p1"]')).toHaveClass(/\bbought\b/);
@@ -1304,13 +1313,13 @@ test('tree tricks, what crops pay and the field: each does what its text says (0
   await E(page, 'devClock', { chainEnd: true });
   await expect.poll(async () => (await E(page, 'devTree')).combo).toBe(0);
   expect((await E(page, 'peek')).today.earned).toBe(b2);
-  // Mulch: crops sprout 15% faster (then 30%)
+  // Mulch: crops sprout 20% faster (then 40%; 0.15)
   await fx(page, {});
   const spawn = (await E(page, 'devTree')).spawn;
   await fx(page, { f14: 1 });
-  expect((await E(page, 'devTree')).spawn).toBeCloseTo(spawn / 1.15, 6);
+  expect((await E(page, 'devTree')).spawn).toBeCloseTo(spawn / 1.2, 6);
   await fx(page, { f14: 2 });
-  expect((await E(page, 'devTree')).spawn).toBeCloseTo(spawn / 1.3, 6);
+  expect((await E(page, 'devTree')).spawn).toBeCloseTo(spawn / 1.4, 6);
   // Golden hour: in the last 5 s the sun waits while a chain of 10 or more is kept
   await fx(page, { f13: 1 });
   await E(page, 'devClock', { stop: false, time: 4, combo: 12 });
@@ -1394,12 +1403,13 @@ test('tree tricks, the power and the reach of a swing: each does what its text s
   expect(await T()).toMatchObject({ windLeft: 5, swingBoost: 2 });
   for (let k = 0; k < 5; k++) await swing(0);
   expect(await T()).toMatchObject({ windLeft: 0, swingBoost: 1 });
-  // Static: a crit that lands fills the meter by half a cut (the meter is 15 cuts)
+  // Static: a crit that lands fills the meter by half a cut (0.15: the meter is 8 cuts; a hit on a crop this tough
+  // fills next to nothing by itself)
   await fx(page, { b6: 2, p10: 1 });
   await E(page, 'devClock', { meter: 0, rush: 0 });
   await swing(0);
   await swing(0);
-  expect((await T()).meter).toBeCloseTo(1 / 15, 6);
+  expect((await T()).meter).toBeCloseTo(1 / 8, 5);
   // Sweep: a swing that hits 4 or more crops pays 25% more (then 50%)
   await fx(page, {});
   await E(page, 'devClock', { time: len / 2 });
@@ -1424,8 +1434,9 @@ test('tree tricks, the power and the reach of a swing: each does what its text s
   expect(await cut(page, 'carrot')).toBeCloseTo(1.5 * one, 6);
   await fx(page, { p14: 2, p16: 1 });
   expect(await cut(page, 'carrot')).toBeCloseTo(2 * one, 6);
-  // (a cut fills the meter by itself too: one cut and Chain reaction's half)
-  expect((await T()).meter).toBeCloseTo(1.5 / 15, 6);
+  // (a cut fills the meter by itself too: 0.15, half a cut for the cut, the hits being the other half, and Chain
+  // reaction's half)
+  expect((await T()).meter).toBeCloseTo(1 / 8, 6);
   await E(page, 'devClock', { powerKill: false, meter: 0 });
   // Rush gold and Rush bloom: during the rush, three times the golden corn and crops sprouting twice as fast
   await fx(page, {});

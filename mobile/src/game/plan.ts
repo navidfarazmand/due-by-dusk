@@ -420,16 +420,16 @@ export function dayShape(d: number, k = 0): number {
 }
 /** An average player's settled day on farm k, as a share of dayRef(k) (measured on 25 s days before v0.12). */
 const AVG_POINTS: Array<[k: number, share: number]> = [
-  // 0.15 (bots on 15 Nov on the new road: average and strong players, on-track builds, days 1 to 6, six days a town;
-  // Charlottetown also with 0.14's eight days of the same field). A town's field is the country's runaways caught so
-  // far plus its own, so each town is measured, not read off a curve.
-  [0, 0.19], [1, 0.334], [2, 0.346], [3, 0.547], [4, 0.412],
-  [5, 0.396], [6, 0.313], [7, 0.256], [8, 0.398],
-  [9, 0.371], [10, 0.593], [11, 0.523], [12, 0.401],
-  [13, 0.449], [14, 0.55], [15, 0.494], [16, 0.501],
-  [17, 0.348], [18, 0.447], [19, 0.293], [20, 0.33],
-  [21, 0.312], [22, 0.291], [23, 0.359], [24, 0.324],
-  [25, 0.25], [26, 0.295], [27, 0.298],
+  // 0.15, evening of 15 Nov (bots on the thinner field: 3 crops and a sprout every 2 s on a bare field, half a crop
+  // and 5% faster a Richer soil level; average and strong players, on-track builds, days 1 to 6 of every town). The
+  // average bot cuts about 11 crops a day in Charlottetown (26 before), 17 to 24 through the USA, 30 to 55 later.
+  [0, 0.091], [1, 0.182], [2, 0.155], [3, 0.235], [4, 0.237],
+  [5, 0.197], [6, 0.183], [7, 0.137], [8, 0.222],
+  [9, 0.335], [10, 0.317], [11, 0.285], [12, 0.327],
+  [13, 0.398], [14, 0.358], [15, 0.277], [16, 0.358],
+  [17, 0.32], [18, 0.304], [19, 0.214], [20, 0.243],
+  [21, 0.264], [22, 0.241], [23, 0.217], [24, 0.244],
+  [25, 0.205], [26, 0.227], [27, 0.235],
 ];
 export function avgDayShare(k: number): number {
   const P = AVG_POINTS;
@@ -462,24 +462,27 @@ export function billPressure(k: number): number {
 
 /**
  * Bills follow the player's own days (0.15; Navid, 15 Nov: "strong players also have to watch ads ... your idea that
- * the bills have to be based on their own earning is a smart move"). The pace is what the player's recent days earned
- * against an average player's day in the same town (1: average), perks taken out. When a town starts its bills, tax,
- * repairs and the King's bounty are its own times paceMul(pace), and they stay so until the town ends: all the way
- * for a player below the average (so nobody needs more ads than an average player), part of the way above it (a
- * strong player keeps a little of the lead and watches about 2 or 3 ads in ten minutes instead of 6).
+ * the bills have to be based on their own earning is a smart move", then "ads should be for everyone"). The pace is
+ * what the player's recent days earned against an average player's day in the same town (1: average), perks taken
+ * out; the first day sets it. When a town starts, its bills, tax, repairs, the King's bounty and the tree's prices are
+ * its own times paceMul(pace), and they stay so until the town ends: all the way, above the average as below it, so a
+ * strong player needs about as many ads as anyone.
  */
 export const PACE_LEARN = 0.25;
-export const PACE_UP = 0.8;
+export const PACE_UP = 1;
+/** The pace stays in this range (a player eight times an average one still gets their own bills). */
+export const PACE_MIN = 0.25;
+export const PACE_MAX = 8;
 /** The pace after one more day that earned `rel` times an average day (a moving average, about the last week). */
 export function updatePace(pace: number | undefined, rel: number): number {
-  const r = Math.max(0.2, Math.min(5, Number.isFinite(rel) ? rel : 1));
+  const r = Math.max(PACE_MIN, Math.min(PACE_MAX, Number.isFinite(rel) ? rel : 1));
   const p = pace != null && pace > 0 && Number.isFinite(pace) ? pace : r;
   return Math.round((p * (1 - PACE_LEARN) + r * PACE_LEARN) * 1000) / 1000;
 }
 /** The bill scale for a pace (1 with no days yet). */
 export function paceMul(pace: number | undefined): number {
   if (pace == null || !(pace > 0) || !Number.isFinite(pace)) return 1;
-  const p = Math.max(0.4, Math.min(3, pace));
+  const p = Math.max(PACE_MIN, Math.min(PACE_MAX, pace));
   return Math.round((p <= 1 ? p : Math.pow(p, PACE_UP)) * 100) / 100;
 }
 

@@ -3,7 +3,7 @@
 // phone playing the same seeded day in turn.
 
 import { ROUTE, cityById, countryOf, routeIndex } from './world';
-import { LADDER_HP, LADDER_VAL, dayRef, expectedPower, planFor, type CityPlan, type CropWeight } from './plan';
+import { LADDER_HP, LADDER_VAL, avgDayShare, dayRef, expectedPower, planFor, type CityPlan, type CropWeight } from './plan';
 import { RUNAWAY } from './road';
 import type { Levels } from './workshop';
 import { newTools, toolStats, type ToolId } from './tools';
@@ -55,9 +55,21 @@ export function sideLoadout(k: number): Levels {
  * from Charlottetown to Japan. Market days pay about a quarter more. */
 const SIDE_FIT: Record<ToolId, number> = { sickle: 0.59, scythe: 0.39, flame: 0.43, blaster: 0.32 };
 
+/** The bots' average day per town on the field of the morning of 15 Nov (plan.ts, AVG_POINTS then). */
+const MORNING_AVG = [
+  0.19, 0.334, 0.346, 0.547, 0.412, 0.396, 0.313, 0.256, 0.398, 0.371, 0.593, 0.523, 0.401, 0.449, 0.55, 0.494, 0.501, 0.348, 0.447, 0.293,
+  0.33, 0.312, 0.291, 0.359, 0.324, 0.25, 0.295, 0.298,
+];
+/** 0.15 (evening of 15 Nov): the thinner field earns this share of what the morning's did, by town (the bots' average
+ *  day then and now), so a medal asks for as good a run as before. */
+export function thinField(k: number): number {
+  const i = Math.max(0, Math.min(MORNING_AVG.length - 1, k));
+  return avgDayShare(i) / MORNING_AVG[i];
+}
+
 /** Bronze, silver and gold: half a good run, most of one, and a little better than one. */
 export function sideTargets(k: number, tool: ToolId, event = ''): [number, number, number] {
-  const base = SIDE_FIT[tool] * dayRef(Math.max(0, k)) * (event === 'market' ? 1.22 : 0.95);
+  const base = SIDE_FIT[tool] * dayRef(Math.max(0, k)) * thinField(Math.max(0, k)) * (event === 'market' ? 1.22 : 0.95);
   const r = (v: number) => (v < 1000 ? Math.round(v / 10) * 10 : Math.round(v / 50) * 50);
   return [r(base * 0.5), r(base * 0.85), r(base * 1.1)];
 }

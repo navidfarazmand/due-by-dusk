@@ -238,7 +238,7 @@ export function parseGame(raw: string | null): GameSave {
       ...(o.run.own ? { own: true } : {}),
       ...(num(o.run.stageSeen) > 0 ? { stageSeen: Math.floor(num(o.run.stageSeen)) } : {}),
       ...(num(o.run.debt) > 0 ? { debt: Math.round(num(o.run.debt)) } : {}),
-      ...(num(o.run.scale) > 0 ? { scale: Math.min(3, Math.max(0.3, num(o.run.scale))) } : {}),
+      ...(num(o.run.scale) > 0 ? { scale: Math.min(8, Math.max(0.25, num(o.run.scale))) } : {}),
       ...(o.run.repair && typeof o.run.repair === 'object' && typeof o.run.repair.what === 'string' && num(o.run.repair.amt) > 0
         ? { repair: { what: o.run.repair.what.slice(0, 40), amt: Math.round(num(o.run.repair.amt)) } }
         : {}),
@@ -318,7 +318,7 @@ export function parseGame(raw: string | null): GameSave {
     g.cropCuts = cc;
   }
   if (Array.isArray(o.recentEarn)) g.recentEarn = o.recentEarn.map(num).filter((v: number) => v >= 0).slice(-RECENT_DAYS);
-  if (num(o.pace) > 0) g.pace = Math.min(5, Math.max(0.2, num(o.pace)));
+  if (num(o.pace) > 0) g.pace = Math.min(8, Math.max(0.25, num(o.pace)));
   g.flair = parseFlair(o.flair);
   if (o.daily && typeof o.daily === 'object' && typeof o.daily.date === 'string') {
     g.daily = {

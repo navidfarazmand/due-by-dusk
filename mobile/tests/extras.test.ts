@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ROUTE, isBossCity } from '../src/game/world';
 import { newGame, parseGame, type GameSave } from '../src/game/progress';
 import { DIAMOND_CREDIT, OLD_SKILLS, TREE_SKILL, resetTree, treeListValue, treeNode } from '../src/game/tree';
-import { FLAIR, FLAIR_KINDS, buyFlair, equipFlair, lookFor, newFlair, parseFlair, ribbonsForWin } from '../src/game/flair';
+import { FLAIR, FLAIR_KINDS, buyFlair, equipFlair, lookFor, newFlair, parseFlair } from '../src/game/flair';
 import { DAILY_AD_TRIES, MEDAL_RIBBONS, dailyFor, duelFor, hash32, medalOf, newDaily, sidePlan, triesLeft } from '../src/game/daily';
 
 describe('diamonds are retired: an older save moves into the upgrade tree (0.13)', () => {
@@ -97,21 +97,31 @@ describe('Bling Barn', () => {
     }
   });
 
-  it('buys with ribbons, puts the item on and refuses a second purchase', () => {
+  it('buys with cash (0.15), puts the item on and refuses a second purchase', () => {
     const f = newFlair();
-    expect(buyFlair(f, 3, 'finish_gold').ok).toBe(false);
-    const r = buyFlair(f, 10, 'finish_gold');
-    expect(r).toEqual({ ok: true, cost: 6 });
+    expect(buyFlair(f, 49_999, 'finish_gold').ok).toBe(false);
+    const r = buyFlair(f, 60_000, 'finish_gold');
+    expect(r).toEqual({ ok: true, cost: 50_000 });
     expect(f.equipped.finish).toBe('finish_gold');
-    expect(buyFlair(f, 10, 'finish_gold').ok).toBe(false);
+    expect(buyFlair(f, 1e9, 'finish_gold').ok).toBe(false);
     expect(equipFlair(f, 'finish_classic')).toBe(true);
     expect(equipFlair(f, 'trail_fire')).toBe(false); // not owned
+  });
+
+  it('is dear (Navid, 15 Nov: golden harvest 50k, candy cane 200k "and so on"): each shelf climbs', () => {
+    expect(FLAIR.find(x => x.id === 'finish_candy')!.price).toBe(200_000);
+    for (const k of FLAIR_KINDS) {
+      const paid = FLAIR.filter(x => x.kind === k.kind && x.price > 0).map(x => x.price);
+      expect(paid.length).toBeGreaterThan(2);
+      expect(Math.min(...paid)).toBeGreaterThanOrEqual(10_000);
+      for (let i = 1; i < paid.length; i++) expect(paid[i]).toBeGreaterThan(paid[i - 1]);
+    }
   });
 
   it('only changes looks, never stats', () => {
     for (const it of FLAIR) for (const k of Object.keys(it.look)) expect(['metal', 'wood', 'trim', 'accent', 'toy', 'rainbow', 'trail', 'bird', 'coin']).toContain(k);
     const f = newFlair();
-    buyFlair(f, 99, 'bird_jay');
+    buyFlair(f, 1e9, 'bird_jay');
     expect(lookFor(f).bird).toEqual(['#3b82f6', '#1f2937']);
   });
 
@@ -122,13 +132,6 @@ describe('Bling Barn', () => {
     expect(f.equipped.finish).toBe('finish_gold');
     expect(f.equipped.trail).toBe('trail_classic');
     expect(f.equipped.bird).toBe('bird_crow');
-  });
-
-  it('gives ribbons for new stars, a first crown and a first boss win', () => {
-    expect(ribbonsForWin(1, 3, false, false)).toBe(2);
-    expect(ribbonsForWin(2, 1, false, false)).toBe(0);
-    expect(ribbonsForWin(0, 0, true, false)).toBe(2);
-    expect(ribbonsForWin(0, 2, false, true)).toBe(5);
   });
 
   it('gives older saves ribbons for what they already won', () => {

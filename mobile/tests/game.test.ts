@@ -13,7 +13,7 @@ import {
 import { MAX_LEVEL, SHED_FX, UPGRADES, emptyLevels, oldWorkshopRefund, settleJob, startUpgrade, upgradeCost, upgradeCostFlat, upgradeDuration, upgradeTier } from '../src/game/workshop';
 import { TOOLS, modCost, newTools, parseTools, toolDef, toolStats, toolSummary } from '../src/game/tools';
 import {
-  KEY_BUILD_MS, TREE, TREE_WORKSHOP, buildingNode, buyNode, canBuyNode, nodeCost, nodeDuration, nodeLive, nodePrice, resetTree, settleTree, treeDiscount,
+  KEY_BUILD_MS, TREE, TREE_WORKSHOP, buildingNode, buyNode, canBuyNode, nodeCost, nodeDuration, nodeLive, nodePrice, nodeText, resetTree, setTreeMoney, settleTree, treeDiscount,
   treeHasAny, treeLevel, treeListValue, treeNode, treeReady, treeRefund, type TreeHolder,
 } from '../src/game/tree';
 
@@ -97,20 +97,21 @@ describe('city plans', () => {
     expect(niceAtLeast(9500)).toBe(10000);
   });
 
-  it("follows the player's pace (0.15): weaker players' bills all the way down, stronger ones' part of the way up, in clean amounts", () => {
+  it("follows the player's pace (0.15): bills all the way down for weaker players and all the way up for stronger ones, in clean amounts", () => {
     // no days yet: the town's own bills
     expect(paceMul(undefined)).toBe(1);
     // an average player
     expect(paceMul(1)).toBe(1);
     // a weaker one: all the way, so they need no more ads than an average player
     expect(paceMul(0.6)).toBe(0.6);
-    // a strong one: part of the way, so they still need some ads, fewer than an average player
-    expect(paceMul(1.6)).toBeGreaterThan(1.3);
-    expect(paceMul(1.6)).toBeLessThan(1.6);
+    // a strong one: all the way too (Navid, 15 Nov: "ads should be for everyone"), up to eight times an average day
+    expect(paceMul(1.6)).toBe(1.6);
+    expect(paceMul(5)).toBe(5);
+    expect(paceMul(20)).toBe(8);
     // a moving average of the days: one great day moves it a quarter of the way
     expect(updatePace(undefined, 1.4)).toBe(1.4);
     expect(updatePace(1, 2)).toBeCloseTo(1.25, 6);
-    expect(updatePace(1, 0)).toBeCloseTo(0.8, 6);
+    expect(updatePace(1, 0)).toBeCloseTo(0.75 + 0.25 * 0.25, 3);
     // the plan for a pace: every money amount follows it, still clean and never cheaper per day bill by bill
     const base = planFor('ca_toronto'), strong = planFor('ca_toronto', paceMul(1.6)), weak = planFor('ca_toronto', 0.6);
     expect(base.scale).toBe(1);
@@ -561,6 +562,44 @@ describe('the Power booster (the Charge handle until 0.11)', () => {
 });
 
 describe('the upgrade tree (0.13: the one upgrade system)', () => {
+  it("prices nodes in the player's own days (0.15; Navid: \"scarecrow is only 2000 and i can make it in 1 day\")", () => {
+    try {
+      // an own day of $5,000 (an average day there times a pace of 2)
+      setTreeMoney(5000, 2);
+      const sc = TREE.find(n => n.name === 'Scarecrow')!;
+      expect(nodeCost(sc, 0)).toBe(10_000);
+      expect(nodeCost(sc, 1)).toBe(niceMoney(2 * 1.7 * 5000));
+      expect(nodeCost(TREE.find(n => n.kind === 'key')!, 0)).toBe(100_000);
+      expect(nodeCost(TREE.find(n => n.kind === 'bridge')!, 0)).toBe(40_000);
+      // a Workshop track: the Workshop's price times the pace, never under 0.4 of the player's day
+      const b1 = treeNode('b1')!;
+      expect(nodeCost(b1, 0)).toBe(2000);
+      expect(nodeCost(b1, 80)).toBe(Math.max(niceMoney(upgradeCost('scythe', 80)! * 2), niceMoney(0.4 * Math.pow(1.03, 80) * 5000)));
+      const NICE = [1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2, 2.2, 2.5, 2.8, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 9, 10];
+      const clean = (v: number) => { const e = Math.pow(10, Math.floor(Math.log10(v) + 1e-12)); return NICE.some(x => Math.abs(x * e - v) < 1e-6 * e); };
+      for (const n of TREE) if (n.kind !== 'trunk') for (let l = 0; l < Math.min(3, n.levels); l++) expect(clean(nodeCost(n, l))).toBe(true);
+      // a discount keeps a round price
+      const g = newGame();
+      (g.tree ||= {}).m9 = 1;
+      expect(nodePrice(g, sc)).toBe(9500);
+    } finally {
+      setTreeMoney(0, 1);
+    }
+  });
+
+  it('says only what the level being bought does (Navid, 15 Nov: not "3 more ripe crops (then 5, 8)")', () => {
+    for (const n of TREE) {
+      expect(n.effect).not.toMatch(/\(then|\bthen\b/);
+      if (n.byLevel) expect(n.byLevel.length).toBe(n.levels);
+      for (let l = 1; l <= n.levels; l++) {
+        const x = nodeText(n, l);
+        expect(x.text.includes('{v}')).toBe(x.v != null);
+      }
+    }
+    expect(nodeText(treeNode('f4')!, 2)).toEqual({ text: 'Every day starts with {v} more ripe crops.', v: 3 });
+    expect(nodeText(treeNode('a2')!, 2).text).toBe('Thief crows take nothing: they only come to look.');
+  });
+
   const holder = (): TreeHolder => ({ workshop: { levels: emptyLevels(), job: null }, tree: {}, treeCredit: 0, treeSpent: 0 });
   const rich = () => true;
 

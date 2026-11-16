@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PEN_BASE, PEN_CAP_HOURS, PEN_MAX_LEVEL, PEN_STEP, addWorker, collectPen, newPen, parsePen, penFill, penRate, penStored, workerCost, workerCount, workerRate, workerShare,
+  PEN_BASE, PEN_CAP_HOURS, PEN_MAX_LEVEL, PEN_STEP, addWorker, collectPen, newPen, parsePen, penFill, penRate, penStored, workerCount, workerLevel, workerRate, workerShare,
 } from '../src/game/pen';
+import { cutsForLevel } from '../src/game/road';
 import { newGame, parseGame } from '../src/game/progress';
 import { RUNAWAY } from '../src/game/road';
 
@@ -26,19 +27,21 @@ describe('the Pen (0.14): caught runaways work off-screen', () => {
     expect(penStored(pen, t0 + 2 * H, 1000)).toBe(0);
   });
 
-  it('pays more per level, and levels cost more each time, up to the top level', () => {
+  it("pays more per level; a level is the vegetable's own, from the player's cuts, not bought (0.15)", () => {
     expect(workerShare(1)).toBe(PEN_BASE);
     expect(workerShare(2)).toBeCloseTo(PEN_BASE * (1 + PEN_STEP), 9);
     expect(workerRate(5, 500)).toBeCloseTo(workerShare(5) * 500, 9);
-    let prev = 0;
-    for (let l = 1; l < PEN_MAX_LEVEL; l++) {
-      const c = workerCost(l, 500)!;
-      expect(c).toBeGreaterThan(prev);
-      prev = c;
-    }
-    expect(workerCost(PEN_MAX_LEVEL, 500)).toBeNull();
-    // in the money of the farthest town: a later town's day makes everything bigger
-    expect(workerCost(3, 50_000)!).toBeGreaterThan(workerCost(3, 500)! * 50);
+    expect(workerShare(99)).toBe(workerShare(PEN_MAX_LEVEL));
+    // Navid, 15 Nov: "662 an hour? with all vegetables at level 1???": six level-1 workers fill a full Pen with a
+    // small part of a day
+    const t0 = 1_000_000, pen = newPen(t0);
+    for (const ty of ['a_one', 'a_two', 'a_three', 'a_four', 'a_five', 'a_six']) addWorker(pen, ty, t0);
+    expect(penStored(pen, t0 + 10 * H, 1000) / 1000).toBeLessThan(0.15);
+    // cutting a vegetable raises its worker's level and pay
+    expect(workerLevel('a_one', {})).toBe(1);
+    const cuts = { a_one: cutsForLevel(4) };
+    expect(workerLevel('a_one', cuts)).toBe(4);
+    expect(penRate(pen, 1000, cuts)).toBeCloseTo(1000 * (5 * workerShare(1) + workerShare(4)), 6);
   });
 
   it('is saved and read back, cleaning bad data', () => {
@@ -46,7 +49,7 @@ describe('the Pen (0.14): caught runaways work off-screen', () => {
     const pen = parsePen({ workers: { carrot: { level: 4, at: 1 }, 'BAD KEY': { level: 2 }, radish: { level: 99 } }, since: t0 }, t0 + H);
     expect(Object.keys(pen.workers).sort()).toEqual(['carrot', 'radish']);
     expect(pen.workers.carrot.level).toBe(4);
-    expect(pen.workers.radish.level).toBe(PEN_MAX_LEVEL);
+    expect(pen.workers.radish.level).toBe(20);
     expect(pen.since).toBe(t0);
     // a clock in the future is pulled back to now
     expect(parsePen({ workers: {}, since: t0 + 9 * H }, t0).since).toBe(t0);

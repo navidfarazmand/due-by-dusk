@@ -2,7 +2,7 @@
 // Pure render functions; GameApp owns the state and the clicks.
 
 import { FLAIR, FLAIR_KINDS, flairById, type FlairItem, type FlairKind } from '../game/flair';
-import { MEDAL_NAME, MEDAL_RIBBONS, medalOf, type SideDef, type DailyState } from '../game/daily';
+import { MEDAL_NAME, medalOf, type SideDef, type DailyState } from '../game/daily';
 import { ROUTE, cityById, countryOf } from '../game/world';
 import { toolDef, type ToolId } from '../game/tools';
 import type { GameSave } from '../game/progress';
@@ -15,7 +15,7 @@ const LOCALE = { en: 'en-US', fr: 'fr-FR', es: 'es-ES', pt: 'pt-BR', de: 'de-DE'
 
 // ------------------------------------------------------------------ Bling Barn
 
-export function barnHtml(g: GameSave, tab: FlairKind, sel: string, ribbonAd: boolean): string {
+export function barnHtml(g: GameSave, tab: FlairKind, sel: string, cash: number): string {
   const tabs = FLAIR_KINDS.map(
     k => `<button type="button" role="tab" class="bb-tab${tab === k.kind ? ' on' : ''}" aria-selected="${tab === k.kind}" data-act="barn-tab" data-arg="${k.kind}">${esc(t(k.name))}</button>`,
   ).join('');
@@ -24,8 +24,8 @@ export function barnHtml(g: GameSave, tab: FlairKind, sel: string, ribbonAd: boo
   const cards = items
     .map(it => {
       const own = g.flair.owned.includes(it.id), on = g.flair.equipped[tab] === it.id;
-      const price = on ? t('In use') : own ? t('Owned') : it.price === 0 ? t('Free') : `${ribbonIcon(14)}${it.price}`;
-      return `<button type="button" class="bb-card${cur.id === it.id ? ' sel' : ''}" data-act="barn-pick" data-arg="${it.id}" aria-pressed="${cur.id === it.id}" aria-label="${esc(t(it.name))}, ${on ? t('in use') : own ? t('owned') : tn(it.price, '{n} ribbon', '{n} ribbons')}">
+      const price = on ? t('In use') : own ? t('Owned') : it.price === 0 ? t('Free') : `${ICON.coin(14)}${money(it.price)}`;
+      return `<button type="button" class="bb-card${cur.id === it.id ? ' sel' : ''}" data-act="barn-pick" data-arg="${it.id}" aria-pressed="${cur.id === it.id}" aria-label="${esc(t(it.name))}, ${on ? t('in use') : own ? t('owned') : money(it.price)}">
         ${on ? `<span class="bb-on">${t('ON')}</span>` : ''}${flairIcon(it, 76, 60)}<b>${esc(t(it.name))}</b><span class="bb-price">${price}</span></button>`;
     })
     .join('');
@@ -34,9 +34,8 @@ export function barnHtml(g: GameSave, tab: FlairKind, sel: string, ribbonAd: boo
   let action: string;
   if (on) action = `<p class="bb-why">${t('In use on your farm.')}</p>`;
   else if (own) action = `<button type="button" class="st-btn blue bb-act" data-act="barn-equip" data-arg="${cur.id}">${t('Use this')}</button>`;
-  else if (g.ribbons >= cur.price) action = `<button type="button" class="st-btn gold bb-act" data-act="barn-buy" data-arg="${cur.id}">${t('Buy')} · ${ribbonIcon(20)} ${cur.price}</button>`;
-  else action = `<p class="bb-why">${t('Needs {n} ribbons. You have {have}. Win stars and daily medals to earn more.', { n: cur.price, have: g.ribbons })}</p>`;
-  const ad = ribbonAd ? `<button type="button" class="ad-chip" data-act="ad-ribbon">${ICON.play()}<span>${t('Free ribbon')}</span></button>` : '';
+  else if (cash >= cur.price) action = `<button type="button" class="st-btn gold bb-act" data-act="barn-buy" data-arg="${cur.id}">${t('Buy')} · ${ICON.coin(20)} ${money(cur.price)}</button>`;
+  else action = `<p class="bb-why">${t('Costs {amt}. You have {have}.', { amt: money(cur.price), have: money(cash) })}</p>`;
   return `<div class="bb-planks"></div>
     <div class="grp tl" style="width: 480px; height: 390px">
       <button type="button" class="st-btn st-sq top-btn" data-act="back" aria-label="${t('Back')}">${ICON.back()}</button>
@@ -44,7 +43,7 @@ export function barnHtml(g: GameSave, tab: FlairKind, sel: string, ribbonAd: boo
       <div class="bb-tabs" role="tablist" aria-label="${t('Bling Barn shelves')}">${tabs}</div>
       <div class="bb-grid">${cards}</div></div>
     <div class="grp tr" style="width: 266px; height: 390px">
-      <div class="bb-chips">${ad}<p class="st-chip bb-ribbons">${ribbonIcon(20)}<b>${g.ribbons}</b> ${t('ribbons')}</p></div>
+      <div class="bb-chips"><p class="st-chip bb-ribbons">${ICON.coin(20)}<b>${money(cash)}</b></p></div>
       <div class="st-chip bb-panel">
       <div class="bb-scene-box">${barnPreview(look('finish'), look('trail'), look('bird'), look('coin'))}</div>
       <h3>${esc(t(cur.name))}</h3><p class="bb-line">${esc(t(cur.line))}</p><div class="bb-foot">${action}</div></div></div>`;
@@ -114,7 +113,7 @@ export function dailyHtml(def: SideDef & { date: string }, d: DailyState, tries:
     <p class="dl-text">${t("One day, no bills. Everyone gets the same field and the same upgrades, so it's all down to your swipes.")}</p>
     ${targetsRow(def.targets, d.best)}
     <p class="dl-best">${bestTxt}</p>
-    <p class="dl-rew">${medalIcon(1, 16)} ${MEDAL_RIBBONS[1]} ${ribbonIcon(14)} · ${medalIcon(2, 16)} ${MEDAL_RIBBONS[2]} ${ribbonIcon(14)} · ${medalIcon(3, 16)} ${MEDAL_RIBBONS[3]} ${ribbonIcon(14)} · ${ICON.coin(15)} +${money(goldCredit)}</p>
+    <p class="dl-rew">${medalIcon(3, 16)} ${ICON.coin(15)} +${money(goldCredit)}</p>
     <div class="r-actions"><button type="button" class="st-btn btn-md" data-act="go" data-arg="menu">${t('Back')}</button>${play}</div>
   </div></div>`;
 }

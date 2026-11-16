@@ -5,9 +5,9 @@
 // 0.13.1 (Navid, 14 Nov): one money, gold (tree credit is gone); a node not next to one you own is locked: a padlock,
 // faded, and no name or effect until it is next in line; no reset.
 
-import { t } from '../i18n/i18n';
+import { lang, t } from '../i18n/i18n';
 import {
-  BRANCHES, TREE, TREE_WORKSHOP, buildingNode, canBuyNode, nodeDuration, treeLevel, treeNode, type BuyCheck, type TreeBranch, type TreeNode,
+  BRANCHES, TREE, TREE_WORKSHOP, buildingNode, canBuyNode, nodeDuration, nodeText, treeLevel, treeNode, type BuyCheck, type TreeBranch, type TreeNode,
 } from '../game/tree';
 import { formatDuration, upgradeDef } from '../game/workshop';
 import type { GameSave } from '../game/progress';
@@ -236,10 +236,18 @@ function cardHtml(g: GameSave, n: TreeNode, ui: TreeUi, building: string | null)
   return `<div class="tr-card">
     <span class="tr-kind"><i style="background:${col}"></i>${esc(where)}</span>
     <div class="tr-head">${glyph(n, 30, col)}<h3>${esc(t(n.name))}</h3></div>
-    <p>${esc(t(n.effect))}</p>${pair}
+    <p>${esc(effectLine(n, n.kind === 'trick' ? Math.min(n.levels, have + 1) : 1))}</p>${pair}
     ${state ? `<div class="tr-meta">${state}</div>` : ''}
     ${action}
   </div>`;
+}
+
+/** What a node does at a level, in the player's language: only that level's number (Navid, 15 Nov). */
+function effectLine(n: TreeNode, level: number): string {
+  const x = nodeText(n, level);
+  if (x.v == null) return t(x.text);
+  const loc = ({ en: 'en-US', fr: 'fr-FR', es: 'es-ES', pt: 'pt-BR', de: 'de-DE' } as const)[lang()];
+  return t(x.text, { v: x.v.toLocaleString(loc) });
 }
 
 /** The tree screen: the map (it scrolls; + and - zoom) and the chosen node's card. */
@@ -274,7 +282,7 @@ export function treeMapHtml(g: GameSave, ui: TreeUi): string {
     : '';
   return `<div class="tr-wrap">
     <div class="tr-top"><button type="button" class="st-btn st-sq" data-act="tree-back" aria-label="${t('Back')}">${ICON.back()}</button>
-      <h2>${t('Upgrades')}</h2>
+      <h2>${t('Skills')}</h2>
       <div class="tr-chips"><span class="tr-chip tr-cash" aria-label="${esc(t('Cash for upgrades {amt}', { amt: money(ui.money) }))}">${ICON.coin(18)}<span>${short(ui.money)}</span></span>${jobChip}</div>
       <div class="tr-zoom"><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="-1" aria-label="${t('Zoom out')}">−</button><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="1" aria-label="${t('Zoom in')}">+</button></div></div>
     <div class="tr-body">

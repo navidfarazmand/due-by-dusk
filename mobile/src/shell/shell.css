@@ -571,6 +571,11 @@
 .ft-badge { position: absolute; right: -9px; top: -9px; min-width: 28px; height: 28px; padding: 0 7px; box-sizing: border-box; border: 2.5px solid var(--dbd-ink); border-radius: 999px;
   background: #E5484D; color: #fff; font: 400 16px/23px var(--ui-display); font-style: normal; text-align: center; }
 .ft-job { display: flex; align-items: center; gap: 3px; font: 900 11px var(--ui-body); color: var(--dbd-muted); }
+/* 0.15: the Pen's tile shows how full it is; the town's perks are a chip in the top row */
+.ft-pen { width: 70%; height: 10px; box-sizing: border-box; border: 2px solid var(--dbd-ink); border-radius: 6px; background: #fff; overflow: hidden; }
+.ft-pen i { display: block; height: 100%; background: var(--dbd-gold); }
+.fh-perks { display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 10px; border-radius: 14px; cursor: pointer; }
+.fh-perks .ft-perks { gap: 2px; }
 .day-card { position: absolute; inset: 0; box-sizing: border-box; border-radius: 22px; box-shadow: 0 5px 0 var(--dbd-ink); padding: 10px 18px 14px; display: flex; flex-direction: column; align-items: center; }
 .dc-city { display: flex; align-items: center; gap: 8px; font: 400 20px var(--ui-display); color: var(--dbd-muted); line-height: 1.15; }
 .dc-boss-tag { padding: 1px 7px; border: 2px solid var(--dbd-ink); border-radius: 6px; background: #F07A62; color: #fff; font: 900 10px var(--ui-body); letter-spacing: .6px; font-style: normal; }
@@ -613,6 +618,48 @@
   .dc-go[data-act="start"] { animation: dcGlow 1.8s ease-in-out infinite; }
   @keyframes dcGlow { 0%, 100% { box-shadow: 0 6px 0 var(--dbd-ink), 0 0 0 0 rgba(255, 194, 61, 0); } 50% { box-shadow: 0 6px 0 var(--dbd-ink), 0 0 0 9px rgba(255, 194, 61, .5); } }
 }
+/* 0.15: the day card's two halves (the day; the bill and the button) stay one column unless a design splits them */
+.day-card > .dc-head, .day-card > .dc-body { display: contents; }
+.dc-bill[data-act] { cursor: pointer; }
+/* design 2, the shelf: a wide card, the four tiles in a row under it */
+.fh-v2 > .day-card { bottom: auto; height: 206px; flex-direction: row; align-items: stretch; gap: 16px; padding: 10px 14px 12px 10px; }
+.fh-v2 .dc-head { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 230px; flex: none; }
+.fh-v2 .dc-body { display: flex; flex-direction: column; justify-content: center; gap: 4px; flex: 1; min-width: 0; }
+.fh-v2 .dc-go-row { margin-top: 8px; }
+.fh-v2 .dc-day { font-size: 58px; }
+.fh-shelf { position: absolute; left: 0; right: 0; bottom: 0; height: 94px; display: flex; gap: 12px; }
+.fh-shelf .fh-tile { gap: 3px; padding: 6px; border-radius: 16px; }
+.fh-shelf .fh-tile > svg:first-child { width: 38px; height: 38px; }
+.fh-shelf .ft-perks svg { width: 18px; height: 18px; }
+.fh-shelf .fh-tile b { font-size: 18px; }
+.fh-shelf .ft-pen { height: 8px; }
+.fh-shelf .ft-job { display: none; }
+/* design 3, the board: one panel, the day on the left, the tiles in a square on the right */
+.fh-board { position: absolute; inset: 0; box-sizing: border-box; border-radius: 24px; box-shadow: 0 5px 0 var(--dbd-ink); display: flex; gap: 14px; padding: 12px; }
+.fh-board > .day-card { position: relative; inset: auto; flex: 1.1; min-width: 0; box-shadow: none; border: 0; padding: 2px 8px 4px; background: transparent; }
+.fh-board > .day-card::after { content: ''; position: absolute; right: -8px; top: 14px; bottom: 14px; border-right: 3px dashed rgba(43, 23, 8, .22); }
+.fb-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 12px; padding-left: 6px; }
+.fb-grid .fh-tile { background: #FFFDF6; box-shadow: 0 4px 0 var(--dbd-ink); }
+.fb-grid .fh-tile > svg:first-child { width: 42px; height: 42px; }
+/* design 4, the town sheet: the four as buttons in the top row, every bill of the town on the card */
+.fh-pills { display: inline-flex; gap: 8px; margin-left: 6px; }
+.fh-pill { position: relative; height: 46px; padding: 0 12px 0 8px; border-radius: 14px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font: 400 17px var(--ui-display); color: var(--dbd-ink); }
+.fh-pill .ft-badge { right: -8px; top: -10px; min-width: 24px; height: 24px; font-size: 14px; line-height: 19px; }
+.fh-pill .ft-perks svg { width: 18px; height: 18px; }
+.fh-v4 > .day-card { flex-direction: row; align-items: stretch; gap: 16px; padding: 12px 14px; }
+.fv4-l { width: 300px; flex: none; display: flex; flex-direction: column; align-items: center; }
+.fv4-l .dc-head { display: flex; flex-direction: column; align-items: center; flex: 1; justify-content: center; }
+.fv4-l .dc-day { font-size: 72px; }
+.fv4-r { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.dl-list { display: flex; flex-direction: column; gap: 5px; cursor: pointer; }
+.dl-bill { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; box-sizing: border-box; border: 2px solid var(--dbd-ink); border-radius: 10px; background: #fff; }
+.dl-bill > svg:first-child { flex: none; }
+.dl-bill span { flex: 1; min-width: 0; font: 700 13px 'Courier Prime', 'Courier New', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-bill i { font: 700 11px 'Courier Prime', 'Courier New', monospace; font-style: normal; color: var(--dbd-muted); white-space: nowrap; }
+.dl-bill b { font: 400 19px var(--ui-display); color: #304931; white-space: nowrap; }
+.dl-bill.now { background: #FFF0C2; border-width: 3px; }
+.dl-bill.paid { opacity: .55; }
+.dl-bill.paid b { text-decoration: line-through; }
 /* the panel behind the tiles */
 .pn-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .pn-head .seg { flex: 1; }
@@ -884,7 +931,8 @@ button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tab
 .pen-cell b { font: 900 11.5px/1.15 var(--ui-body); color: var(--dbd-ink); min-height: 26px; display: flex; align-items: center; }
 .pen-cell small { font: 900 11px/1 var(--ui-body); color: var(--dbd-deep-green, #2E7D32); }
 .pen-cell .pen-spr { height: 58px; display: flex; align-items: flex-end; }
-.pen-cell .pen-up { margin-top: 4px; height: 32px; padding: 0 8px; font-size: 14px; display: inline-flex; align-items: center; gap: 4px; }
+.pen-cell .pen-next { margin-top: 7px; width: 78%; height: 8px; box-sizing: border-box; border: 2px solid var(--dbd-ink); border-radius: 5px; background: #fff; overflow: hidden; }
+.pen-cell .pen-next i { display: block; height: 100%; background: var(--dbd-gold); }
 .pen-cell .pen-max { margin-top: 6px; font: 900 11px/1 var(--ui-body); color: var(--dbd-muted); }
 .pen-lv { position: absolute; left: 6px; top: 6px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--dbd-ink); color: #FFE08A; font: 900 12px/20px var(--ui-body); font-style: normal; }
 .pen-cell.out { background: rgba(255, 241, 214, .35); border-style: dashed; }

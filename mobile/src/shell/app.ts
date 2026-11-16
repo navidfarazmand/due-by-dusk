@@ -4,14 +4,14 @@
 import { Capacitor } from '@capacitor/core';
 import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from '../game/world';
 import { cropName, goldCredit, niceMoney, paceMul, planFor, toughnessFor, updatePace, winCredit, type BillKind, type CityPlan, avgDay } from '../game/plan';
-import { cropLevel, cropPay, cropPayTable } from '../game/road';
+import { CROP_LEVEL_MAX, cropLevel, cropLevelProgress, cropPay, cropPayTable } from '../game/road';
 import { bestPower } from '../game/power';
 import {
   DEFAULT_TOUCH_LIFT, GAME_SAVE_KEY, RECENT_DAYS, coinsForDays, MAX_TOUCH_LIFT, bankAfterWin, cityLock, cityProgress, countryLock, countryStars, frontierCity, newGame, nextCity, paidAfterRun,
   jarAfterForeclosure, parseGame, spendableFarmCash, starGate, starsFor, todayKey, toolLock, totalStars, type GameSave, type RunInfo,
 } from '../game/progress';
-import { FLAIR, buyFlair, equipFlair, flairById, lookFor, ribbonsForWin, type FlairKind } from '../game/flair';
-import { DAILY_AD_TRIES, MEDAL_NAME, MEDAL_RIBBONS, dailyFor, duelFor, medalOf, newDaily, sidePlan, triesLeft, type SideDef } from '../game/daily';
+import { FLAIR, buyFlair, equipFlair, flairById, lookFor, type FlairKind } from '../game/flair';
+import { DAILY_AD_TRIES, MEDAL_NAME, dailyFor, duelFor, medalOf, newDaily, sidePlan, triesLeft, type SideDef } from '../game/daily';
 import { SHED_FX, emptyLevels, formatDuration, type Levels, type UpgradeId } from '../game/workshop';
 import { TOOLS, isToolId, modCost, modLevel, newTools, toolDef, toolStats, toolSummary, type ToolId } from '../game/tools';
 import { ART, BAND, MAP, NODES, PREVIEW, SPRITE, bandFor, cropChip, spriteImg } from './art';
@@ -35,8 +35,8 @@ import { ribbonIcon } from './looks';
 import { arthurOnCard } from './arthur';
 import { TREE_ZOOMS, centerTree, treeMapHtml } from './treeview';
 import { hapticImpact } from '../platform/mobile';
-import { addWorker, collectPen, newPen, penFill, penRate, penStored, workerCost, workerCount, workerRate as workerRateOf, PEN_CAP_HOURS } from '../game/pen';
-import { TREE_SKILL, buildingNode, buyNode, settleTree, treeNode, treeReady } from '../game/tree';
+import { addWorker, collectPen, newPen, penFill, penRate, penStored, workerCount, workerLevel, workerRate as workerRateOf, PEN_CAP_HOURS } from '../game/pen';
+import { TREE_SKILL, buildingNode, buyNode, setTreeMoney, settleTree, treeNode, treeReady } from '../game/tree';
 
 type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'tree' | 'barn' | 'daily' | 'duel' | 'side' | 'pen';
 
@@ -60,8 +60,6 @@ interface DuelState extends DuelSetup {
   first: number;
 }
 
-/** Ribbons for finishing duels, at most this many a day. */
-const DUEL_RIBBONS_PER_DAY = 2;
 
 interface DayResult {
   day: number;
@@ -355,7 +353,16 @@ export class GameApp {
 
   /** Everything a tree node can be bought with: savings, then the farm's cash above its mark. */
   private treeMoney(): number {
+    this.syncTreeMoney();
     return this.wallet();
+  }
+
+  /** 0.15: the tree's prices follow the player's own day where they are (an average day there times their pace). */
+  private syncTreeMoney(): void {
+    const run = this.g.run;
+    const k = Math.max(0, routeIndex(run ? run.cityId : frontierCity(this.g)));
+    const scale = run && run.scale ? run.scale : this.paceScale();
+    setTreeMoney(avgDay(k, 3) * scale, scale);
   }
 
   private tick(): void {
@@ -470,8 +477,6 @@ export class GameApp {
     const firstWin = !p.won;
     // 0.15: the third star is for a town caught on the first try (the bank never came here)
     const res = starsFor({ won: true, cashLeft: d.cash, spare: plan.spare, firstTry: !(p.fails || 0) });
-    const ribbons = ribbonsForWin(p.stars, res.stars, false, firstWin && plan.boss);
-    this.g.ribbons += ribbons;
     p.won = true;
     p.stars = Math.max(p.stars, res.stars);
     p.bestDays = p.bestDays ? Math.min(p.bestDays, d.days) : d.days;
@@ -486,7 +491,7 @@ export class GameApp {
     p.paid = paidAfterRun(run, banked);
     this.g.run = null;
     this.result = {
-      kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.spare, goal: plan.spare, firstTry: res.firstTry, firstWin, credit, ribbons,
+      kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.spare, goal: plan.spare, firstTry: res.firstTry, firstWin, credit,
       days: d.days, earned: d.earned, harvested: d.harvested, wallet: this.g.wallet, banked, mark: run.mark, kept: Math.round(d.cash), own: !!run.own,
     };
     this.saveNow();
@@ -541,8 +546,8 @@ export class GameApp {
       }
       if (!chest) this.pointAtStart();
     }
-    // the first ribbons and tree credit: where they go
-    if (s === 'won' && this.result && (this.result.ribbons || this.result.credit) && !this.g.seen.gains && this.coachOn) {
+    // the first win's credit: where it goes
+    if (s === 'won' && this.result && this.result.credit && !this.g.seen.gains && this.coachOn) {
       this.g.seen.gains = true;
       this.save();
       // after the stars have landed
@@ -562,6 +567,7 @@ export class GameApp {
   private render(s: Screen): void {
     const el = this.sections[s];
     if (!el) return;
+    this.syncTreeMoney();
     if (s === 'menu') {
       el.innerHTML = this.menuHtml();
       // 0.14: back in the game, the Pen's earnings first (after the screen is up)
@@ -591,7 +597,7 @@ export class GameApp {
       else requestAnimationFrame(() => centerTree(el, this.treeSel, this.treeZoom));
       this.treeRecenter = false;
     }
-    else if (s === 'barn') el.innerHTML = barnHtml(this.g, this.barnTab, this.barnSel, canOffer(this.g, 'ribbon'));
+    else if (s === 'barn') el.innerHTML = barnHtml(this.g, this.barnTab, this.barnSel, this.wallet());
     else if (s === 'daily') el.innerHTML = this.backdrop() + this.dailyScreen();
     else if (s === 'duel') el.innerHTML = this.backdrop() + this.duelScreen();
     else if (s === 'side') el.innerHTML = this.backdrop() + (this.sideOut ? sideResultHtml(this.sideOut) : '');
@@ -681,14 +687,12 @@ export class GameApp {
       case 'pen-back': this.show(this.penBack); break;
       case 'pen-collect': this.collectPen(false); break;
       case 'pen-double': void this.collectPen(true); break;
-      case 'pen-up': this.levelWorker(arg); break;
       case 'tree-zoom': this.treeZoom = Math.max(0, Math.min(TREE_ZOOMS.length - 1, this.treeZoom + (Number(arg) || 0))); this.treeRecenter = true; this.render('tree'); break;
       case 'barn': if (!this.modal.hidden) this.closeModal(); this.backTo = this.scr === 'tree' || this.scr === 'barn' ? this.backTo : this.scr; this.barnSel = this.g.flair.equipped[this.barnTab]; this.show('barn'); break;
       case 'barn-tab': this.barnTab = arg as FlairKind; this.barnSel = this.g.flair.equipped[this.barnTab]; this.render('barn'); break;
       case 'barn-pick': this.barnSel = arg; this.render('barn'); break;
       case 'barn-buy': this.barnBuy(arg); break;
       case 'barn-equip': this.barnEquip(arg); break;
-      case 'ad-ribbon': void this.adRibbon(); break;
       case 'daily': this.show('daily'); break;
       case 'daily-play': this.playDaily(); break;
       case 'ad-daily': void this.adDailyTry(); break;
@@ -872,16 +876,16 @@ export class GameApp {
     const pen = this.g.pen;
     if (!pen || this.busy) return;
     const now = Date.now();
-    let amt = penStored(pen, now, this.penDay());
+    let amt = penStored(pen, now, this.penDay(), this.g.cropCuts);
     if (amt <= 0) return;
     if (double) {
       this.busy = true;
       const ok = await watch(this.g, 'pen');
       this.busy = false;
       if (!ok) return;
-      amt = penStored(pen, Date.now(), this.penDay()) * 2;
+      amt = penStored(pen, Date.now(), this.penDay(), this.g.cropCuts) * 2;
     }
-    collectPen(pen, Date.now(), this.penDay());
+    collectPen(pen, Date.now(), this.penDay(), this.g.cropCuts);
     if (this.g.run) {
       try {
         engine().addCash(amt);
@@ -902,35 +906,6 @@ export class GameApp {
     else this.refresh();
   }
 
-  /** A worker's next level, paid from the jar. */
-  private levelWorker(type: string): void {
-    const pen = this.g.pen;
-    const w = pen && pen.workers[type];
-    if (!pen || !w) return;
-    const cost = workerCost(w.level, this.penDay());
-    if (cost == null) return;
-    if (!this.spend(cost)) {
-      this.toast(t('Not enough money.'));
-      return;
-    }
-    // what the Pen held at the old pay is kept: the clock restarts with the money already earned paid in
-    const held = penStored(pen, Date.now(), this.penDay());
-    if (held > 0) {
-      collectPen(pen, Date.now(), this.penDay());
-      if (this.g.run) engine().addCash(held);
-      else this.g.wallet += held;
-    }
-    w.level++;
-    this.penPop = type;
-    this.saveNow();
-    try {
-      engine().uiSound?.('buy');
-    } catch {
-      /* engine not ready */
-    }
-    void hapticImpact('medium');
-    this.render('pen');
-  }
   private penPop = '';
 
   /** The Pen: what it holds, the collect buttons, and every runaway (caught ones at work, the rest still out there). */
@@ -938,22 +913,24 @@ export class GameApp {
     const pen = (this.g.pen ||= newPen());
     const now = Date.now();
     const day = this.penDay();
-    const held = penStored(pen, now, day);
+    const held = penStored(pen, now, day, this.g.cropCuts);
     const fill = penFill(pen, now);
-    const rate = penRate(pen, day);
+    const rate = penRate(pen, day, this.g.cropCuts);
     const caught = workerCount(pen);
     const cards = ROUTE.map(c => {
       const type = planFor(c.id).runaway;
       const w = pen.workers[type];
       if (!w)
         return `<div class="pen-cell out" aria-label="${esc(t('Still out there'))}"><span class="pen-spr">${spriteImg(type, 54)}</span><b>?</b><small>${esc(c.short)}</small></div>`;
-      const cost = workerCost(w.level, day);
-      const hour = Math.round(workerRateOf(w.level, day));
-      const btn = cost == null
+      // 0.15 (Navid): a worker's level is its vegetable's level, raised by cutting that vegetable in the field
+      const cuts = (this.g.cropCuts || {})[type] || 0;
+      const lv = workerLevel(type, this.g.cropCuts);
+      const hour = Math.round(workerRateOf(lv, day));
+      const bar = lv >= CROP_LEVEL_MAX
         ? `<span class="pen-max">${t('Top level')}</span>`
-        : `<button type="button" class="st-btn gold btn-sm pen-up${this.wallet() >= cost ? '' : ' off'}" data-act="pen-up" data-arg="${type}">${ICON.coin(16)}<span>${money(cost)}</span></button>`;
-      return `<div class="pen-cell${this.penPop === type ? ' pop' : ''}"><i class="pen-lv">${w.level}</i><span class="pen-spr work">${spriteImg(type, 54, cropName(type))}</span>
-        <b>${esc(t(cropName(type)))}</b><small>${t('{amt}/h', { amt: money(hour) })}</small>${btn}</div>`;
+        : `<span class="pen-next" aria-label="${t('Cut more to level {n}', { n: lv + 1 })}"><i style="width: ${(cropLevelProgress(cuts) * 100).toFixed(0)}%"></i></span>`;
+      return `<div class="pen-cell${this.penPop === type ? ' pop' : ''}"><i class="pen-lv">${lv}</i><span class="pen-spr work">${spriteImg(type, 54, cropName(type))}</span>
+        <b>${esc(t(cropName(type)))}</b><small>${t('{amt}/h', { amt: money(hour) })}</small>${bar}</div>`;
     }).join('');
     this.penPop = '';
     const canDouble = held > 0 && canOffer(this.g, 'pen');
@@ -985,7 +962,7 @@ export class GameApp {
     if (this.penShown || !this.modal.hidden || this.intro) return;
     const pen = this.g.pen;
     if (!pen || !workerCount(pen)) return;
-    const held = penStored(pen, Date.now(), this.penDay());
+    const held = penStored(pen, Date.now(), this.penDay(), this.g.cropCuts);
     if (held <= 0 || penFill(pen, Date.now()) < 0.15) return;
     this.penShown = true;
     const canDouble = canOffer(this.g, 'pen');
@@ -1148,7 +1125,9 @@ export class GameApp {
     e.setSkills([]);
     this.clearTreeFx();
     e.setTool(tool);
-    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: emptyLevels(), plan, tools: [tool] })) {
+    // 0.15: a bare field is thin now (3 crops, one every 2 s); practice has a well-fed field, so six carrots and a
+    // chain of six come quickly
+    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: { ...emptyLevels(), soil: 16 }, plan, tools: [tool] })) {
       this.restoreFarm(snap, sound);
       return this.show('world');
     }
@@ -1202,7 +1181,7 @@ export class GameApp {
     const sound = e.state().sound;
     const cityId = 'ca_kelowna';
     const plan = planFor(cityId);
-    const levels = { scythe: 16, swing: 6, hands: 10, days: 2, soil: 8, market: 2, clover: 6 };
+    const levels = { scythe: 16, swing: 6, hands: 10, days: 2, soil: 16, market: 2, clover: 6 };
     const tool = toolStats({ owned: ['scythe'], equipped: 'scythe', mods: { 'scythe.charge': 1 } }, 'scythe');
     e.setSaving(false);
     e.setFieldSeed(20261030);
@@ -1698,6 +1677,7 @@ export class GameApp {
   private buyTreeNode(id: string): void {
     const n = treeNode(id);
     if (!n) return;
+    this.syncTreeMoney();
     const res = buyNode(this.g, n, Date.now(), cost => this.payTree(cost));
     if (!res.ok) {
       // 'cash' with the veil up: the tonight's-bill question is being asked (spend)
@@ -1738,9 +1718,10 @@ export class GameApp {
   private treeBought = '';
 
   private barnBuy(id: string): void {
-    const res = buyFlair(this.g.flair, this.g.ribbons, id);
-    if (!res.ok) return;
-    this.g.ribbons -= res.cost;
+    // 0.15 (Navid): looks are bought with cash, and dear
+    const item = flairById(id);
+    if (!item || this.g.flair.owned.includes(id) || !this.spend(item.price)) return;
+    buyFlair(this.g.flair, item.price, id);
     this.applyLook();
     this.saveNow();
     this.toast(`${flairById(id)!.name}: it's yours.`);
@@ -1752,19 +1733,6 @@ export class GameApp {
     this.applyLook();
     this.saveNow();
     this.render('barn');
-  }
-
-  private async adRibbon(): Promise<void> {
-    if (this.busy) return;
-    this.busy = true;
-    const ok = await watch(this.g, 'ribbon');
-    this.busy = false;
-    if (ok) {
-      this.g.ribbons += 1;
-      this.toast('+1 ribbon.');
-      this.saveNow();
-    }
-    this.refresh();
   }
 
   // ------------------------------------------------------------------ daily farm and duels
@@ -1920,9 +1888,7 @@ export class GameApp {
       const before = st.medal;
       st.best = Math.max(st.best, score);
       const medal = medalOf(sr.def.targets, st.best);
-      const ribbons = Math.max(0, MEDAL_RIBBONS[medal] - MEDAL_RIBBONS[before]);
       st.medal = medal;
-      this.g.ribbons += ribbons;
       // the day's first gold medal pays tree credit (a diamond until 0.12)
       let credit = 0;
       if (medal >= 3 && !st.goldPaid) {
@@ -1931,7 +1897,7 @@ export class GameApp {
         this.g.wallet += credit;
       }
       this.sideOut = {
-        kind: 'daily', score, def: sr.def, medal, newMedal: medal > before, ribbons, credit,
+        kind: 'daily', score, def: sr.def, medal, newMedal: medal > before, credit,
         tries: triesLeft(st), adTry: st.adPlays < DAILY_AD_TRIES && canOffer(this.g, 'daily'),
       };
     } else {
@@ -1940,12 +1906,7 @@ export class GameApp {
       du.scores[sr.turn] = score;
       if (sr.turn === 0) this.sideOut = { kind: 'duel-pass', score, def: sr.def, scores: [...du.scores] as [number, number], names: du.names };
       else {
-        const today = todayKey();
-        if (this.g.duelDay.date !== today) this.g.duelDay = { date: today, rewarded: 0 };
-        const ribbons = this.g.duelDay.rewarded < DUEL_RIBBONS_PER_DAY ? 1 : 0;
-        this.g.duelDay.rewarded += ribbons;
-        this.g.ribbons += ribbons;
-        this.sideOut = { kind: 'duel-end', score, def: sr.def, scores: [...du.scores] as [number, number], names: du.names, ribbons };
+        this.sideOut = { kind: 'duel-end', score, def: sr.def, scores: [...du.scores] as [number, number], names: du.names };
       }
     }
     this.saveNow();
@@ -2158,7 +2119,7 @@ export class GameApp {
   /** A shortcut to the upgrade tree while something there can be bought. */
   private gemChip(): string {
     const n = this.upgradesReady();
-    return n ? `<button type="button" class="st-chip chip-row gem-chip" data-act="tree" aria-label="${tn(n, '{n} upgrade ready to buy', '{n} upgrades ready to buy')}">${ICON.wrench(20)}<span>${n}</span><small>${t('Upgrades')}</small></button>` : '';
+    return n ? `<button type="button" class="st-chip chip-row gem-chip" data-act="tree" aria-label="${tn(n, '{n} upgrade ready to buy', '{n} upgrades ready to buy')}">${ICON.wrench(20)}<span>${n}</span><small>${t('Skills')}</small></button>` : '';
   }
 
   private walletChip(): string {
@@ -2198,7 +2159,7 @@ export class GameApp {
         <button type="button" class="sp-sign sp-l sp-daily" data-act="daily">${leftArrow}${calendarIcon(26)}<span>${t('Daily farm')}</span>${dailyMark}</button>
         <button type="button" class="sp-sign sp-r sp-duel" data-act="duel">${rightArrow}${duelIcon(26)}<span>${t('Duel')}</span></button>
         <button type="button" class="sp-sign sp-r sp-pen" data-act="pen">${rightArrow}${PEN_ICON(26)}<span>${t('Pen')}</span>${this.penReady() ? '<i class="dock-badge">$</i>' : ''}</button>
-        <button type="button" class="sp-sign sp-l sp-barn" data-act="barn-menu">${leftArrow}${ICON.wrench(22)}${ribbonIcon(22)}<span class="sp-two"><b>${t('Barn')}</b><small>${t('Upgrades · Bling Barn')}</small></span>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
+        <button type="button" class="sp-sign sp-l sp-barn" data-act="barn-menu">${leftArrow}${ICON.wrench(22)}${ribbonIcon(22)}<span class="sp-two"><b>${t('Barn')}</b><small>${t('Skills · Bling Barn')}</small></span>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
       </div></div>`;
   }
 
@@ -2207,8 +2168,8 @@ export class GameApp {
     const gems = this.upgradesReady();
     this.openModal('barn-menu', `<h2 class="m-title">${t('Barn')}</h2>
       <div class="m-row barn-pick">
-        <button type="button" class="st-btn bp-btn" data-act="tree">${ICON.wrench(36)}<b>${t('Upgrades')}</b><small>${t('One tree of upgrades that last')}</small>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
-        <button type="button" class="st-btn bp-btn" data-act="barn">${ribbonIcon(36)}<b>${t('Bling Barn')}</b><small>${t('Looks for your farm, bought with ribbons')}</small></button>
+        <button type="button" class="st-btn bp-btn" data-act="tree">${ICON.wrench(36)}<b>${t('Skills')}</b><small>${t('One tree of upgrades that last')}</small>${gems ? `<i class="dock-badge">${gems}</i>` : ''}</button>
+        <button type="button" class="st-btn bp-btn" data-act="barn">${ribbonIcon(36)}<b>${t('Bling Barn')}</b><small>${t('Looks for your farm')}</small></button>
       </div>
       <button type="button" class="st-btn btn-md" data-act="close">${t('Back')}</button>`, 460);
   }
@@ -2398,11 +2359,14 @@ export class GameApp {
     // the farm's days: the ones played, today, and the days a bill is due
     const bills = e.bills();
     const dueDays = new Set<number>();
+    const dueOf: number[] = [];
     let d = st.due;
     dueDays.add(d);
+    dueOf[st.bill] = d;
     for (let i = st.bill + 1; i < bills.length; i++) {
       d += bills[i].days;
       dueDays.add(d);
+      dueOf[i] = d;
     }
     const total = Math.max(d, st.day);
     let dots = '';
@@ -2411,7 +2375,7 @@ export class GameApp {
     const covered = st.cash >= b.amt;
     const pct = clamp(st.cash / Math.max(1, b.amt), 0, 1);
     const kind = plan.bills[b.index]?.kind;
-    const billRow = `<div class="dc-bill${covered ? ' ok' : ''}${b.tonight ? ' hot' : ''}${kind ? ' ' + kind : ''}">${billIcon(kind, 30)}
+    const billRow = `<div class="dc-bill${covered ? ' ok' : ''}${b.tonight ? ' hot' : ''}${kind ? ' ' + kind : ''}" data-act="panel" data-arg="bills" role="button" aria-label="${t('Bills')}">${billIcon(kind, 30)}
         <span class="dc-bt"><b>${esc(t(b.name))}</b><span>${b.tonight ? t('Due tonight') : t('Due day {day}', { day: b.dueDay })}</span></span>
         <span class="dc-amt">${money(b.amt)}</span>${covered ? ICON.check(26) : `<span class="dc-meter" aria-label="${Math.round(pct * 100)}%"><i style="width: ${(pct * 100).toFixed(1)}%"></i></span>`}</div>`;
     const boss = st.boss;
@@ -2440,27 +2404,58 @@ export class GameApp {
         return p ? perkIcon(p.icon, 22) : '';
       })
       .join('');
-    const billDots = bills.map((_, i) => `<i class="${i < st.billsPaid ? 'done' : i === st.bill ? 'now' : ''}"></i>`).join('');
     const tool = TOOL_ICON[this.g.tools.equipped];
-    return `<div class="wood"></div>
-      <div class="grp tl" style="width: 420px; height: 64px"><div class="fh-top">
-        <button type="button" class="st-btn st-sq" data-act="map" data-arg="${run.cityId}" aria-label="${t('Back to the map')}">${ICON.back()}</button>
-        ${this.walletChip()}${coinsOffer}</div></div>
-      <div class="grp ml" style="width: 160px; height: 316px"><div class="fh-col">
-        <button type="button" class="st-btn fh-tile" data-act="panel" data-arg="bills">${ICON.notice(46)}<b>${t('Bills')}</b><span class="ft-dots">${billDots}</span></button>
-        <button type="button" class="st-btn fh-tile" data-act="panel" data-arg="perks">${ICON.chest(48)}<b>${t('Perks')}</b>${perkIcons ? `<span class="ft-perks">${perkIcons}</span>` : ''}</button>
-      </div></div>
-      <div class="grp mcb" style="width: 390px; height: 316px"><div class="st-chip day-card">
-        <div class="dc-city"><span>${esc(ct.short)}</span>${plan.boss ? `<i class="dc-boss-tag">${t('BOSS')}</i>` : ''}</div>
+    // 0.15 (Navid, 15 Nov: "the Day card ... why not updated with our new setting? ... adding pen and removing one of
+    // these"; 23:44: "put perk instead of bills. also why on earth the two right boxes are not same size as two left
+    // boxes"): four tiles of one size, Perks and the Pen on the left, Skills and Tools on the right; the bill on the
+    // card opens the town's bills. (Designs 2 to 4, window.__DBD_FH, are for Navid's pick: "please also design more
+    // different designs".)
+    const pen = this.g.pen, penN = workerCount(pen), pfill = penFill(pen, Date.now());
+    const badge = ups ? `<i class="ft-badge" aria-label="${tn(ups, '{n} upgrade ready to buy', '{n} upgrades ready to buy')}">${ups}</i>` : '';
+    const penBadge = this.penReady() ? '<i class="ft-badge">$</i>' : '';
+    const penBar = `<span class="ft-pen" aria-label="${Math.round(pfill * 100)}%"><i style="width: ${(penN ? pfill * 100 : 0).toFixed(0)}%"></i></span>`;
+    const skillsTile = `<button type="button" class="st-btn fh-tile" data-act="tree">${ICON.wrench(48)}<b>${t('Skills')}</b>${jobLine}${badge}</button>`;
+    const toolsTile = `<button type="button" class="st-btn fh-tile" data-act="panel" data-arg="tools">${tool ? tool(46) : ''}<b>${t('Tools')}</b></button>`;
+    const penTile = `<button type="button" class="st-btn fh-tile" data-act="pen">${PEN_ICON(48)}<b>${t('Pen')}</b>${penBar}${penBadge}</button>`;
+    const perksTile = `<button type="button" class="st-btn fh-tile" data-act="panel" data-arg="perks">${ICON.chest(48)}<b>${t('Perks')}</b>${perkIcons ? `<span class="ft-perks">${perkIcons}</span>` : ''}</button>`;
+    const head = `<div class="dc-head"><div class="dc-city"><span>${esc(ct.short)}</span>${plan.boss ? `<i class="dc-boss-tag">${t('BOSS')}</i>` : ''}</div>
         <h2 class="dc-day">${t('Day {day}', { day: st.day })}</h2>
-        <div class="dc-dots${total > 20 ? ' many' : ''}" role="img" aria-label="${t('Day {day} of {n}', { day: st.day, n: total })}">${dots}</div>
-        ${billRow}${bossRow}${lateRow}${repairRow}${newRow}
-        <div class="dc-go-row">${extra}${main}</div>
-      </div></div>
-      <div class="grp mr" style="width: 160px; height: 316px"><div class="fh-col">
-        <button type="button" class="st-btn fh-tile big" data-act="tree">${ICON.wrench(54)}<b>${t('Upgrades')}</b>${jobLine}${ups ? `<i class="ft-badge" aria-label="${tn(ups, '{n} upgrade ready to buy', '{n} upgrades ready to buy')}">${ups}</i>` : ''}</button>
-        <button type="button" class="st-btn fh-tile" data-act="panel" data-arg="tools">${tool ? tool(46) : ''}<b>${t('Tools')}</b></button>
-      </div></div>`;
+        <div class="dc-dots${total > 20 ? ' many' : ''}" role="img" aria-label="${t('Day {day} of {n}', { day: st.day, n: total })}">${dots}</div></div>`;
+    const body = `<div class="dc-body">${billRow}${bossRow}${lateRow}${repairRow}${newRow}
+        <div class="dc-go-row">${extra}${main}</div></div>`;
+    const top = (w: number, more = '') => `<div class="wood"></div>
+      <div class="grp tl" style="width: ${w}px; height: 64px"><div class="fh-top">
+        <button type="button" class="st-btn st-sq" data-act="map" data-arg="${run.cityId}" aria-label="${t('Back to the map')}">${ICON.back()}</button>
+        ${this.walletChip()}${coinsOffer}${more}</div></div>`;
+    const design = Number((window as any).__DBD_FH) || 1;
+    // 2, the shelf: a wide card on top, the four tiles in a row under it
+    if (design === 2)
+      return `${top(420)}<div class="grp mcb fh-v2" style="width: 680px; height: 316px"><div class="st-chip day-card">${head}${body}</div>
+        <div class="fh-shelf">${skillsTile}${toolsTile}${penTile}${perksTile}</div></div>`;
+    // 3, the board: one panel, the day on the left and the four tiles in a square on the right
+    if (design === 3)
+      return `${top(420)}<div class="grp mcb fh-v3" style="width: 800px; height: 316px"><div class="st-chip fh-board"><div class="day-card">${head}${body}</div>
+        <div class="fb-grid">${skillsTile}${toolsTile}${penTile}${perksTile}</div></div></div>`;
+    // 4, the town sheet: the four as buttons in the top row; a wide card with every bill of the town
+    if (design === 4) {
+      const pill = (act: string, arg: string, icon: string, label: string, more = '') =>
+        `<button type="button" class="st-chip fh-pill" data-act="${act}"${arg ? ` data-arg="${arg}"` : ''}>${icon}<span>${label}</span>${more}</button>`;
+      const pills = `<span class="fh-pills">${pill('tree', '', ICON.wrench(26), t('Skills'), badge)}${pill('panel', 'tools', tool ? tool(26) : '', t('Tools'))}${pill('pen', '', PEN_ICON(26), t('Pen'), penBadge)}${pill('panel', 'perks', ICON.chest(26), t('Perks'), perkIcons ? `<span class="ft-perks">${perkIcons}</span>` : '')}</span>`;
+      const list = bills
+        .map((bb, i) => {
+          const k = plan.bills[i]?.kind;
+          const cls = i < st.billsPaid ? 'paid' : i === st.bill ? 'now' : '';
+          return `<div class="dl-bill ${cls}">${billIcon(k, 22)}<span>${esc(t(bb.name))}</span><i>${dueOf[i] ? t('Day {day}', { day: dueOf[i] }) : ''}</i><b>${money(bb.amt)}</b>${i < st.billsPaid ? ICON.check(18) : ''}</div>`;
+        })
+        .join('');
+      return `${top(820, pills)}<div class="grp mcb fh-v4" style="width: 720px; height: 316px"><div class="st-chip day-card">
+        <div class="fv4-l">${head}<div class="dc-go-row">${extra}${main}</div></div>
+        <div class="fv4-r">${bossRow}${lateRow}${repairRow}${newRow}<div class="dl-list" data-act="panel" data-arg="bills" role="button" aria-label="${t('Bills')}">${list}</div></div></div></div>`;
+    }
+    return `${top(420)}
+      <div class="grp ml" style="width: 160px; height: 316px"><div class="fh-col">${perksTile}${penTile}</div></div>
+      <div class="grp mcb" style="width: 390px; height: 316px"><div class="st-chip day-card">${head}${body}</div></div>
+      <div class="grp mr" style="width: 160px; height: 316px"><div class="fh-col">${skillsTile}${toolsTile}</div></div>`;
   }
 
   /** Tree nodes the player could buy right now (the badge on the Upgrades tile and the Barn sign). */
@@ -2487,7 +2482,7 @@ export class GameApp {
     const card = this.modal.querySelector('.modal-card');
     if (!card || !this.g.run) return;
     const st = engine().state();
-    const tabs = `<button type="button" data-act="tree">${t('Upgrades')}</button>` + (
+    const tabs = `<button type="button" data-act="tree">${t('Skills')}</button>` + (
       [
         ['tools', t('Tools')],
         ['perks', t('Perks')],
@@ -2656,7 +2651,7 @@ export class GameApp {
         <span class="sd-cash"><span class="money">${money(cashNow)}</span><span class="sd-lbl">${t('in the jar')}</span></span></div>
       <div class="sd-bill">${billIcon(plan.bills[b.index]?.kind, 26)}<span class="sb-what"><span class="sb-name">${esc(t(b.name))}</span><span class="sb-due">${dueLine}</span></span><b class="sb-amt">${money(b.amt)}</b>${stamp}</div>
       ${feeLine}${d.collector ? `<div class="sd-fee">${ICON.notice(18)}<span>${t('The collector took {amt} for the tax.', { amt: money(d.collector) })}</span></div>` : ''}${bossLine}${lvNow}
-      <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house sd-ups" data-act="tree" aria-label="${t('Upgrades')}">${ICON.wrench(28)}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
+      <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house sd-ups" data-act="tree" aria-label="${t('Skills')}">${ICON.wrench(28)}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
     </div></div>`;
   }
 
@@ -2684,8 +2679,8 @@ export class GameApp {
         `<div class="star-row try-row${r.firstTry ? ' ok' : ''}" style="animation-delay: .75s">${ICON.star(r.firstTry, 26)}<span>${t('Caught on the first try')}</span></div>`,
       ].join('');
       const gains =
-        (r.ribbons ? `<button type="button" class="dia dia-btn" data-act="barn" aria-label="${t('Spend ribbons in the Bling Barn')}">${ribbonIcon(18)} +${r.ribbons}</button>` : '') +
-        (r.credit ? `<button type="button" class="dia dia-btn" data-act="tree" aria-label="${t('Upgrades')}">${ICON.coin(18)} +${money(r.credit)}</button>` : '');
+
+        (r.credit ? `<button type="button" class="dia dia-btn" data-act="tree" aria-label="${t('Skills')}">${ICON.coin(18)} +${money(r.credit)}</button>` : '');
       return `<div class="grp mc" style="width: 470px; height: 350px"><div class="st-chip result-card">
         <div class="letter-head"><span class="eyebrow">${t('GRUMBLE &amp; SONS SAVINGS &amp; LOAN')}</span><span class="stamp ok big">${t('PAID IN FULL')}</span></div>
         <h2 class="r-title r-caught">${spriteImg(plan.runaway, 44, cropName(plan.runaway))}<span>${t('Caught: {name}!', { name: esc(t(cropName(plan.runaway))) })}</span><button type="button" class="up-info" data-act="info" data-arg="farm" aria-label="${t('About this farm')}"><i class="info-i">i</i></button></h2>
