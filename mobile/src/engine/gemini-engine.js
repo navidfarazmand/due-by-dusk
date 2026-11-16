@@ -16875,7 +16875,8 @@ export function startGeminiEngine() {
       tick,
       R,
       day,
-      max: Math.max(3, Math.round(maxCrops * dens * FIELD.count * repair)),
+      // (0.15: a bare field is 3 crops; a repair waiting to be paid takes it to 2)
+      max: Math.max(repair < 1 ? 2 : 3, Math.round(maxCrops * dens * FIELD.count * repair)),
       spawn: spawnRate / dens / (pl.spawn || 1) / FIELD.spawn,
       vm,
       cc: Math.min(0.65, 0.04 + FX.crit * shed.clover + 0.02 * n('clover') + 0.04 * n('clover2') + (T.crit || 0)),

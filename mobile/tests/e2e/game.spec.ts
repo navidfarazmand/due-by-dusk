@@ -979,8 +979,8 @@ test('the upgrade tree from the farmhouse: opens on the trunk, a track level is 
     return w.__DBD_TREE.treeReady(w.__DBD_APP.g, 400).map((n: any) => n.id);
   });
   expect(ready.length).toBeGreaterThan(3);
-  await expect(page.locator('.scr-farmhouse .fh-tile.big .ft-badge')).toHaveText(String(ready.length));
-  await page.locator('.scr-farmhouse .fh-tile.big').click();
+  await expect(page.locator('.scr-farmhouse .fh-tile[data-act="tree"] .ft-badge')).toHaveText(String(ready.length));
+  await page.locator('.scr-farmhouse .fh-tile[data-act="tree"]').click();
   await expect(page.locator('.scr-tree .tr-nd')).toHaveCount(103);
   // every node that can be bought now is ringed, and the trunk's card lists them
   await expect(page.locator('.scr-tree .tr-nd.ready')).toHaveCount(ready.length);
@@ -1049,7 +1049,7 @@ test('a long build: the fifth level of a track takes time, one build at a time, 
   (save.workshop as any).levels.scythe = 9;
   const errors = await boot(page, save);
   await act(page, 'play');
-  await page.locator('.scr-farmhouse .fh-tile.big').click();
+  await page.locator('.scr-farmhouse .fh-tile[data-act="tree"]').click();
   await page.locator('.scr-tree .tr-nd[data-arg="b1"]').click();
   const buy = page.locator('.scr-tree [data-act="tree-buy"][data-arg="b1"]');
   // level 10 is a build: the button shows how long
@@ -1078,7 +1078,7 @@ test('a long build: the fifth level of a track takes time, one build at a time, 
   // the farmhouse tile shows the clock too
   await page.locator('.scr-tree [data-act="tree-back"]').click();
   await expect(page.locator('.scr-farmhouse #dbdJobTile')).toBeVisible();
-  await page.locator('.scr-farmhouse .fh-tile.big').click();
+  await page.locator('.scr-farmhouse .fh-tile[data-act="tree"]').click();
   // the chip in the top bar goes to the node being built; the test ad finishes it
   await page.locator('.scr-tree .tr-jobchip').click();
   await expect(page.locator('.scr-tree .tr-card')).toContainText('Sharper blade');
@@ -1217,8 +1217,9 @@ test('tree tricks, blade and swing speed: each does what its text says (0.13)', 
   expect((await E(page, 'devTree')).swingBoost).toBeCloseTo(1.15, 5);
   await E(page, 'devClock', { combo: 60 });
   expect((await E(page, 'devTree')).swingBoost).toBeCloseTo(1.4, 5);
-  // Featherweight: +10% (then +20%), doubled while the field is at least four fifths full
-  await E(page, 'devClock', { combo: 0 });
+  // Featherweight: +10% (then +20%), doubled while the field is at least four fifths full (0.15: a bare field holds 3,
+  // so it starts empty)
+  await E(page, 'devClock', { combo: 0, empty: true });
   await fx(page, { r14: 2 });
   expect((await E(page, 'devTree')).swingBoost).toBeCloseTo(1.2, 5);
   const max = (await E(page, 'stats')).max;
@@ -1916,7 +1917,7 @@ test("a purchase that leaves too little for tonight's bill asks on a card over a
     e.addCash(e.bill().amt + 20);
     (window as any).__DBD_APP.show('farmhouse');
   });
-  await page.locator('.scr-farmhouse .fh-tile.big').click();
+  await page.locator('.scr-farmhouse .fh-tile[data-act="tree"]').click();
   await page.locator('.scr-tree .tr-nd[data-arg="b1"]').click();
   const buy = page.locator('.scr-tree [data-act="tree-buy"]:not([disabled])').first();
   await expect(buy).toBeVisible();
