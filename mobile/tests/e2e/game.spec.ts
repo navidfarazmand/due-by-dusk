@@ -2035,7 +2035,9 @@ test('the boss eats crops, its armour is off only after it eats, and thief crows
   // it eats within a few seconds, and then its armour is off
   await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().bossFull, undefined, { timeout: 15_000 });
   expect(hp0).toBeGreaterThan(0);
-  // bomb seeds and the storm come with its later phases
+  // bomb seeds and the storm come with its later phases (0.15.1: a bare field holds a crop or two, so the storm is
+  // given ripe crops to freeze)
+  await page.evaluate(() => { for (let i = 0; i < 5; i++) (window as any).__DBD_ENGINE.devCrop('carrot'); });
   await page.evaluate(() => (window as any).__DBD_ENGINE.devBoss(2, 0.3));
   await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().bombs > 0, undefined, { timeout: 10_000 });
   await page.waitForFunction(() => (window as any).__DBD_ENGINE.peek().encased > 0, undefined, { timeout: 10_000 });
