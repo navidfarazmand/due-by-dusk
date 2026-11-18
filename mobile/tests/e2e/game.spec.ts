@@ -1993,14 +1993,16 @@ test("a purchase that leaves too little for tonight's bill asks on a card over a
     (window as any).__DBD_APP.show('farmhouse');
   });
   await expect(page.locator('.scr-farmhouse [data-act="ad-extra"]')).toHaveClass(/\bblue\b/);
-  // just a little more cash than the bill asks
-  await page.evaluate(() => {
-    const e = (window as any).__DBD_ENGINE;
-    e.addCash(e.bill().amt + 20);
-    (window as any).__DBD_APP.show('farmhouse');
-  });
   await page.locator('.scr-farmhouse .fh-tile[data-act="tree"]').click();
   await page.locator('.scr-tree .tr-nd[data-arg="b1"]').click();
+  // enough cash for the level, but not for the level and tonight's bill (0.15.1: the price is read, not assumed under
+  // the bill: smaller average days made the bill smaller than a Blade level here)
+  const price = Number((await page.locator('.scr-tree [data-act="tree-buy"][data-arg="b1"] b').textContent())!.replace(/[^0-9]/g, ''));
+  await page.evaluate(p => {
+    const e = (window as any).__DBD_ENGINE;
+    e.addCash(Math.max(e.bill().amt, p) + 20);
+    (window as any).__DBD_APP.show('tree');
+  }, price);
   const buy = page.locator('.scr-tree [data-act="tree-buy"]:not([disabled])').first();
   await expect(buy).toBeVisible();
   const before = await page.evaluate(() => JSON.stringify((window as any).__DBD_APP.g.workshop.levels));
