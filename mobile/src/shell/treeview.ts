@@ -7,7 +7,7 @@
 
 import { lang, t } from '../i18n/i18n';
 import {
-  BRANCHES, TREE, TREE_WORKSHOP, buildingNode, canBuyNode, nodeDuration, nodeText, treeLevel, treeNode, type BuyCheck, type TreeBranch, type TreeNode,
+  BRANCHES, TREE, TREE_WORKSHOP, buildingNode, canBuyNode, nodeDuration, nodeText, treeLevel, treeNode, wayOpen, type BuyCheck, type TreeBranch, type TreeNode,
 } from '../game/tree';
 import { formatDuration, upgradeDef } from '../game/workshop';
 import type { GameSave } from '../game/progress';
@@ -17,12 +17,19 @@ import { ICON, esc, money } from './dom';
 const COL: Record<string, string> = {
   blade: '#FF6B57', power: '#B48CFF', reach: '#5FB4FF', field: '#6CD07A', market: '#FFC23D', ranch: '#E5A56C', bridge: '#CFC6B8', trunk: '#FFC23D',
 };
-export const TREE_ZOOMS = [620, 820, 1100];
+/** The map's size in CSS pixels (it is square): where it opens and how big a pinch can make it. The smallest is the
+ *  size that shows the whole tree (treeFitPx). 0.15.1: any size between, by pinching (treezoom.ts). */
+export const TREE_PX = { start: 820, max: 1600 };
+/** The − and + buttons zoom by this much. */
+export const TREE_STEP = 1.35;
 
 /** What the screen needs besides the save. */
 export interface TreeUi {
   sel: string;
-  zoom: number;
+  /** The map's size in CSS pixels. */
+  px: number;
+  /** The whole tree in one view (0.15.1): no card, the buttons float on the map. */
+  full?: boolean;
   /** Everything a node can be bought with now: savings and the farm's cash above its mark. */
   money: number;
   /** The node just bought: it and the Buy button pop once. */
@@ -49,9 +56,10 @@ for (const n of TREE) P[n.id] = pos(n);
 /** A padlock in the tree's 24-unit glyph box (a locked node). */
 const LOCK_PATH = 'M7.5 11V8.2a4.5 4.5 0 0 1 9 0V11 M5.5 11h13v9.5h-13z M12 14.6v2.6';
 
-/** A node is open when it is the trunk, owned, being built, or next to one you own. Only open nodes show what they are. */
+/** A node is open when it is the trunk, owned, being built, or next to one you own (a node not built yet does not shut
+ *  the way: wayOpen). Only open nodes show what they are. */
 export function nodeOpen(g: GameSave, n: TreeNode, building: string | null): boolean {
-  return n.kind === 'trunk' || treeLevel(g, n.id) > 0 || building === n.id || n.parents.some(p => treeLevel(g, p) > 0);
+  return n.kind === 'trunk' || treeLevel(g, n.id) > 0 || building === n.id || wayOpen(g, n);
 }
 
 /** Short money for the map and the lists ($12k); the Buy button shows the exact price. */
@@ -250,7 +258,15 @@ function effectLine(n: TreeNode, level: number): string {
   return t(x.text, { v: x.v.toLocaleString(loc) });
 }
 
-/** The tree screen: the map (it scrolls; + and - zoom) and the chosen node's card. */
+/** Four corners out (full screen) or in (back). */
+function fullIcon(full: boolean): string {
+  const d = full
+    ? 'M9 4v5H4 M15 4v5h5 M9 20v-5H4 M15 20v-5h5'
+    : 'M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5';
+  return `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+/** The tree screen: the map (drag it, pinch it, or − and +; full screen shows it all) and the chosen node's card. */
 export function treeMapHtml(g: GameSave, ui: TreeUi): string {
   const sel = treeNode(ui.sel) ? ui.sel : 'trunk';
   const building = buildingNode(g);
@@ -275,29 +291,46 @@ export function treeMapHtml(g: GameSave, ui: TreeUi): string {
     return `<text x="${C + r * Math.cos(a)}" y="${C + r * Math.sin(a) + 9}" text-anchor="middle" font-size="26" fill="${COL[b.id]}">${esc(t(b.name))}</text>`;
   }).join('');
   const nodes = TREE.map(n => nodeSvg(n, view(g, n, ui, building), sel, ui.bought)).join('');
-  const px = TREE_ZOOMS[Math.max(0, Math.min(TREE_ZOOMS.length - 1, ui.zoom))];
+  const px = Math.round(Math.max(120, Math.min(TREE_PX.max, ui.px || TREE_PX.start)));
   const job = g.workshop.job;
   const jobChip = job && building
     ? `<button type="button" class="tr-chip tr-jobchip" data-act="tree-pick" data-arg="${building}" aria-label="${esc(t('Building…'))}">${ICON.clock(15)}<span id="dbdTreeJob">${formatDuration(job.endsAt - ui.now)}</span></button>`
     : '';
-  return `<div class="tr-wrap">
-    <div class="tr-top"><button type="button" class="st-btn st-sq" data-act="tree-back" aria-label="${t('Back')}">${ICON.back()}</button>
+  const full = !!ui.full;
+  const fullBtn = `<button type="button" class="st-btn st-sq tr-full" data-act="tree-full" aria-label="${esc(t(full ? 'Exit full screen' : 'Full screen'))}" aria-pressed="${full}">${fullIcon(full)}</button>`;
+  return `<div class="tr-wrap${full ? ' full' : ''}">
+    <div class="tr-top"><button type="button" class="st-btn st-sq tr-back" data-act="tree-back" aria-label="${t('Back')}">${ICON.back()}</button>
       <h2>${t('Skills')}</h2>
       <div class="tr-chips"><span class="tr-chip tr-cash" aria-label="${esc(t('Cash for upgrades {amt}', { amt: money(ui.money) }))}">${ICON.coin(18)}<span>${short(ui.money)}</span></span>${jobChip}</div>
-      <div class="tr-zoom"><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="-1" aria-label="${t('Zoom out')}">−</button><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="1" aria-label="${t('Zoom in')}">+</button></div></div>
+      <div class="tr-zoom"><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="-1" aria-label="${t('Zoom out')}">−</button><button type="button" class="st-btn st-sq" data-act="tree-zoom" data-arg="1" aria-label="${t('Zoom in')}">+</button>${fullBtn}</div></div>
     <div class="tr-body">
       <div class="tr-map" id="dbdTreeMap"><svg viewBox="0 0 1000 1000" width="${px}" height="${px}" role="img" aria-label="${t('Upgrade tree')}">${rings}${labels}${links}${nodes}</svg></div>
-      ${cardHtml(g, treeNode(sel)!, ui, building)}
+      ${full ? '' : cardHtml(g, treeNode(sel)!, ui, building)}
     </div>
   </div>`;
 }
 
 /** Keep the chosen node in view after a redraw (the map scrolls). */
-export function centerTree(root: HTMLElement, sel: string, zoom: number): void {
+export function centerTree(root: HTMLElement, sel: string, px: number): void {
   const box = root.querySelector<HTMLElement>('#dbdTreeMap');
   if (!box) return;
-  const px = TREE_ZOOMS[Math.max(0, Math.min(TREE_ZOOMS.length - 1, zoom))];
   const [x, y] = P[sel] || P.trunk;
   box.scrollLeft = (x / 1000) * px - box.clientWidth / 2;
   box.scrollTop = (y / 1000) * px - box.clientHeight / 2;
+}
+
+/** The size that shows the whole tree in the map's box (the smallest a pinch goes). */
+export function treeFitPx(root: HTMLElement): number {
+  const box = root.querySelector<HTMLElement>('#dbdTreeMap');
+  if (!box) return TREE_PX.start;
+  return Math.max(120, Math.floor(Math.min(box.clientWidth, box.clientHeight)));
+}
+
+/** Resize the map's SVG in place (a pinch redraws nothing else). */
+export function sizeTree(root: HTMLElement, px: number): void {
+  const svg = root.querySelector<SVGSVGElement>('#dbdTreeMap svg');
+  if (!svg) return;
+  const v = String(Math.round(px));
+  svg.setAttribute('width', v);
+  svg.setAttribute('height', v);
 }

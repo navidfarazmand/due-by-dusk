@@ -143,7 +143,10 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['rotate', 'Crop rotation', 1, "The morning's new crop pays 25% more on its first day."],
     ['vault', 'Seed vault', 1, 'The last crop of the ladder joins a day sooner.'],
     ['hourglass', 'Golden hour', 1, 'In the last 5 s of the day, the sun waits while you keep a chain of 10 or more (up to 5 s a day).'],
-    ['leaf', 'Mulch', 2, 'Crops sprout {v}% faster.', [20, 40]],
+    // 0.15.1 (Navid, 18 Nov: "they should be a skill for vegetable speed growing. And it should be also hard to get it
+    // to a good level"): the growth skill, a track in the middle of the branch (MOVED). It was a trick, "Crops sprout
+    // 20% / 40% faster", that nobody could reach (Almanac before it is not built yet).
+    ['leaf', 'Mulch', 'T20', 'Crops ripen 10% faster a level.'],
     ['moon', 'Harvest moon', 'K', 'In the last 3 s of every day the whole field ripens and pays double.'],
     ['bird', 'Early bird', 'K', 'In the first 4 s of every day every crop pays double.'],
   ],
@@ -185,6 +188,17 @@ const ROWS: Record<TreeBranch, Row[]> = {
   ],
 };
 
+/** Nodes that sit in another place of their branch than their row (row index: slot index). Ids stay what the row
+ *  gives them, so saves and the engine (tfx, hasSkill) keep working. 0.15.1 (Navid, 18 Nov: "The goat skill can be
+ *  very easily bought ... by putting it further away maybe in the middle of branch we keep its challenge until later
+ *  in game"): Pasture accord (a1) goes to the middle of the Rancher branch and Barn owl (a6) takes its place by the
+ *  trunk; Mulch (f14), now the growth skill, goes to the middle of the Field branch and Deep roots (f6, not built
+ *  yet) out to Mulch's old place. */
+const MOVED: Partial<Record<TreeBranch, Record<number, number>>> = {
+  ranch: { 0: 5, 5: 0 },
+  field: { 13: 5, 5: 13 },
+};
+
 /** Between each branch and the next one round the trunk. */
 const BRIDGES: Row[] = [
   ['bolt', 'Charged edge', 1, 'During the rush, every swing crits.'],
@@ -212,7 +226,7 @@ function build(): TreeNode[] {
   for (const b of BRANCHES) {
     ROWS[b.id].forEach((row, i) => {
       const [glyph, name, lv, effect, byLevel] = row;
-      const slot = SLOTS[i];
+      const slot = SLOTS[slotOf(b.id, i)];
       const id = PREFIX[b.id] + (i + 1);
       const kind: NodeKind = typeof lv === 'string' ? (lv === 'K' ? 'key' : 'track') : 'trick';
       const levels = kind === 'track' ? Number(String(lv).slice(1)) : kind === 'key' ? 1 : (lv as number);
@@ -220,7 +234,7 @@ function build(): TreeNode[] {
       const price = kind === 'track' ? [base] : Array.from({ length: levels }, (_, k) => base * Math.pow(10, k));
       out.push({
         id, branch: b.id, kind, glyph, name, effect, levels, price, d: slot.d, s: slot.s, ...(byLevel ? { byLevel } : {}),
-        parents: slot.p.length ? slot.p.map(j => PREFIX[b.id] + (j + 1)) : ['trunk'],
+        parents: slot.p.length ? slot.p.map(j => idAt(b.id, j)) : ['trunk'],
         ...(kind === 'key' ? { pair: PREFIX[b.id] + (i === 14 ? 16 : 15) } : {}),
       });
     });
@@ -229,10 +243,19 @@ function build(): TreeNode[] {
     const a = BRANCHES[i].id, c = BRANCHES[(i + 1) % BRANCHES.length].id;
     out.push({
       id: 'x' + (i + 1), branch: 'bridge', kind: 'bridge', glyph: row[0], name: row[1], effect: row[3], levels: 1, price: [TIER[5]],
-      parents: [PREFIX[a] + 7, PREFIX[c] + 5], d: 4.75, s: 0, between: [a, c],
+      parents: [idAt(a, 6), idAt(c, 4)], d: 4.75, s: 0, between: [a, c],
     });
   });
   return out;
+}
+/** The slot a branch's row sits in, and the id of the node in a slot. */
+function slotOf(b: TreeBranch, row: number): number {
+  return MOVED[b]?.[row] ?? row;
+}
+function idAt(b: TreeBranch, slot: number): string {
+  const m = MOVED[b];
+  const row = m ? Number(Object.keys(m).find(r => m[Number(r)] === slot) ?? slot) : slot;
+  return PREFIX[b] + (row + 1);
 }
 
 export const TREE: TreeNode[] = build();
@@ -380,6 +403,22 @@ export function nodePrice(g: TreeHolder, n: TreeNode): number {
   return Math.floor(v / st + 1e-9) * st;
 }
 
+/** Whether the way to a node is open: a neighbour towards the trunk is owned, or that neighbour is not built yet
+ *  ("Coming soon") and the way to it is open. 0.15.1: a node that is not built yet no longer shuts what lies behind
+ *  it (Mulch, Golden hour, Early bird, Rush bloom, Spin cycle, Featherweight, Dancer and Duck pond could not be
+ *  reached). */
+export function wayOpen(g: TreeHolder, n: TreeNode, seen: Set<string> = new Set()): boolean {
+  for (const p of n.parents) {
+    if (treeLevel(g, p) > 0) return true;
+    const pn = NODE[p];
+    if (pn && pn.kind !== 'trunk' && !nodeLive(p) && !seen.has(p)) {
+      seen.add(p);
+      if (wayOpen(g, pn, seen)) return true;
+    }
+  }
+  return false;
+}
+
 export type BuyCheck =
   | { ok: true; cost: number; dur: number }
   | { ok: false; why: 'soon' | 'max' | 'locked' | 'pair' | 'busy' | 'building'; cost?: number };
@@ -395,7 +434,7 @@ export function canBuyNode(g: TreeHolder, n: TreeNode): BuyCheck {
   if (n.pair && (treeLevel(g, n.pair) > 0 || building === n.pair)) return { ok: false, why: 'pair' };
   // a node opens when a neighbour towards the trunk is owned; one you already have (an older save's track level, a
   // skill learned with diamonds) stays open
-  if (lv === 0 && !n.parents.some(p => treeLevel(g, p) > 0)) return { ok: false, why: 'locked' };
+  if (lv === 0 && !wayOpen(g, n)) return { ok: false, why: 'locked' };
   const cost = nodePrice(g, n), dur = nodeDuration(n, lv);
   // one build at a time
   if (dur > 0 && building) return { ok: false, why: 'busy', cost };

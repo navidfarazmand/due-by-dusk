@@ -3,7 +3,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from '../game/world';
-import { cropName, goldCredit, niceMoney, paceMul, planFor, toughnessFor, updatePace, winCredit, type BillKind, type CityPlan, avgDay } from '../game/plan';
+import { GROW_FAST, cropName, goldCredit, niceMoney, paceMul, planFor, toughnessFor, updatePace, winCredit, type BillKind, type CityPlan, avgDay } from '../game/plan';
 import { CROP_LEVEL_MAX, cropLevel, cropLevelProgress, cropPay, cropPayTable } from '../game/road';
 import { bestPower } from '../game/power';
 import {
@@ -33,7 +33,8 @@ import {
 } from './extras';
 import { ribbonIcon } from './looks';
 import { arthurOnCard } from './arthur';
-import { TREE_ZOOMS, centerTree, treeMapHtml } from './treeview';
+import { TREE_PX, TREE_STEP, centerTree, sizeTree, treeFitPx, treeMapHtml } from './treeview';
+import { attachTreeGestures, zoomTreeBy, type TreeZoomHost } from './treezoom';
 import { hapticImpact } from '../platform/mobile';
 import { addWorker, collectPen, newPen, penFill, penRate, penStored, workerCount, workerLevel, workerRate as workerRateOf, PEN_CAP_HOURS } from '../game/pen';
 import { TREE_SKILL, buildingNode, buyNode, setTreeMoney, settleTree, treeNode, treeReady } from '../game/tree';
@@ -220,6 +221,8 @@ export class GameApp {
     // the field's sound button opens the pause card, which holds the music and effects switches (Navid, 3 Nov)
     this.hud = new FarmHud($('stage'), () => this.pauseForSound());
     this.root.addEventListener('click', e => this.click(e));
+    // 0.15.1: the Skills map pans with a finger and zooms with two (treezoom.ts)
+    attachTreeGestures(this.sections.tree, this.treeHost);
     // Settings → the two volume sliders: heard while dragging, saved on release
     this.root.addEventListener('input', e => this.volumeInput(e, false));
     this.root.addEventListener('change', e => this.volumeInput(e, true));
@@ -589,12 +592,12 @@ export class GameApp {
       const box = el.querySelector<HTMLElement>('#dbdTreeMap');
       const keep = box && !this.treeRecenter ? [box.scrollLeft, box.scrollTop] : null;
       el.innerHTML = treeMapHtml(this.g, {
-        sel: this.treeSel, zoom: this.treeZoom, money: this.treeMoney(), ad: canOffer(this.g, 'finish'), now: Date.now(), bought: this.treeBought,
+        sel: this.treeSel, px: this.treePx, full: this.treeFull, money: this.treeMoney(), ad: canOffer(this.g, 'finish'), now: Date.now(), bought: this.treeBought,
       });
       this.treeBought = '';
       const nb = el.querySelector<HTMLElement>('#dbdTreeMap');
       if (keep && nb) [nb.scrollLeft, nb.scrollTop] = keep;
-      else requestAnimationFrame(() => centerTree(el, this.treeSel, this.treeZoom));
+      else requestAnimationFrame(() => centerTree(el, this.treeSel, this.treePx));
       this.treeRecenter = false;
     }
     else if (s === 'barn') el.innerHTML = barnHtml(this.g, this.barnTab, this.barnSel, this.wallet());
@@ -679,7 +682,9 @@ export class GameApp {
       case 'back': this.show(this.backTo); break;
       case 'tree': this.openTree(); break;
       case 'tree-back': this.show(this.backTo === 'tree' ? 'menu' : this.backTo); break;
-      case 'tree-node': this.treeSel = arg; this.render('tree'); break;
+      // (in full screen a tap on a node comes back to the map at its size before, on that node)
+      case 'tree-node': if (this.treeFull) this.leaveTreeFull(arg); else { this.treeSel = arg; this.render('tree'); } break;
+      case 'tree-full': this.toggleTreeFull(); break;
       // from a list (what is ready to buy, the build in progress): the map goes to the node
       case 'tree-pick': this.treeSel = arg; this.treeRecenter = true; this.render('tree'); break;
       case 'tree-buy': this.buyTreeNode(arg); break;
@@ -687,7 +692,7 @@ export class GameApp {
       case 'pen-back': this.show(this.penBack); break;
       case 'pen-collect': this.collectPen(false); break;
       case 'pen-double': void this.collectPen(true); break;
-      case 'tree-zoom': this.treeZoom = Math.max(0, Math.min(TREE_ZOOMS.length - 1, this.treeZoom + (Number(arg) || 0))); this.treeRecenter = true; this.render('tree'); break;
+      case 'tree-zoom': zoomTreeBy(this.sections.tree, this.treeHost, Number(arg) > 0 ? TREE_STEP : 1 / TREE_STEP); break;
       case 'barn': if (!this.modal.hidden) this.closeModal(); this.backTo = this.scr === 'tree' || this.scr === 'barn' ? this.backTo : this.scr; this.barnSel = this.g.flair.equipped[this.barnTab]; this.show('barn'); break;
       case 'barn-tab': this.barnTab = arg as FlairKind; this.barnSel = this.g.flair.equipped[this.barnTab]; this.render('barn'); break;
       case 'barn-pick': this.barnSel = arg; this.render('barn'); break;
@@ -1127,7 +1132,8 @@ export class GameApp {
     e.setTool(tool);
     // 0.15: a bare field is thin now (3 crops, one every 2 s); practice has a well-fed field, so six carrots and a
     // chain of six come quickly
-    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: { ...emptyLevels(), soil: 16 }, plan, tools: [tool] })) {
+    // (0.15.1: and its crops ripen quickly, as all did before)
+    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: { ...emptyLevels(), soil: 16 }, plan: { ...plan, grow: GROW_FAST }, tools: [tool] })) {
       this.restoreFarm(snap, sound);
       return this.show('world');
     }
@@ -1188,7 +1194,7 @@ export class GameApp {
     e.setSkills([]);
     this.clearTreeFx();
     e.setTool(tool);
-    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: levels, plan, tools: [tool] })) {
+    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: levels, plan: { ...plan, grow: GROW_FAST }, tools: [tool] })) {
       this.restoreFarm(snap, sound);
       return this.show('world');
     }
@@ -1665,7 +1671,39 @@ export class GameApp {
     if (this.scr !== 'tree') this.backTo = this.scr === 'barn' ? this.backTo : this.scr;
     this.treeSel = 'trunk';
     this.treeRecenter = true;
+    if (this.treeFull) {
+      this.treeFull = false;
+      this.treePx = this.treePxBack;
+    }
     this.show('tree');
+  }
+
+  /** Full screen (0.15.1; Navid, 18 Nov: "a full screen icon on top right so people can view their skill tree in one
+   *  view"): the whole tree fits the screen and the card steps aside; a tap on a node, or the button again, comes back
+   *  to the map at its size before. */
+  private toggleTreeFull(): void {
+    if (this.treeFull) {
+      this.leaveTreeFull(this.treeSel);
+      return;
+    }
+    this.treePxBack = this.treePx;
+    this.treeFull = true;
+    this.treeRecenter = true;
+    this.render('tree');
+    // the map's box is bigger without the card: fit the tree to it once it is drawn
+    requestAnimationFrame(() => {
+      const el = this.sections.tree;
+      this.treeHost.setPx(treeFitPx(el));
+      centerTree(el, 'trunk', this.treePx);
+    });
+  }
+
+  private leaveTreeFull(sel: string): void {
+    this.treeFull = false;
+    this.treePx = this.treePxBack;
+    this.treeSel = sel;
+    this.treeRecenter = true;
+    this.render('tree');
   }
 
   /** Pays for a tree node: savings, then the farm's cash above its mark (`spend`). */
@@ -1710,10 +1748,24 @@ export class GameApp {
     (window as any).__DBD_LOOK = lookFor(this.g.flair);
   }
 
-  /** The tree screen: the chosen node and the zoom step. */
+  /** The tree screen: the chosen node, the map's size in pixels (a pinch or − and + change it) and full screen. */
   private treeSel = 'trunk';
-  private treeZoom = 1;
+  private treePx = TREE_PX.start;
+  private treeFull = false;
+  /** The map's size before full screen, to come back to. */
+  private treePxBack = TREE_PX.start;
   private treeRecenter = true;
+  /** What the map's gestures and buttons resize: between the whole tree in view and TREE_PX.max. */
+  private readonly treeHost: TreeZoomHost = {
+    px: () => this.treePx,
+    setPx: (px: number) => {
+      const el = this.sections.tree;
+      const min = Math.min(TREE_PX.start, treeFitPx(el));
+      this.treePx = Math.round(Math.max(min, Math.min(TREE_PX.max, px)));
+      sizeTree(el, this.treePx);
+      return this.treePx;
+    },
+  };
   /** The node just bought: it pops once on the next draw. */
   private treeBought = '';
 

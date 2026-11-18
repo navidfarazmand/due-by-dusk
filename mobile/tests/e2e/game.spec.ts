@@ -318,13 +318,15 @@ test('an older save: learned skills become owned tree nodes, diamonds become sav
   await page.locator('.scr-tree .tr-nd[data-arg="a1"]').click();
   await expect(page.locator('.scr-tree .tr-card')).toContainText('Pasture accord');
   await expect(page.locator('.scr-tree .tr-card')).toContainText('Yours');
-  await page.locator('.scr-tree .tr-nd[data-arg="a2"]').click();
-  // 0.15: priced in the player's own days (two of them here, ring 2), a round amount
-  const price = Number((await page.locator('.scr-tree [data-act="tree-buy"][data-arg="a2"] b').textContent())!.replace(/[^0-9]/g, ''));
-  expect(price).toBe(await page.evaluate(() => { const P = (window as any).__DBD_PLANS; return P.niceMoney(2 * P.avgDay(3, 3)); }));
-  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="a2"]').click();
+  // 0.15.1: Pasture accord sits in the middle of the Rancher branch now (an old save keeps it); Barn owl opens the
+  // branch, by the trunk
+  await page.locator('.scr-tree .tr-nd[data-arg="a6"]').click();
+  // 0.15: priced in the player's own days (one of them here, ring 1), a round amount
+  const price = Number((await page.locator('.scr-tree [data-act="tree-buy"][data-arg="a6"] b').textContent())!.replace(/[^0-9]/g, ''));
+  expect(price).toBe(await page.evaluate(() => { const P = (window as any).__DBD_PLANS; return P.niceMoney(P.avgDay(3, 3)); }));
+  await page.locator('.scr-tree [data-act="tree-buy"][data-arg="a6"]').click();
   const g2 = await page.evaluate(() => (window as any).__DBD_APP.g);
-  expect(g2.tree.a2).toBe(1);
+  expect(g2.tree.a6).toBe(1);
   expect(g2.wallet).toBe(3000 - price);
   // no diamond anywhere: not on the tree, the menu, the Barn card or the daily farm
   for (const scr of ['menu', 'daily']) {
@@ -339,7 +341,7 @@ test('an older save: learned skills become owned tree nodes, diamonds become sav
   const g3 = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g3.wallet).toBe(3000 - price);
   expect(g3.treeCredit || 0).toBe(0);
-  expect(g3.tree).toEqual({ a1: 1, a2: 1 });
+  expect(g3.tree).toEqual({ a1: 1, a6: 1 });
   expect(errors).toEqual([]);
 });
 
@@ -741,8 +743,9 @@ test('the Pen: caught runaways earn while you are away, a tap collects, an ad do
   const held2 = Number((await page.locator('.scr-pen .pen-held').textContent())!.replace(/[^0-9]/g, ''));
   expect(held2).toBeGreaterThan(0);
   await page.locator('.scr-pen [data-act="pen-double"]').click();
+  // (the ad first: a small Pen, a coin or two, would let the wallet check pass before the ad is over)
+  await expect.poll(async () => page.evaluate(() => (window as any).__DBD_APP.g.ads.pens), { timeout: 8000 }).toBe(1);
   await expect.poll(async () => page.evaluate(() => (window as any).__DBD_APP.g.wallet), { timeout: 8000 }).toBeGreaterThanOrEqual(before + 2 * held2 - 2);
-  expect(await page.evaluate(() => (window as any).__DBD_APP.g.ads.pens)).toBe(1);
   expect(errors).toEqual([]);
 });
 
@@ -1051,6 +1054,46 @@ test('the upgrade tree from the farmhouse: opens on the trunk, a track level is 
   expect(errors).toEqual([]);
 });
 
+test('Skills: two fingers pinch the map, one drags it (not a tap), and full screen shows the whole tree (0.15.1)', async ({ page }) => {
+  const errors = await boot(page, seeded(CA.slice(0, 1), 5000));
+  await act(page, 'play');
+  await page.locator('.scr-farmhouse .fh-tile[data-act="tree"]').click();
+  const svg = page.locator('#dbdTreeMap svg');
+  await expect(svg).toBeVisible();
+  const w0 = Number(await svg.getAttribute('width'));
+  const box = (await page.locator('#dbdTreeMap').boundingBox())!;
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type: string, pts: number[][]) =>
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, k) => ({ x: p[0], y: p[1], id: k + 1 })) } as any);
+  // two fingers spread: the map grows around the point between them
+  await touch('touchStart', [[cx - 40, cy], [cx + 40, cy]]);
+  for (let k = 1; k <= 6; k++) await touch('touchMove', [[cx - 40 - k * 6, cy], [cx + 40 + k * 6, cy]]);
+  await touch('touchEnd', []);
+  const w1 = Number(await svg.getAttribute('width'));
+  expect(w1).toBeGreaterThan(w0 * 1.3);
+  // one finger drags it; a drag taps nothing (the trunk's list stays up)
+  const s0 = await page.evaluate(() => document.getElementById('dbdTreeMap')!.scrollLeft);
+  await touch('touchStart', [[cx, cy]]);
+  for (let k = 1; k <= 6; k++) await touch('touchMove', [[cx - k * 14, cy]]);
+  await touch('touchEnd', []);
+  expect(await page.evaluate(() => document.getElementById('dbdTreeMap')!.scrollLeft)).toBeGreaterThan(s0 + 40);
+  await expect(page.locator('.scr-tree .tr-list')).toBeVisible();
+  // full screen: no card, and the tree fits the map
+  await page.locator('.scr-tree [data-act="tree-full"]').click();
+  await expect(page.locator('.scr-tree .tr-wrap.full')).toBeVisible();
+  await expect(page.locator('.scr-tree .tr-card')).toHaveCount(0);
+  await expect.poll(async () => Number(await svg.getAttribute('width'))).toBe(
+    await page.evaluate(() => { const m = document.getElementById('dbdTreeMap')!; return Math.floor(Math.min(m.clientWidth, m.clientHeight)); }),
+  );
+  // a tap on a node comes back to the map at its size before, on that node's card
+  await page.locator('.scr-tree .tr-nd[data-arg="a6"]').click({ force: true });
+  await expect(page.locator('.scr-tree .tr-wrap.full')).toHaveCount(0);
+  await expect(page.locator('.scr-tree .tr-card')).toContainText('Barn owl');
+  expect(Number(await svg.getAttribute('width'))).toBe(w1);
+  expect(errors).toEqual([]);
+});
+
 test('a long build: the fifth level of a track takes time, one build at a time, and the test ad finishes it', async ({ page }) => {
   const save = seeded(CA.slice(0, 2), 5000);
   (save.workshop as any).levels.scythe = 9;
@@ -1183,6 +1226,36 @@ async function cut(page: Page, type = 'carrot', patch: Record<string, unknown> =
   expect(i).toBeGreaterThanOrEqual(0);
   return E(page, 'devCut', i);
 }
+
+test("a crop is cut only once it is ripe, at the field's growing speed; a fertilizer bag's crops grow like the others (0.15.1)", async ({ page }) => {
+  const errors = await trickDay(page);
+  // a crop that has just sprouted: the blade only brushes it
+  const i = await E(page, 'devCrop', 'carrot', { age: 0, stage: 1 });
+  const t0 = Date.now();
+  let c = (await E(page, 'peek')).crops[i];
+  expect(c.ripe).toBe(false);
+  const at = (k: any) => [k.x, k.y - k.r * k.ds * 0.55];
+  await E(page, 'devSwing', ...at(c), 0);
+  expect((await E(page, 'peek')).crops[i].hp).toBe(c.hp);
+  // on a field with no Mulch it ripens in about 1.8 s; then the blade cuts into it
+  await expect.poll(async () => (await E(page, 'peek')).crops[i].ripe, { timeout: 5000 }).toBe(true);
+  expect(Date.now() - t0).toBeGreaterThan(1300);
+  c = (await E(page, 'peek')).crops[i];
+  await E(page, 'devSwing', ...at(c), 0);
+  const after = (await E(page, 'peek')).crops;
+  expect(!after[i] || after[i].hp < c.hp).toBe(true);
+  // a fertilizer bag: four new crops, none ripe at once; they grow like any other
+  await E(page, 'devClock', { empty: true });
+  const st = await E(page, 'peek');
+  const x = st.worldW / 2, y = (st.crops.length ? st.crops[0].y : 260);
+  expect(await E(page, 'devProp', 'fertilizer', x, y)).toBe(true);
+  await E(page, 'devSwing', x, y - 14, 0);
+  const bag = (await E(page, 'peek')).crops;
+  expect(bag.length).toBe(4);
+  expect(bag.filter((k: any) => k.ripe).length).toBe(0);
+  await expect.poll(async () => (await E(page, 'peek')).crops.filter((k: any) => k.ripe).length, { timeout: 5000 }).toBe(4);
+  expect(errors).toEqual([]);
+});
 
 test('tree tricks, blade and swing speed: each does what its text says (0.13)', async ({ page }) => {
   const errors = await trickDay(page);
@@ -1321,13 +1394,15 @@ test('tree tricks, what crops pay and the field: each does what its text says (0
   await E(page, 'devClock', { chainEnd: true });
   await expect.poll(async () => (await E(page, 'devTree')).combo).toBe(0);
   expect((await E(page, 'peek')).today.earned).toBe(b2);
-  // Mulch: crops sprout 20% faster (then 40%; 0.15)
+  // Mulch (0.15.1, the growth skill): crops ripen 10% faster a level, from 1.8 s; sprouting stays as it was
   await fx(page, {});
   const spawn = (await E(page, 'devTree')).spawn;
+  expect((await E(page, 'devTree')).grow).toBeCloseTo(1.8, 6);
   await fx(page, { f14: 1 });
-  expect((await E(page, 'devTree')).spawn).toBeCloseTo(spawn / 1.2, 6);
-  await fx(page, { f14: 2 });
-  expect((await E(page, 'devTree')).spawn).toBeCloseTo(spawn / 1.4, 6);
+  expect((await E(page, 'devTree')).grow).toBeCloseTo(1.8 / 1.1, 6);
+  await fx(page, { f14: 10 });
+  expect((await E(page, 'devTree')).grow).toBeCloseTo(0.9, 6);
+  expect((await E(page, 'devTree')).spawn).toBeCloseTo(spawn, 6);
   // Golden hour: in the last 5 s the sun waits while a chain of 10 or more is kept
   await fx(page, { f13: 1 });
   await E(page, 'devClock', { stop: false, time: 4, combo: 12 });

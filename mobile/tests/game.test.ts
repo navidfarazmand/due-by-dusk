@@ -609,6 +609,56 @@ describe('the upgrade tree (0.13: the one upgrade system)', () => {
     for (const n of TREE) for (const p of n.parents) expect(ids.has(p)).toBe(true);
   });
 
+  it('puts the goat\'s Pasture accord and Mulch, the growth skill, in the middle of their branches (0.15.1; Navid, 18 Nov)', () => {
+    const a1 = treeNode('a1')!, a6 = treeNode('a6')!, f14 = treeNode('f14')!;
+    expect([a1.d, a1.s, a1.kind]).toEqual([4, 0, 'trick']);
+    expect(a1.parents.sort()).toEqual(['a3', 'a4']);
+    // Barn owl opens the Rancher branch now, and Scarecrow follows it
+    expect(a6.parents).toEqual(['trunk']);
+    expect(treeNode('a2')!.parents).toEqual(['a6']);
+    // Mulch: a track of 20 in the middle of the Field branch, priced from its ring (5 days, 12% more a level)
+    expect([f14.d, f14.s, f14.kind, f14.levels]).toEqual([4, 0, 'track', 20]);
+    expect(f14.parents.sort()).toEqual(['f3', 'f4']);
+    expect(f14.effect).toBe('Crops ripen 10% faster a level.');
+    try {
+      setTreeMoney(1000, 1);
+      expect(nodeCost(f14, 0)).toBe(niceMoney(5 * 1.12 ** 0 * 1000));
+      expect(nodeCost(f14, 10)).toBe(niceMoney(5 * 1.12 ** 10 * 1000));
+      expect(nodeCost(a1, 0)).toBe(5000);
+    } finally {
+      setTreeMoney(0, 1);
+    }
+    // ids stay with their rows, and no two nodes share a place
+    const spots = new Set(TREE.filter(n => n.kind !== 'trunk' && n.kind !== 'bridge').map(n => `${n.branch}:${n.d}:${n.s}`));
+    expect(spots.size).toBe(TREE.filter(n => n.kind !== 'trunk' && n.kind !== 'bridge').length);
+  });
+
+  it('lets the way pass a node that is not built yet, so every built node can be bought (0.15.1)', () => {
+    const g = holder();
+    const W = TREE_WORKSHOP as Record<string, keyof typeof g.workshop.levels>;
+    const own = (id: string) => (W[id] ? g.workshop.levels[W[id]] > 0 : (g.tree![id] || 0) > 0);
+    // buy one level of everything that can be bought, again and again, with no money limit
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const n of TREE) {
+        if (n.kind === 'trunk' || own(n.id) || !canBuyNode(g, n).ok) continue;
+        if (W[n.id]) g.workshop.levels[W[n.id]] = 1;
+        else g.tree![n.id] = 1;
+        grew = true;
+      }
+    }
+    // everything built is bought but the partner of each keystone pair taken first
+    const left = TREE.filter(n => n.kind !== 'trunk' && nodeLive(n.id) && !own(n.id));
+    for (const n of left) expect([n.id, canBuyNode(g, n)]).toEqual([n.id, { ok: false, why: 'pair' }]);
+    // Duck pond sits behind Goat treats, which is not built yet, and so opens with Pasture accord
+    const h = holder();
+    h.tree = { a6: 1, a2: 1, a3: 1 };
+    expect(canBuyNode(h, treeNode('a13')!)).toEqual({ ok: false, why: 'locked' });
+    h.tree.a1 = 1;
+    expect(nodeLive('a9')).toBe(false);
+    expect(canBuyNode(h, treeNode('a13')!).ok).toBe(true);
+  });
+
   it("sells the Workshop's level tracks at the Workshop's own prices, caps and build times", () => {
     expect(Object.values(TREE_WORKSHOP).sort()).toEqual(UPGRADES.map(u => u.id).sort());
     for (const [id, w] of Object.entries(TREE_WORKSHOP)) {

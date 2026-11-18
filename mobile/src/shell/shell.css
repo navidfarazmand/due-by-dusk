@@ -777,10 +777,19 @@
 button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tabular-nums; }
 .tr-zoom { display: flex; gap: 6px; }
 .tr-zoom .st-btn { width: 44px; height: 44px; font: 400 24px/1 var(--ui-display); }
+.tr-full { display: inline-flex; align-items: center; justify-content: center; }
+.tr-full svg { display: block; }
+/* 0.15.1, full screen: the whole tree in one view, no card, and the three buttons float on the map's top right */
+.tr-wrap.full { padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) 6px max(6px, env(safe-area-inset-left)); }
+.tr-wrap.full .tr-top { position: absolute; z-index: 2; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); min-height: 0; pointer-events: none; }
+.tr-wrap.full .tr-top > :not(.tr-zoom) { display: none; }
+.tr-wrap.full .tr-zoom { pointer-events: auto; }
 .tr-body { flex: 1; min-height: 0; display: flex; gap: 10px; }
 /* (a grid with margin: auto centres the map in a box bigger than it, on a tablet or a computer, and still lets a
    bigger map scroll from its top-left corner) */
-.tr-map { flex: 1; min-width: 0; overflow: auto; display: grid; border-radius: 18px; background: rgba(0, 0, 0, .18); -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
+.tr-map { flex: 1; min-width: 0; overflow: auto; display: grid; border-radius: 18px; background: rgba(0, 0, 0, .18); -webkit-overflow-scrolling: touch;
+  /* 0.15.1: the map's own gestures move and pinch it (treezoom.ts); the wheel still scrolls it */
+  touch-action: none; user-select: none; -webkit-user-select: none; overscroll-behavior: contain; }
 .tr-map svg { display: block; margin: auto; }
 .tr-map svg text { font-family: var(--ui-display); }
 .tr-nd { cursor: pointer; }

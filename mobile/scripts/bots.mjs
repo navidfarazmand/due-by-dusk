@@ -75,11 +75,16 @@ function installBots() {
         B.next = B.t + P.react;
         // a pause now and then (idleRate pauses a second on average)
         if (P.idleRate && rnd() < P.idleRate * P.react) { B.idle = P.idleMin + rnd() * (P.idleMax - P.idleMin); return; }
-        const live = w.crops.filter((c) => !c.dead && c.age > 0.4 && !c.boss);
+        const live = w.crops.filter((c) => !c.dead && c.stage >= 3 && c.age > 0.4 && !c.boss);
         const goat = w.goat;
         const ok = P.dodgeGoat && goat ? live.filter((c) => Math.hypot(c.x - goat.x, c.y - goat.y) > w.reach * 1.6) : live;
         const list = (ok.length ? ok : live).map((c) => [Math.hypot(c.x - p.x, c.y - c.r * c.ds * 0.5 - p.y), c]).sort((a, b) => a[0] - b[0]);
         B.target = list.length ? list[Math.min(list.length - 1, Math.floor(rnd() * P.pick))][1] : null;
+        // 0.15.1: only a ripe crop can be cut; with none ripe, wait by the crop that ripens next
+        if (!B.target) {
+          const growing = w.crops.filter((c) => !c.dead && !c.boss && c.age >= 0).sort((a, b) => b.age - a.age);
+          B.target = growing[0] || null;
+        }
       }
       const c = B.target;
       let tx, ty;

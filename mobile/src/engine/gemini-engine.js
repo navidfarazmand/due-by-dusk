@@ -16794,6 +16794,7 @@ export function startGeminiEngine() {
       day: daySecs,
       max: Math.round(maxCrops * dens * FIELD.count),
       spawn: spawnRate / dens / (pl ? pl.spawn || 1 : 1) / FIELD.spawn,
+      grow: GROW_BASE,
       vm: valMul,
       cc: Math.min(0.65, 0.04 + 0.04 * shed.clover + 0.03 * H.horseshoe + 0.07 * count(P, 'clover')),
       cm: count(P, 'heavy') ? 4.5 : 2.8,
@@ -16857,9 +16858,9 @@ export function startGeminiEngine() {
     const spawnRate =
       SPROUT_BASE /
       (1 + FX.spawn * shed.soil + 0.08 * n('hungry') + 0.16 * n('hungry2')) /
-      (hasSkill('soil_root') ? 1.12 : 1) /
-      // tree: Mulch (f14), crops sprout 20% faster a level
-      (1 + 0.2 * Math.min(2, tfx('f14')));
+      (hasSkill('soil_root') ? 1.12 : 1);
+    // 0.15.1: seconds for a crop to ripen; tree: Mulch (f14), 10% faster a level
+    const grow = GROW_BASE / (1 + GROW_STEP * Math.min(20, tfx('f14'))) / (pl.grow > 0 ? pl.grow : 1);
     const vm =
       (1 + FX.price * shed.market) *
       (1 + 0.06 * n('fever') + 0.12 * n('fever2') + 0.18 * n('fever3')) *
@@ -16878,6 +16879,7 @@ export function startGeminiEngine() {
       // (0.15: a bare field is 3 crops; a repair waiting to be paid takes it to 2)
       max: Math.max(repair < 1 ? 2 : 3, Math.round(maxCrops * dens * FIELD.count * repair)),
       spawn: spawnRate / dens / (pl.spawn || 1) / FIELD.spawn,
+      grow,
       vm,
       cc: Math.min(0.65, 0.04 + FX.crit * shed.clover + 0.02 * n('clover') + 0.04 * n('clover2') + (T.crit || 0)),
       cm: Math.max(n('heavy') ? 3.3 : 2.8, [0, 3.2, 3.6, 4][Math.min(3, tfx('b3'))]),
@@ -16942,6 +16944,13 @@ export function startGeminiEngine() {
   /** 0.15: crops a bare field holds (before the screen's size and FIELD.count) and seconds between sprouts. */
   const FIELD_BASE = 3,
     SPROUT_BASE = 2.2;
+  /** 0.15.1 (Navid, 18 Nov: "some vegetables grow instantly. While others take a sec. Tbh they should be a skill for
+   *  vegetable speed growing. And it should be also hard to get it to a good level"): seconds from sprout to ripe on a
+   *  bare field, and Mulch (f14, a track of 20) makes crops ripen 10% faster a level (1.8 s, 0.9 s at level 10, 0.6 s
+   *  at 20). Only a ripe crop can be cut. Every crop grows at the one speed, those from a fertilizer bag too; the day's
+   *  first crops (dawn) ripen at once, as before. Practice and the intro grow quickly (the plan's `grow`). */
+  const GROW_BASE = 1.8,
+    GROW_STEP = 0.1;
   function cropBaseVal(type) {
     const p = plan();
     return (p && p.cropVal && p.cropVal[type] != null ? p.cropVal[type] : CROP[type].val) * FIELD.pay * cropLevelPay(type);
@@ -17896,6 +17905,17 @@ export function startGeminiEngine() {
   const keys = new Set(); // 3-Stage Crop Growth Timings (snappy so gameplay stays fast and responsive!)
   const STAGE2_AGE = 0.16;
   const STAGE3_AGE = 0.36;
+  /** 0.15.1: how fast a crop's age runs while it grows (STAGE3_AGE in `cur.grow` seconds; 1 for a dawn crop, which
+   *  ripens at once as before). After it is ripe its age runs in real time. */
+  function growRate(c) {
+    if (c.quick) return 1;
+    const g = cur && cur.grow > 0 ? cur.grow : GROW_BASE;
+    return STAGE3_AGE / Math.max(0.05, g);
+  }
+  /** Only a ripe crop can be cut (0.15.1; before, anything older than 0.04 s). */
+  function unripe(c) {
+    return c.stage < 3 && c.age < STAGE3_AGE;
+  }
   function depth(y) {
     return FIELD.size * 1.2 * (0.8 + 0.45 * FarmScene_clamp((y - FIELD_TOP) / (HW - FIELD_TOP), 0, 1));
   }
@@ -18111,7 +18131,7 @@ export function startGeminiEngine() {
     // 0.15 (Navid: "in less than 1 second 15 sheriff habanero popped up from soil"): the day opens on one ripe crop,
     // and Dawn abundance (f4) adds 2, 3 or 5
     const initCount = Math.min(cur.max, 1 + DAWN_EXTRA[Math.min(3, tfx('f4'))]);
-    for (let i = 0; i < initCount; i++) spawnCrop(0.08 + i * 0.04);
+    for (let i = 0; i < initCount; i++) if (spawnCrop(0.08 + i * 0.04)) crops[crops.length - 1].quick = true;
     seeds = [];
     dbdVortexes = [];
     dbdWaves = [];
@@ -18336,7 +18356,7 @@ export function startGeminiEngine() {
       dmg = cur.dmg * [0, 0.4, 0.7][lv] * (crit ? cur.cm : 1);
     let killed = 0;
     for (const c of crops) {
-      if (c.dead || c.age < 0.04) continue;
+      if (c.dead || unripe(c)) continue;
       const cy = c.y - c.r * c.ds * 0.55,
         dx = c.x - g.x,
         dy = cy - g.y,
@@ -18598,7 +18618,7 @@ export function startGeminiEngine() {
     let best = null,
       bn = -1;
     for (const c of crops) {
-      if (c.dead || c.boss || c.age < 0.04) continue;
+      if (c.dead || c.boss || unripe(c)) continue;
       let n = 0;
       for (const d of crops) if (!d.dead && Math.abs(c.x - d.x) < R2 && Math.abs(c.y - d.y) < R2) n++;
       if (n > bn) {
@@ -18675,7 +18695,7 @@ export function startGeminiEngine() {
     let killed = 0;
     powerKill = true;
     for (const c of crops) {
-      if (c.dead || c.age < 0.04) continue;
+      if (c.dead || unripe(c)) continue;
       const cy = c.y - c.r * c.ds * 0.55;
       if (Math.hypot(c.x - x, cy - y) > cleaveR + c.r * c.ds * 0.6) continue;
       if (c.frosted) {
@@ -18736,7 +18756,7 @@ export function startGeminiEngine() {
       w.t += dt;
       const rr = w.R * Math.min(1, w.t / w.dur);
       for (const c of crops) {
-        if (c.dead || c.age < 0.04 || w.hit.has(c)) continue;
+        if (c.dead || unripe(c) || w.hit.has(c)) continue;
         const cy = c.y - c.r * c.ds * 0.55;
         if (Math.hypot(c.x - w.x, cy - w.y) > rr + c.r * c.ds * 0.5) continue;
         w.hit.add(c);
@@ -18795,7 +18815,7 @@ export function startGeminiEngine() {
   function powerSeedStorm(x, y, lv) {
     const list = [];
     for (const c of crops) {
-      if (c.dead || c.age < 0.04) continue;
+      if (c.dead || unripe(c)) continue;
       const cy = c.y - c.r * c.ds * 0.55;
       list.push({ c, cy, d: Math.hypot(c.x - x, cy - y) });
     }
@@ -18889,13 +18909,10 @@ export function startGeminiEngine() {
           addText('EGG ' + fmtGain(bonus), fp.x, fp.y - 32, '#fef9c3', 24, -42, 1.0);
         } else if (fp.kind === 'fertilizer') {
           addText('FERTILIZER! +4 CROPS', fp.x, fp.y - 32, '#bef264', 24, -42, 1.0);
-          for (let k = 0; k < 4; k++) {
-            if (spawnCrop(0)) {
-              const nc = crops[crops.length - 1];
-              nc.age = 0.5;
-              nc.stage = 3;
-            }
-          }
+          // 0.15.1 (Navid, 18 Nov: "The speed of those vegetables that grow after player get the spade. It should be
+          // similar to the speed of growing new vegetables"): the bag's four crops sprout and grow like any other
+          // (they were ripe at once); they still come on top of what the field holds
+          for (let k = 0; k < 4; k++) spawnCrop(0.04 * k);
         } else {
           const bonus = Math.round((5 + unlockLevel() * 2) * planVal());
           farm.cash += bonus;
@@ -19049,7 +19066,7 @@ export function startGeminiEngine() {
         let near = null,
           nd = Infinity;
         for (const o of crops) {
-          if (o.dead || o.boss || o.encase || o.age < 0.04) continue;
+          if (o.dead || o.boss || o.encase || unripe(o)) continue;
           const d = Math.hypot(o.x - c.x, o.y - c.y);
           if (d < nd) {
             nd = d;
@@ -19080,7 +19097,7 @@ export function startGeminiEngine() {
     let chained = 0,
       killed = 0;
     for (const tCrop of crops) {
-      if (tCrop.dead || chained >= (cur.stormN || 2)) continue;
+      if (tCrop.dead || unripe(tCrop) || chained >= (cur.stormN || 2)) continue;
       const d = Math.hypot(tCrop.x - x, tCrop.y - y);
       if (d > cur.R && d < cur.R + 170) {
         chained++;
@@ -19208,13 +19225,18 @@ export function startGeminiEngine() {
       half2 = R * R * 0.25;
     const inReach = [];
     for (const c of crops) {
-      if (c.dead || c.age < 0.04) continue;
+      if (c.dead || c.age < 0) continue;
       const cy = c.y - c.r * c.ds * 0.55,
         dx = c.x - pointer.x,
         dy = cy - pointer.y,
         rr = R + c.r * c.ds * 0.65,
         d2 = dx * dx + dy * dy;
       if (d2 > rr * rr) continue;
+      // 0.15.1: the blade only brushes a crop that is still growing: it sways, and is not cut
+      if (unripe(c)) {
+        if (Math.abs(c.wobbleVel) < 2.5) c.wobbleVel += dx < 0 ? -3.5 : 3.5;
+        continue;
+      }
       inReach.push([c, cy, d2 > half2 ? rim : 1]);
     }
     let hits = inReach.length,
@@ -19280,7 +19302,7 @@ export function startGeminiEngine() {
     const reach = cur.range || cur.R * 3;
     const list = [];
     for (const c of crops) {
-      if (c.dead || c.age < 0.04) continue;
+      if (c.dead || unripe(c)) continue;
       const cy = c.y - c.r * c.ds * 0.55;
       const d = Math.hypot(c.x - pointer.x, cy - pointer.y) - c.r * c.ds * 0.6;
       if (d <= reach) list.push({ d, c, cy });
@@ -19352,7 +19374,7 @@ export function startGeminiEngine() {
       while (v.acc >= 0.15) {
         v.acc -= 0.15;
         for (const c of crops) {
-          if (c.dead || c.age < 0.04) continue;
+          if (c.dead || unripe(c)) continue;
           const cy = c.y - c.r * c.ds * 0.55;
           if (Math.hypot(c.x - v.x, cy - v.y) > v.r + c.r * c.ds * 0.5) continue;
           powerKill = true;
@@ -20672,7 +20694,8 @@ export function startGeminiEngine() {
   }
   function updateCropSpringAndStages(c, dt) {
     const prevAge = c.age;
-    c.age += dt;
+    // (0.15.1: a crop grows at the field's speed, Mulch's; a delay before it shows and its age once ripe run in real time)
+    c.age += c.age >= 0 && c.age < STAGE3_AGE ? dt * growRate(c) : dt;
     if (c.age <= 0) return; // Stage 1 -> Stage 2 (Budding bulb + dirt crumbs)
     if (c.stage === 1 && prevAge < STAGE2_AGE && c.age >= STAGE2_AGE) {
       c.stage = 2;
@@ -21142,7 +21165,7 @@ export function startGeminiEngine() {
       goat.x += goat.dir * goat.speed * dt;
       if (hasSkill('gold_herd') && mode === 'day') {
         for (const c of crops) {
-          if (!c.dead && c.age > 0.2 && Math.hypot(c.x - goat.x, c.y - goat.y) < 34) {
+          if (!c.dead && !unripe(c) && Math.hypot(c.x - goat.x, c.y - goat.y) < 34) {
             c.hp -= cur.dmg * 12 * dt;
             if (c.hp <= 0) harvest(c);
           }
@@ -25309,6 +25332,7 @@ export function startGeminiEngine() {
           type: c.type,
           dead: c.dead,
           age: c.age,
+          ripe: !unripe(c),
           boss: !!c.boss,
           bee: !!c.bee,
         })),
@@ -25451,6 +25475,12 @@ export function startGeminiEngine() {
         crops = crops.filter((x) => !x.dead);
         return lost;
       };
+      /** Tests only: put a field prop (a fertilizer bag, a clover treat, an egg) at a field point. */
+      engineApi.devProp = (kind, x, y) => {
+        if (!window.__DBD_DEV_HOOKS || mode !== 'day') return false;
+        fieldProps.push({ kind, x, y, ds: depth(y), age: 0, life: 9.5 });
+        return true;
+      };
       /** Tests only: one swing of the tool at a field point, with the finger moving at `speed`. */
       engineApi.devSwing = (x, y, speed) => {
         if (!window.__DBD_DEV_HOOKS || mode !== 'day') return false;
@@ -25471,6 +25501,7 @@ export function startGeminiEngine() {
         stormN: cur.stormN,
         storm: !!cur.storm,
         spawn: cur.spawn,
+        grow: cur.grow,
         dmg: cur.dmg,
         streakNext,
         meter: rushCharge / RUSH_GOAL,

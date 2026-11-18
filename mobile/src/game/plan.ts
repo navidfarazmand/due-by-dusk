@@ -74,6 +74,8 @@ export interface CityPlan {
   /** Field fullness (max crops) and how fast new crops appear. */
   density: number;
   spawn: number;
+  /** 0.15.1: crops grow this many times as fast as on a bare field (practice and the intro: GROW_FAST). */
+  grow?: number;
   /** Seconds of daylight before upgrades, and extra seconds on later farms. */
   dayBase: number;
   dayBonus: number;
@@ -187,6 +189,9 @@ export function billDueDay(i: number, k = 0): number {
 }
 /** Seconds of daylight with no upgrades. v0.12 (Navid, 5 Nov): 15 s; Longer days and skills add up to about 30. */
 export const DAY_SECONDS = 15;
+/** 0.15.1: practice and the intro grow crops five times as fast as a bare field (about a third of a second, as all
+ *  crops did before), so the lessons come quickly. The engine's GROW_BASE is the bare field's 1.8 s. */
+export const GROW_FAST = 5;
 
 /**
  * A field's vegetables by size, smallest first: value, toughness and how often each comes up. Value per cut stays
@@ -420,16 +425,19 @@ export function dayShape(d: number, k = 0): number {
 }
 /** An average player's settled day on farm k, as a share of dayRef(k) (measured on 25 s days before v0.12). */
 const AVG_POINTS: Array<[k: number, share: number]> = [
-  // 0.15, evening of 15 Nov (bots on the thinner field: 3 crops and a sprout every 2 s on a bare field, half a crop
-  // and 5% faster a Richer soil level; average and strong players, on-track builds, days 1 to 6 of every town). The
-  // average bot cuts about 11 crops a day in Charlottetown (26 before), 17 to 24 through the USA, 30 to 55 later.
-  [0, 0.091], [1, 0.182], [2, 0.155], [3, 0.235], [4, 0.237],
-  [5, 0.197], [6, 0.183], [7, 0.137], [8, 0.222],
-  [9, 0.335], [10, 0.317], [11, 0.285], [12, 0.327],
-  [13, 0.398], [14, 0.358], [15, 0.277], [16, 0.358],
-  [17, 0.32], [18, 0.304], [19, 0.214], [20, 0.243],
-  [21, 0.264], [22, 0.241], [23, 0.217], [24, 0.244],
-  [25, 0.205], [26, 0.227], [27, 0.235],
+  // 0.15.1, 18 Nov: crops take 1.8 s to ripen on a field without Mulch and only a ripe one can be cut. The bots (average
+  // and strong, on-track builds without tree nodes, days 1 to 6 of every town) earn about 0.9 of what they did on the
+  // 0.15.0 field (the strong bot 0.86): this is the 0.15.0 table times that change, smoothed over five towns. The
+  // average bot cuts about 9.5 crops a day in Charlottetown (11 before), 16 to 22 through the USA, 24 to 51 later.
+  // (0.15.0, evening of 15 Nov: 0.091, 0.182, 0.155, 0.235, 0.237, 0.197, 0.183, 0.137, 0.222, 0.335, 0.317, 0.285,
+  // 0.327, 0.398, 0.358, 0.277, 0.358, 0.32, 0.304, 0.214, 0.243, 0.264, 0.241, 0.217, 0.244, 0.205, 0.227, 0.235.)
+  [0, 0.075], [1, 0.151], [2, 0.134], [3, 0.213], [4, 0.219],
+  [5, 0.186], [6, 0.179], [7, 0.131], [8, 0.213],
+  [9, 0.319], [10, 0.298], [11, 0.258], [12, 0.291],
+  [13, 0.341], [14, 0.301], [15, 0.237], [16, 0.318],
+  [17, 0.281], [18, 0.264], [19, 0.191], [20, 0.214],
+  [21, 0.225], [22, 0.213], [23, 0.201], [24, 0.228],
+  [25, 0.188], [26, 0.21], [27, 0.218],
 ];
 export function avgDayShare(k: number): number {
   const P = AVG_POINTS;

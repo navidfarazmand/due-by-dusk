@@ -863,6 +863,8 @@ const dict: Record<string, string> = {
   "Reset": "Réinitialiser",
   "Zoom out": "Dézoomer",
   "Zoom in": "Zoomer",
+  "Full screen": "Plein écran",
+  "Exit full screen": "Quitter le plein écran",
   "Upgrade tree": "Arbre d'améliorations",
   // v0.13: the upgrade tree's branches and nodes (names and effects, src/game/tree.ts): Blade and Power
   "Blade": "Lame",
@@ -1137,7 +1139,7 @@ const dict: Record<string, string> = {
   "+{v}% swing speed, doubled while the field is nearly full.": "+{v}% de vitesse de frappe, doublé quand le champ est presque plein.",
   "Every day starts with {v} more ripe crops.": "Chaque journée commence avec {v} légumes mûrs de plus.",
   "Golden corn comes {v} times as often.": "Le maïs doré arrive {v} fois plus souvent.",
-  "Crops sprout {v}% faster.": "Les légumes poussent {v}% plus vite.",
+  "Crops ripen 10% faster a level.": "Les légumes mûrissent 10% plus vite par niveau.",
   "Every bill costs {v}% less.": "Chaque facture coûte {v}% de moins.",
   "Every tenth crop in a chain pays ×{v}.": "Un légume sur dix d'une série rapporte ×{v}.",
   "Late fees are 10 points lower: 10%, 30%, 50%.": "Les pénalités de retard baissent de 10 points : 10%, 30%, 50%.",
