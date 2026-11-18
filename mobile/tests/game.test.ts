@@ -137,8 +137,9 @@ describe('city plans', () => {
     expect(billPressure(3)).toBeGreaterThan(billPressure(2));
     expect(billPressure(3)).toBe(BILL_RATE);
     expect(billPressure(27)).toBe(BILL_RATE);
-    // about 6 ads in ten minutes for an average player at most, never a wall
-    expect(BILL_RATE).toBeLessThanOrEqual(1.25);
+    // 0.15.1 (Navid, 18 Nov: "please make the game harder"): about 7 to 8 ads in ten minutes from town 4, never a wall
+    expect(BILL_RATE).toBe(1.3);
+    expect([billPressure(1), billPressure(2)]).toEqual([1.1, 1.2]);
   });
 
   it('sizes the surprises: none in the first town, a tax of about half a day and a repair a little under one', () => {
@@ -624,7 +625,8 @@ describe('the upgrade tree (0.13: the one upgrade system)', () => {
       setTreeMoney(1000, 1);
       expect(nodeCost(f14, 0)).toBe(niceMoney(5 * 1.12 ** 0 * 1000));
       expect(nodeCost(f14, 10)).toBe(niceMoney(5 * 1.12 ** 10 * 1000));
-      expect(nodeCost(a1, 0)).toBe(5000);
+      // (Navid, 18 Nov: "280$ for goat is still nothing!"): 50 of the player's days, more than two keystones
+      expect(nodeCost(a1, 0)).toBe(50_000);
     } finally {
       setTreeMoney(0, 1);
     }

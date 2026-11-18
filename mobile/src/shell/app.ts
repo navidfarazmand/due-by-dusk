@@ -3,7 +3,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from '../game/world';
-import { GROW_FAST, cropName, goldCredit, niceMoney, paceMul, planFor, toughnessFor, updatePace, winCredit, type BillKind, type CityPlan, avgDay } from '../game/plan';
+import { GROW_FAST, PRACTICE_SPAWN, cropName, goldCredit, niceMoney, paceMul, planFor, toughnessFor, updatePace, winCredit, type BillKind, type CityPlan, avgDay } from '../game/plan';
 import { CROP_LEVEL_MAX, cropLevel, cropLevelProgress, cropPay, cropPayTable } from '../game/road';
 import { bestPower } from '../game/power';
 import {
@@ -1133,7 +1133,7 @@ export class GameApp {
     // 0.15: a bare field is thin now (3 crops, one every 2 s); practice has a well-fed field, so six carrots and a
     // chain of six come quickly
     // (0.15.1: and its crops ripen quickly, as all did before)
-    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: { ...emptyLevels(), soil: 16 }, plan: { ...plan, grow: GROW_FAST }, tools: [tool] })) {
+    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: { ...emptyLevels(), soil: 16 }, plan: { ...plan, grow: GROW_FAST, spawn: PRACTICE_SPAWN }, tools: [tool] })) {
       this.restoreFarm(snap, sound);
       return this.show('world');
     }
@@ -1194,7 +1194,7 @@ export class GameApp {
     e.setSkills([]);
     this.clearTreeFx();
     e.setTool(tool);
-    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: levels, plan: { ...plan, grow: GROW_FAST }, tools: [tool] })) {
+    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: levels, plan: { ...plan, grow: GROW_FAST, spawn: PRACTICE_SPAWN }, tools: [tool] })) {
       this.restoreFarm(snap, sound);
       return this.show('world');
     }

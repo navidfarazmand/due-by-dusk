@@ -16852,8 +16852,8 @@ export function startGeminiEngine() {
       (hasSkill('soil_sun') ? 2 : 0) +
       (pl.dayBonus || 0);
     // 0.15 (Navid, 15 Nov: "we should not have that much vegetables that we can just swipe the blade anywhere and
-    // win"; "for low levels it should be very long time between each vegetables unless upgraded or having a perk"):
-    // a bare field holds 3 crops and sprouts one about every 2 s; Richer soil, Mulch and the perks fill it up.
+    // win"; "for low levels it should be very long time between each vegetables unless upgraded or having a perk");
+    // 0.15.1: a bare field holds 1 crop and sprouts one every 5 s; Richer soil and the perks fill it up.
     const maxCrops = FIELD_BASE + FX.crops * shed.soil + n('hungry') + 2 * n('hungry2') + (hasSkill('soil_root') ? 2 : 0);
     const spawnRate =
       SPROUT_BASE /
@@ -16867,8 +16867,8 @@ export function startGeminiEngine() {
       (hasSkill('gold_root') ? 1.15 : 1) *
       (T.value || 1) *
       planVal();
-    const dens =
-      (worldW ? FarmScene_clamp(((worldW * (HW - FIELD_TOP)) / (900 * 412)) * 0.62, 0.8, 1.3) : 1) * (pl.density || 1);
+    // (0.15.1: the town's density only; the screen's size used to change a field's crops and sprouting by up to 30%)
+    const dens = pl.density || 1;
     // v0.14: a repair waiting to be paid closes part of the field (the shell sets window.__DBD_REPAIR)
     const repair = window.__DBD_REPAIR > 0 && window.__DBD_REPAIR < 1 ? window.__DBD_REPAIR : 1;
     return {
@@ -16876,8 +16876,8 @@ export function startGeminiEngine() {
       tick,
       R,
       day,
-      // (0.15: a bare field is 3 crops; a repair waiting to be paid takes it to 2)
-      max: Math.max(repair < 1 ? 2 : 3, Math.round(maxCrops * dens * FIELD.count * repair)),
+      // (a repair waiting to be paid closes part of a field that holds more than one)
+      max: Math.max(1, Math.round(maxCrops * dens * FIELD.count * repair)),
       spawn: spawnRate / dens / (pl.spawn || 1) / FIELD.spawn,
       grow,
       vm,
@@ -16940,10 +16940,13 @@ export function startGeminiEngine() {
      allow (count 1; v0.11.1-0.11.2 doubled it and added bunches, which was too many and slowed phones down), spawning
      one at a time. Kept as knobs for tuning; tests can override them with window.__DBD_FIELD before the game loads. */
   // v0.12.4: count 0.85 (Navid: "make the vegetables just a bit fewer"); new crops come as fast as before
-  const FIELD = Object.assign({ size: 1.25, count: 0.85, spawn: 1, pay: 1, chain: 1 }, window.__DBD_FIELD || {});
-  /** 0.15: crops a bare field holds (before the screen's size and FIELD.count) and seconds between sprouts. */
-  const FIELD_BASE = 3,
-    SPROUT_BASE = 2.2;
+  const FIELD = Object.assign({ size: 1.25, count: 1, spawn: 1, pay: 1, chain: 1 }, window.__DBD_FIELD || {});
+  /** Crops a bare field holds and seconds between its sprouts. 0.15.1 (Navid, 18 Nov: "the base field 2s a new sprout
+   *  is toooooo much. make is 5s"; "a bare field should not even grow more than 1. the base should be base. the
+   *  minimum"): 1 crop and a sprout every 5 s, the same on every screen (the screen's size no longer changes them).
+   *  Richer soil and the perks add to them; later towns' fields are a little fuller (the plan's density and spawn). */
+  const FIELD_BASE = 1,
+    SPROUT_BASE = 5;
   /** 0.15.1 (Navid, 18 Nov: "some vegetables grow instantly. While others take a sec. Tbh they should be a skill for
    *  vegetable speed growing. And it should be also hard to get it to a good level"): seconds from sprout to ripe on a
    *  bare field, and Mulch (f14, a track of 20) makes crops ripen 10% faster a level (1.8 s, 0.9 s at level 10, 0.6 s
@@ -18129,8 +18132,8 @@ export function startGeminiEngine() {
     goatTimer = unlockLevel() >= 2 ? 3 + fieldRng('timer')() * 5 : Infinity;
     goat = null;
     // 0.15 (Navid: "in less than 1 second 15 sheriff habanero popped up from soil"): the day opens on one ripe crop,
-    // and Dawn abundance (f4) adds 2, 3 or 5
-    const initCount = Math.min(cur.max, 1 + DAWN_EXTRA[Math.min(3, tfx('f4'))]);
+    // and Dawn abundance (f4) adds 2, 3 or 5 (0.15.1: on top of what the field holds, so they count on a bare field)
+    const initCount = 1 + DAWN_EXTRA[Math.min(3, tfx('f4'))];
     for (let i = 0; i < initCount; i++) if (spawnCrop(0.08 + i * 0.04)) crops[crops.length - 1].quick = true;
     seeds = [];
     dbdVortexes = [];

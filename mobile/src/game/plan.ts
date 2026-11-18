@@ -192,6 +192,9 @@ export const DAY_SECONDS = 15;
 /** 0.15.1: practice and the intro grow crops five times as fast as a bare field (about a third of a second, as all
  *  crops did before), so the lessons come quickly. The engine's GROW_BASE is the bare field's 1.8 s. */
 export const GROW_FAST = 5;
+/** 0.15.1: and they sprout three times as fast as their town's field would (a bare field sprouts one every 5 s), so
+ *  practice's six carrots and chain of six still come in a few seconds. */
+export const PRACTICE_SPAWN = 3;
 
 /**
  * A field's vegetables by size, smallest first: value, toughness and how often each comes up. Value per cut stays
@@ -457,12 +460,16 @@ export function avgDay(k: number, d: number): number {
  * little more; from the fourth BILL_RATE, about 6 ads in ten minutes for an average player with the surprises and some
  * upgrades. A town's bills then follow the player's own days (paceMul), so this holds for weaker players too, and a
  * strong one needs about 2 or 3.
+ * 0.15.1 (Navid, 18 Nov: "please make the game harder ... i don't know why you keep pushing the ads to be as minimum
+ * as possible"): as bills follow each player's days, a harder field alone adds no ads; this is what does. Town 2 asks
+ * 1.1 of a day, town 3 1.2 and from town 4 1.3 (were 1.0, 1.1, 1.15): about 7 to 8 ads in ten minutes from town 4
+ * (about 5 before); the first town still needs none.
  */
-export const BILL_RATE = 1.15;
+export const BILL_RATE = 1.3;
 export function billPressure(k: number): number {
   if (k <= 0) return 0.7;
-  if (k === 1) return 1;
-  if (k === 2) return 1.1;
+  if (k === 1) return 1.1;
+  if (k === 2) return 1.2;
   return BILL_RATE;
 }
 

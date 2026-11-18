@@ -130,7 +130,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['zigzag', 'Dancer', 'K', 'Swings while your finger moves fast hit twice.'],
   ],
   field: [
-    ['grain', 'Richer soil', 'T24', 'Half a crop more on the field and 5% faster sprouting, a level.'],
+    ['grain', 'Richer soil', 'T24', 'Half a crop more on the field and 10% faster sprouting, a level.'],
     ['sun', 'Longer days', 'T20', '+0.5 s of daylight a level.'],
     ['twin', 'Twin germination', 1, 'One new crop in five sprouts with a twin.'],
     ['sunrise', 'Dawn abundance', 3, 'Every day starts with {v} more ripe crops.', [2, 3, 5]],
@@ -313,6 +313,10 @@ export function nodeLive(id: string): boolean {
  */
 export const RING_DAYS = [0, 1, 2, 3, 5, 8, 12, 20];
 export const BRIDGE_DAYS = 8;
+/** Nodes with a price of their own, in the player's days. 0.15.1 (Navid, 18 Nov: "280$ for goat is still nothing! 11
+ *  days? you mean 11 days each 15 sec?"): Pasture accord, the end of the goat's headbutts, costs 50 days, more than two
+ *  keystones; after the bills, most of that comes from ads. */
+export const NODE_DAYS: Record<string, number> = { a1: 50 };
 export const TRICK_LEVEL_STEP = 1.7;
 /** A Workshop track's level costs at least this many of the player's days (3% more a level). */
 export const TRACK_FLOOR_DAYS = 0.4;
@@ -325,6 +329,7 @@ export function setTreeMoney(day: number, scale: number): void {
 }
 /** A node's price in the player's days (before the money of the town). */
 export function nodeDays(n: TreeNode, level: number): number {
+  if (NODE_DAYS[n.id]) return NODE_DAYS[n.id] * Math.pow(TRICK_LEVEL_STEP, level);
   if (n.kind === 'bridge') return BRIDGE_DAYS;
   if (n.kind === 'key') return RING_DAYS[RING_DAYS.length - 1];
   const ring = RING_DAYS[Math.max(1, Math.min(RING_DAYS.length - 1, Math.round(n.d)))];
