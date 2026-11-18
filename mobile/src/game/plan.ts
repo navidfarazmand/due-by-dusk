@@ -428,20 +428,36 @@ export function dayShape(d: number, k = 0): number {
 }
 /** An average player's settled day on farm k, as a share of dayRef(k) (measured on 25 s days before v0.12). */
 const AVG_POINTS: Array<[k: number, share: number]> = [
-  // 0.15.1, 18 Nov: crops take 1.8 s to ripen on a field without Mulch and only a ripe one can be cut. The bots (average
-  // and strong, on-track builds without tree nodes, days 1 to 6 of every town) earn about 0.9 of what they did on the
-  // 0.15.0 field (the strong bot 0.86): this is the 0.15.0 table times that change, smoothed over five towns. The
-  // average bot cuts about 9.5 crops a day in Charlottetown (11 before), 16 to 22 through the USA, 24 to 51 later.
-  // (0.15.0, evening of 15 Nov: 0.091, 0.182, 0.155, 0.235, 0.237, 0.197, 0.183, 0.137, 0.222, 0.335, 0.317, 0.285,
-  // 0.327, 0.398, 0.358, 0.277, 0.358, 0.32, 0.304, 0.214, 0.243, 0.264, 0.241, 0.217, 0.244, 0.205, 0.227, 0.235.)
-  [0, 0.075], [1, 0.151], [2, 0.134], [3, 0.213], [4, 0.219],
-  [5, 0.186], [6, 0.179], [7, 0.131], [8, 0.213],
-  [9, 0.319], [10, 0.298], [11, 0.258], [12, 0.291],
-  [13, 0.341], [14, 0.301], [15, 0.237], [16, 0.318],
-  [17, 0.281], [18, 0.264], [19, 0.191], [20, 0.214],
-  [21, 0.225], [22, 0.213], [23, 0.201], [24, 0.228],
-  [25, 0.188], [26, 0.21], [27, 0.218],
+  // 0.15, evening of 15 Nov (bots on the thinner field: 3 crops and a sprout every 2 s on a bare field, half a crop
+  // and 5% faster a Richer soil level; average and strong players, on-track builds, days 1 to 6 of every town). The
+  // average bot cuts about 11 crops a day in Charlottetown (26 before), 17 to 24 through the USA, 30 to 55 later.
+  // 0.15.1 (18 Nov) keeps it: the field is thinner again (1 crop, a sprout every 5 s, crops that ripen in 1.8 s) and
+  // each crop pays more instead (FIELD_PAY), so a day earns about what it did (Charlottetown, 0.066, is measured
+  // again: about 0.73 of its 0.15.0 day). Bills follow each player's own days, so this table sets no ads: billPressure
+  // does.
+  [0, 0.066], [1, 0.182], [2, 0.155], [3, 0.235], [4, 0.237],
+  [5, 0.197], [6, 0.183], [7, 0.137], [8, 0.222],
+  [9, 0.335], [10, 0.317], [11, 0.285], [12, 0.327],
+  [13, 0.398], [14, 0.358], [15, 0.277], [16, 0.358],
+  [17, 0.32], [18, 0.304], [19, 0.214], [20, 0.243],
+  [21, 0.264], [22, 0.241], [23, 0.217], [24, 0.244],
+  [25, 0.205], [26, 0.227], [27, 0.235],
 ];
+/**
+ * What a crop pays more, by town, on the field of 0.15.1 (Navid, 18 Nov: a bare field of 1 crop and a sprout every 5 s,
+ * crops that take 1.8 s to ripen). The bots cut about 4 crops a day in Charlottetown (11 on the 0.15.0 field), 10 to 14
+ * through the USA and 17 to 37 later, and earned 0.27 to 0.8 of their 0.15.0 day; each crop pays the inverse (smoothed
+ * over five towns, and kept rising town by town), and a day earns about what it did: the money on screen keeps its size,
+ * and the bills their amounts. Charlottetown's crops pay 2.7 times, which brings its day to about 0.73 of 0.15.0's,
+ * and its average day (AVG_POINTS) is that, so the first town still leaves money over and needs no ads.
+ */
+const FIELD_PAY = [
+  2.7, 2.41, 2.32, 2.07, 2.03, 2.03, 1.93, 1.85, 1.84, 1.87, 1.81, 1.72, 1.69, 1.7, 1.66, 1.59, 1.58, 1.6, 1.57, 1.46, 1.45,
+  1.47, 1.41, 1.37, 1.4, 1.48, 1.44, 1.48,
+];
+export function fieldPay(k: number): number {
+  return FIELD_PAY[Math.max(0, Math.min(FIELD_PAY.length - 1, k))];
+}
 export function avgDayShare(k: number): number {
   const P = AVG_POINTS;
   if (k <= P[0][0]) return P[0][1];
@@ -642,7 +658,8 @@ export function planFor(cityId: string, scale = 1): CityPlan {
     // crops toughen a little each day; each bill brings a tougher crop instead of toughening the old ones
     hpDay: 0.02,
     hpBill: 1,
-    val: valMul(k),
+    // (0.15.1: and what the thinner field makes up for, FIELD_PAY)
+    val: valMul(k) * fieldPay(k),
     density: 1 + 0.02 * k,
     spawn: 1 + 0.015 * k,
     dayBase: DAY_SECONDS,
