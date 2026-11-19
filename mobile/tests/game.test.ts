@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ECONOMY } from '../src/game/progress';
-import { BILL_NAME, BILL_RATE, BORDER_STEP, niceAtLeast, niceMoney, paceMul, updatePace, BOSSES, DAY_SECONDS, billDays, billDueDay, billPressure, billSchedule, borders, goldCredit, LADDER_HP, LADDER_VAL, allPlans, cropName, planFor, dayRef, expectedPower, toughnessFor, winCredit } from '../src/game/plan';
+import { BILL_NAME, BILL_RATE, BORDER_STEP, niceAtLeast, niceMoney, paceMul, updatePace, BOSSES, DAY_SECONDS, FIRST_TOWN_CROP_HP, MIN_CROP_HP, billDays, billDueDay, billPressure, billSchedule, borders, goldCredit, LADDER_HP, LADDER_VAL, allPlans, cropName, planFor, dayRef, expectedPower, toughnessFor, winCredit } from '../src/game/plan';
 import {
   CROP_LEVEL_MAX, CROP_LEVEL_PAY, FIELD_KINDS, RUNAWAY, TYPICAL_CUTS, countryKnown, cropLevel, cropLevelProgress, cropPay, cropPayTable, cutsForLevel, debutFarm, typicalCuts,
 } from '../src/game/road';
@@ -11,9 +11,9 @@ import {
   walletAfterForeclosure, type GameSave, type RunInfo,
 } from '../src/game/progress';
 import { MAX_LEVEL, SHED_FX, UPGRADES, emptyLevels, oldWorkshopRefund, settleJob, startUpgrade, upgradeCost, upgradeCostFlat, upgradeDuration, upgradeTier } from '../src/game/workshop';
-import { TOOLS, modCost, newTools, parseTools, toolDef, toolStats, toolSummary } from '../src/game/tools';
+import { TOOLS, anyPower, hasPower, modCost, newTools, parseTools, toolDef, toolStats, toolSummary } from '../src/game/tools';
 import {
-  KEY_BUILD_MS, TREE, TREE_WORKSHOP, buildingNode, buyNode, canBuyNode, nodeCost, nodeDuration, nodeLive, nodePrice, nodeText, resetTree, setTreeMoney, settleTree, treeDiscount,
+  KEY_BUILD_MS, TREE, TREE_WORKSHOP, buildingNode, buyNode, canBuyNode, nodeCost, nodeDuration, nodeLive, nodePrice, nodeText, resetTree, setTreeMoney, setTreePower, settleTree, treeDiscount,
   treeHasAny, treeLevel, treeListValue, treeNode, treeReady, treeRefund, type TreeHolder,
 } from '../src/game/tree';
 
@@ -128,18 +128,16 @@ describe('city plans', () => {
     expect(weak.repair).toBeLessThan(base.repair);
   });
 
-  it('needs no ad in the first town, some from the second, more in the third and the full amount from the fourth', () => {
-    // Navid (15 Nov): "change the ads to play from town 2 and then in town 3 more than 2, then in town 4 full ads".
-    // A bill asks this share of an average day; under one leaves money for upgrades, the surprises add about 8%.
-    expect(billPressure(0)).toBeLessThan(0.9);
-    expect(billPressure(1)).toBeGreaterThanOrEqual(1);
+  it('asks a little less than a day of every town, a little more each town up to the fourth (0.16)', () => {
+    // A bill asks this share of an average day; under one leaves money for skills, the surprises add about 8%.
+    // 0.16 (Navid, 19 Nov: "maybe make it a bit easier for everyone for the bill?"): 0.6, 0.8, 0.85, then 0.9
+    expect(billPressure(0)).toBe(0.6);
     expect(billPressure(2)).toBeGreaterThan(billPressure(1));
     expect(billPressure(3)).toBeGreaterThan(billPressure(2));
     expect(billPressure(3)).toBe(BILL_RATE);
     expect(billPressure(27)).toBe(BILL_RATE);
-    // 0.15.1 (Navid, 18 Nov: "please make the game harder"): about 7 to 8 ads in ten minutes from town 4, never a wall
-    expect(BILL_RATE).toBe(1.3);
-    expect([billPressure(1), billPressure(2)]).toEqual([1.1, 1.2]);
+    expect(BILL_RATE).toBe(0.9);
+    expect([billPressure(1), billPressure(2)]).toEqual([0.8, 0.85]);
   });
 
   it('sizes the surprises: none in the first town, a tax of about half a day and a repair a little under one', () => {
@@ -204,8 +202,13 @@ describe('city plans', () => {
       }
     });
     expect(seen.size).toBe(28);
-    // the first town is carrots alone, falling to one swipe
-    expect(plans[0].stages).toEqual([{ type: 'carrot', stage: 0, debut: true, val: LADDER_VAL[0], hp: LADDER_HP[0] }]);
+    // the first town is carrots alone; 0.16 (Navid, 18 Nov: a carrot that falls to one cut "is wrong", then "try 2"):
+    // 2 cuts of a sickle without upgrades on the first day
+    expect(plans[0].stages).toEqual([{ type: 'carrot', stage: 0, debut: true, val: LADDER_VAL[0], hp: FIRST_TOWN_CROP_HP / plans[0].hp }]);
+    expect(Math.ceil(plans[0].stages[0].hp * plans[0].hp - 1e-9)).toBe(2);
+    // and no crop anywhere falls to one cut of a sickle without upgrades (on its town's first day)
+    for (const p of plans) for (const s of p.stages) expect(s.hp * p.hp).toBeGreaterThanOrEqual(MIN_CROP_HP - 1e-9);
+    void LADDER_HP;
     // every country's three signature vegetables are runaways of that country
     for (const c of COUNTRIES) for (const t of c.trio) expect(ROUTE[debutFarm(t)].country).toBe(c.code);
     // the King is a vegetable of its own country, met by the capital
@@ -243,7 +246,8 @@ describe('city plans', () => {
       expect(upgradeTier(u.id, l)).toBeGreaterThanOrEqual(upgradeTier(u.id, l - 1));
     }
     // tools are priced in the money of the country they are bought in
-    expect(toolDef('sickle').mods[0].base).toBe(300);
+    // (0.16: the sickle's Power booster, which unlocks its power bar, is $150, then 2.5 times as much a level)
+    expect(toolDef('sickle').mods[0].base).toBe(150);
     expect(toolDef('scythe').price).toBe(9000 * BORDER_STEP);
     expect(toolDef('flame').price).toBe(30000 * BORDER_STEP ** 2);
     expect(toolDef('blaster').price).toBe(90000 * BORDER_STEP ** 3);
@@ -332,6 +336,14 @@ describe('crop toughness follows the build', () => {
     delete g.run.tough;
     expect(parseGame(JSON.stringify(g)).run?.tough).toBeUndefined();
   });
+
+  it("keeps that a run's star goals were shown (0.16: once a run, on its first morning)", () => {
+    const g = newGame();
+    g.run = { cityId: 'ca_gatineau', startCash: 0, startedAt: 1, bestDay: 0, mark: 0, spent: 0 };
+    expect(parseGame(JSON.stringify(g)).run?.goals).toBeUndefined();
+    g.run.goals = true;
+    expect(parseGame(JSON.stringify(g)).run?.goals).toBe(true);
+  });
 });
 
 describe('free coins follow the player\'s own days', () => {
@@ -406,13 +418,16 @@ describe('progress', () => {
     expect(countryLock(g, 'US').open).toBe(true);
   });
 
-  it('scores stars for catching the runaway, money to spare after the big bill and a first try (0.15)', () => {
-    expect(starsFor({ won: false, cashLeft: 900, spare: 100, firstTry: true }).stars).toBe(0);
-    expect(starsFor({ won: true, cashLeft: 99, spare: 100, firstTry: false }).stars).toBe(1);
-    expect(starsFor({ won: true, cashLeft: 100, spare: 100, firstTry: false }).stars).toBe(2);
-    expect(starsFor({ won: true, cashLeft: 100, spare: 100, firstTry: true }).stars).toBe(3);
-    expect(starsFor({ won: true, cashLeft: 0, spare: 100, firstTry: true }).stars).toBe(2);
-    expect(starsFor({ won: true, cashLeft: 0, spare: 100, firstTry: true }).spare).toBe(false);
+  it('scores stars for catching the runaway, a big day (0.16) and a first try (0.15)', () => {
+    expect(starsFor({ won: false, bestDay: 900, bigDay: 100, firstTry: true }).stars).toBe(0);
+    expect(starsFor({ won: true, bestDay: 99, bigDay: 100, firstTry: false }).stars).toBe(1);
+    expect(starsFor({ won: true, bestDay: 100, bigDay: 100, firstTry: false }).stars).toBe(2);
+    expect(starsFor({ won: true, bestDay: 100, bigDay: 100, firstTry: true }).stars).toBe(3);
+    expect(starsFor({ won: true, bestDay: 0, bigDay: 100, firstTry: true }).stars).toBe(2);
+    expect(starsFor({ won: true, bestDay: 0, bigDay: 100, firstTry: true }).big).toBe(false);
+    // the big day is half again an average player's day there, the same for every player, a clean amount
+    for (const p of allPlans()) expect(p.bigDay).toBeGreaterThan(0);
+    expect(planFor('ca_charlottetown').bigDay).toBe(planFor('ca_charlottetown', 3).bigDay);
   });
 
   it('pays out a farm only once: a run banks and spends only what beats what the farm already paid', () => {
@@ -556,8 +571,15 @@ describe('the Power booster (the Charge handle until 0.11)', () => {
     expect(toolStats({ owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 2 } }).charge).toBe(2);
     // v0.12: the Charge handle is the Power booster, on every tool; each tool names its power
     for (const td of TOOLS) expect(td.mods.some(m => m.id === 'charge' && m.name === 'Power booster')).toBe(true);
-    expect(toolSummary(toolStats({ owned: ['sickle', 'scythe'], equipped: 'scythe', mods: {} }, 'scythe'))[0]).toBe('Power: Whirlwind');
-    expect(modCost('sickle', 'charge', 0)).toBe(300);
+    // 0.16 (Navid, 18 Nov: "who said power bar is free? it should be one of the tools upgrades!"): a tool has a power
+    // bar from its first Power booster
+    expect(toolSummary(toolStats({ owned: ['sickle', 'scythe'], equipped: 'scythe', mods: {} }, 'scythe'))[0]).toBe('No power bar yet');
+    expect(toolSummary(toolStats({ owned: ['sickle', 'scythe'], equipped: 'scythe', mods: { 'scythe.charge': 1 } }, 'scythe'))[0]).toBe('Power: Whirlwind');
+    expect(hasPower(newTools())).toBe(false);
+    expect(hasPower({ owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 1 } })).toBe(true);
+    expect(anyPower({ owned: ['sickle', 'scythe'], equipped: 'scythe', mods: { 'sickle.charge': 1 } })).toBe(true);
+    expect(modCost('sickle', 'charge', 0)).toBe(150);
+    expect(modCost('sickle', 'charge', 1)).toBe(380);
     expect(parseTools({ owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 9 } }).mods['sickle.charge']).toBe(5);
   });
 });
@@ -568,21 +590,49 @@ describe('the upgrade tree (0.13: the one upgrade system)', () => {
       // an own day of $5,000 (an average day there times a pace of 2)
       setTreeMoney(5000, 2);
       const sc = TREE.find(n => n.name === 'Scarecrow')!;
-      expect(nodeCost(sc, 0)).toBe(10_000);
-      expect(nodeCost(sc, 1)).toBe(niceMoney(2 * 1.7 * 5000));
-      expect(nodeCost(TREE.find(n => n.kind === 'key')!, 0)).toBe(100_000);
-      expect(nodeCost(TREE.find(n => n.kind === 'bridge')!, 0)).toBe(40_000);
-      // a Workshop track: the Workshop's price times the pace, never under 0.4 of the player's day
+      // 0.16 (Navid, 18 Nov: "why on earth upgrades are soooo cheap"; "make each skill that is a layer after the other,
+      // much more expensive"): rings of 2, 4, 7, 12, 20, 30 days, a keystone 50, a bridge 16, each further level of a
+      // trick 1.7 times the one before, and never under the ring's floor ($50 to $150,000) times the pace
+      expect(nodeCost(sc, 0)).toBe(20_000);
+      expect(nodeCost(sc, 1)).toBe(niceMoney(4 * 1.7 * 5000));
+      expect(nodeCost(TREE.find(n => n.kind === 'key')!, 0)).toBe(300_000);
+      expect(nodeCost(TREE.find(n => n.kind === 'bridge')!, 0)).toBe(80_000);
+      // a Workshop track: the Workshop's price times the pace, never under 0.8 of the player's day (3% more a level)
       const b1 = treeNode('b1')!;
-      expect(nodeCost(b1, 0)).toBe(2000);
-      expect(nodeCost(b1, 80)).toBe(Math.max(niceMoney(upgradeCost('scythe', 80)! * 2), niceMoney(0.4 * Math.pow(1.03, 80) * 5000)));
+      expect(nodeCost(b1, 0)).toBe(4000);
+      expect(nodeCost(b1, 80)).toBe(Math.max(niceMoney(upgradeCost('scythe', 80)! * 2), niceMoney(0.8 * Math.pow(1.03, 80) * 5000)));
       const NICE = [1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2, 2.2, 2.5, 2.8, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 9, 10];
       const clean = (v: number) => { const e = Math.pow(10, Math.floor(Math.log10(v) + 1e-12)); return NICE.some(x => Math.abs(x * e - v) < 1e-6 * e); };
       for (const n of TREE) if (n.kind !== 'trunk') for (let l = 0; l < Math.min(3, n.levels); l++) expect(clean(nodeCost(n, l))).toBe(true);
       // a discount keeps a round price
       const g = newGame();
       (g.tree ||= {}).m9 = 1;
-      expect(nodePrice(g, sc)).toBe(9500);
+      expect(nodePrice(g, sc)).toBe(19_000);
+    } finally {
+      setTreeMoney(0, 1);
+    }
+  });
+
+  const NODE_FLOOR_IDS = ['a1'];
+  it('makes each ring much dearer than the one before, from the first town on (0.16; Navid: "perennial bloom ... should be something in the order of 10k")', () => {
+    try {
+      // the first town: an average day of $15, a pace of 1
+      setTreeMoney(15, 1);
+      const ringOf = (d: number) => TREE.find(n => n.kind === 'trick' && Math.round(n.d) === d && !NODE_FLOOR_IDS.includes(n.id))!;
+      // Perennial bloom is the Field branch's fifth ring
+      expect(nodeCost(treeNode('p1')!, 0)).toBe(50);
+      expect(nodeCost(ringOf(5), 0)).toBe(10_000);
+      expect(treeNode('f8')!.name).toBe('Perennial bloom');
+      expect(nodeCost(treeNode('f8')!, 0)).toBe(10_000);
+      for (let d = 2; d <= 6; d++) expect(nodeCost(ringOf(d), 0)).toBeGreaterThanOrEqual(3.3 * nodeCost(ringOf(d - 1), 0));
+      expect(nodeCost(TREE.find(n => n.kind === 'key')!, 0)).toBe(150_000);
+      expect(nodeCost(treeNode('a1')!, 0)).toBe(10_000);
+      // a strong player (a pace of 3) pays three times as much
+      setTreeMoney(45, 3);
+      expect(nodeCost(ringOf(5), 0)).toBe(30_000);
+      // later on the days rule: Austin's day of about $1,200
+      setTreeMoney(1200, 1);
+      expect(nodeCost(ringOf(5), 0)).toBe(niceMoney(20 * 1200));
     } finally {
       setTreeMoney(0, 1);
     }
@@ -617,16 +667,16 @@ describe('the upgrade tree (0.13: the one upgrade system)', () => {
     // Barn owl opens the Rancher branch now, and Scarecrow follows it
     expect(a6.parents).toEqual(['trunk']);
     expect(treeNode('a2')!.parents).toEqual(['a6']);
-    // Mulch: a track of 20 in the middle of the Field branch, priced from its ring (5 days, 12% more a level)
+    // Mulch: a track of 20 in the middle of the Field branch, priced from its ring (0.16: 12 days, 20% more a level)
     expect([f14.d, f14.s, f14.kind, f14.levels]).toEqual([4, 0, 'track', 20]);
     expect(f14.parents.sort()).toEqual(['f3', 'f4']);
     expect(f14.effect).toBe('Crops ripen 10% faster a level.');
     try {
       setTreeMoney(1000, 1);
-      expect(nodeCost(f14, 0)).toBe(niceMoney(5 * 1.12 ** 0 * 1000));
-      expect(nodeCost(f14, 10)).toBe(niceMoney(5 * 1.12 ** 10 * 1000));
-      // (Navid, 18 Nov: "280$ for goat is still nothing!"): 50 of the player's days, more than two keystones
-      expect(nodeCost(a1, 0)).toBe(50_000);
+      expect(nodeCost(f14, 0)).toBe(niceMoney(12 * 1000));
+      expect(nodeCost(f14, 10)).toBe(niceMoney(12 * 1.2 ** 10 * 1000));
+      // (Navid, 18 Nov: "280$ for goat is still nothing!"): more than two keystones (100 of the player's days, 0.16)
+      expect(nodeCost(a1, 0)).toBe(100_000);
     } finally {
       setTreeMoney(0, 1);
     }
@@ -697,7 +747,15 @@ describe('the upgrade tree (0.13: the one upgrade system)', () => {
     expect(buyNode(g, treeNode('p1')!, 0, rich).ok).toBe(true);
     expect(g.tree!.p1).toBe(1);
     expect(canBuyNode(g, treeNode('p2')!).ok).toBe(true);
-    expect(nodeCost(treeNode('p1')!, 1)).toBe(Math.round(treeNode('p1')!.price[0] * 1.12));
+    expect(nodeCost(treeNode('p1')!, 1)).toBe(Math.round(treeNode('p1')!.price[0] * 1.2));
+    // 0.16: the Power branch opens with the first tool that has its power bar
+    try {
+      setTreePower(false);
+      expect(canBuyNode(g, treeNode('p2')!)).toMatchObject({ ok: false, why: 'power' });
+      expect(canBuyNode(g, treeNode('b1')!).ok).toBe(true);
+    } finally {
+      setTreePower(true);
+    }
     g.tree!.p2 = 3;
     expect(canBuyNode(g, treeNode('p2')!)).toEqual({ ok: false, why: 'max' });
     // no money, no node

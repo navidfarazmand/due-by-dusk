@@ -63,11 +63,15 @@ const BASE: Omit<ToolStats, 'style'> = {
   dmg: 1, speed: 1, reach: 1, crit: 0, value: 1, gold: 0, burn: 0, targets: 1, range: 0, storm: false, frost: false, charge: 0,
 };
 
-/** The power booster (v0.12; it was the Charge handle in 0.11, so the id stays 'charge' and testers keep their levels). */
-const chargeMod = (base: number): ModDef => ({
-  id: 'charge', name: 'Power booster', line: 'Your power meter fills 25% faster and your power hits harder.', max: 5, base, growth: 2,
+/** The power booster (v0.12; it was the Charge handle in 0.11, so the id stays 'charge' and testers keep their levels).
+ *  0.16 (Navid, 18 Nov: "who said power bar is free? it should be one of the tools upgrades!"): its first level gives
+ *  the tool its power bar (a tool without one has none); each level after fills it 25% faster and hits harder. */
+const chargeMod = (base: number, growth = 2): ModDef => ({
+  id: 'charge', name: 'Power booster', line: 'Your power bar fills 25% faster and your power hits harder.', max: 5, base, growth,
   apply: (s, l) => { s.charge = l; },
 });
+/** What the Power booster's next level does, in words (its first level unlocks the power bar). */
+export const POWER_UNLOCK_LINE = 'Unlocks your power bar: cut crops to fill it, and when it is full your tool unleashes its power.';
 
 /** The power each tool fires when the power meter is full (v0.12, Navid 5 Nov). */
 export const TOOL_POWER: Record<ToolId, string> = { sickle: 'Cleave', scythe: 'Whirlwind', flame: 'Fire wave', blaster: 'Seed storm' };
@@ -78,7 +82,8 @@ export const TOOLS: ToolDef[] = [
     blurb: 'Quick swings around your finger. Good at everything, great at nothing.',
     base: { ...BASE },
     mods: [
-      chargeMod(300),
+      // 0.16: the first level unlocks the power bar, so it comes before the others (about ten days of the first town)
+      chargeMod(150, 2.5),
       { id: 'whetstone', name: 'Whetstone', line: '+12% damage', max: 3, base: 600, growth: 2.3, apply: (s, l) => { s.dmg *= 1 + 0.12 * l; } },
       { id: 'grip', name: 'Long grip', line: '+7% reach', max: 3, base: 650, growth: 2.3, apply: (s, l) => { s.reach *= 1 + 0.07 * l; } },
       { id: 'charm', name: 'Lucky charm', line: '+3% crit chance', max: 3, base: 750, growth: 2.3, apply: (s, l) => { s.crit += 0.03 * l; } },
@@ -163,6 +168,15 @@ export function modLevel(st: ToolsState, tool: ToolId, mod: string): number {
   return st.mods[`${tool}.${mod}`] || 0;
 }
 
+/** 0.16: whether a tool has its power bar (its first Power booster). */
+export function hasPower(st: ToolsState, tool: ToolId = st.equipped): boolean {
+  return modLevel(st, tool, 'charge') >= 1;
+}
+/** Whether any tool the player owns has its power bar (the tree's Power branch opens with the first one). */
+export function anyPower(st: ToolsState): boolean {
+  return st.owned.some(id => hasPower(st, id));
+}
+
 /** Price of the next level of an attachment, or null when it is maxed. */
 export function modCost(tool: ToolId, mod: string, level: number): number | null {
   const m = toolDef(tool).mods.find(x => x.id === mod);
@@ -202,7 +216,11 @@ export function parseTools(o: any): ToolsState {
 /** Short stat lines for the tool card, relative to the sickle. */
 export function toolSummary(s: ToolStats): string[] {
   const pct = (v: number) => `×${v.toFixed(2)}`;
-  const out = [t('Power: {p}', { p: t(TOOL_POWER[s.style] || 'Cleave') }), t('Damage {x}', { x: pct(s.dmg) }), t('Speed {x}', { x: pct(s.speed) })];
+  const out = [
+    s.charge >= 1 ? t('Power: {p}', { p: t(TOOL_POWER[s.style] || 'Cleave') }) : t('No power bar yet'),
+    t('Damage {x}', { x: pct(s.dmg) }),
+    t('Speed {x}', { x: pct(s.speed) }),
+  ];
   if (s.style === 'blaster')
     out.push(t('Range {x}', { x: Math.round(s.range) }), s.targets > 1 ? t('{n} seeds a shot', { n: s.targets }) : t('{n} seed a shot', { n: s.targets }));
   else out.push(t('Reach {x}', { x: pct(s.reach) }));

@@ -285,6 +285,9 @@ export class FarmHud {
     // (Navid: "power bar doesn't fill up by each hitting"): it keeps filling during the rush too, up to half.
     const rushing = h.rushT > 0;
     const pw = clamp(h.rushCharge / Math.max(1, h.rushGoal), 0, 1);
+    // 0.16: no power bar until the tool's first Power booster (Tools)
+    const powerOn = h.powerOn !== false;
+    if (E.Rush.hidden === powerOn) E.Rush.hidden = !powerOn;
     // v0.12.4 (Navid: "why on earth there comes a rush bar exactly on where it should come a power bar"): this chip
     // is the power meter and nothing else. The rush shows on the chain strip (×1.5 and RUSH!).
     E.Rush.classList.toggle('near', !rushing && pw >= 0.8);

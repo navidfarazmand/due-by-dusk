@@ -2358,7 +2358,7 @@ export function startGeminiEngine() {
     {
       id: 'gale',
       title: 'AUTUMN GALE WINDS',
-      desc: 'Blowing leaves! Your power meter fills 2× faster.',
+      desc: 'Blowing leaves! Your power bar fills 2× faster.',
       weather: 'wind',
       chargeFast: 2.0,
     },
@@ -2643,7 +2643,7 @@ export function startGeminiEngine() {
     {
       id: 'cleaver',
       name: 'Power mastery',
-      line: 'Your power meter fills 50% faster and your power hits wider.',
+      line: 'Your power bar fills 50% faster and your power hits wider.',
       once: true,
     },
   ];
@@ -16339,7 +16339,7 @@ export function startGeminiEngine() {
     {
       id: 'gale',
       title: 'AUTUMN GALE WINDS',
-      desc: 'Blowing leaves! Your power meter fills 2× faster.',
+      desc: 'Blowing leaves! Your power bar fills 2× faster.',
       weather: 'wind',
       chargeFast: 2.0,
     },
@@ -16494,7 +16494,7 @@ export function startGeminiEngine() {
       tier: 3,
       icon: 'cleave',
       name: 'Power mastery',
-      line: 'Your power meter fills 50% faster and your power hits wider.',
+      line: 'Your power bar fills 50% faster and your power hits wider.',
       once: true,
       // v0.12: every tool has a power now, so the perk is back (not for a player whose skill already does the same)
       req: () => !hasSkill('reap_cleave'),
@@ -17806,7 +17806,10 @@ export function startGeminiEngine() {
   // 0.15 (Navid: "power bar doesn't fill up by each hitting ... suddenly it will fill and then release"): every hit
   // fills the meter by its share of the crop's health (half a cut in all), the cut itself the other half times the
   // chain; a thinner field has fewer cuts, so the meter is full at 8 cuts' worth
-  const RUSH_GOAL = 8,
+  // 0.16 (Navid, 18 Nov: "power bar is filling up toooooo fast. even when starting out after 2-3 carrots i can use
+  // power bar"; "who said power bar is free? it should be one of the tools upgrades!"): a tool has a power bar only
+  // from its first Power booster (powerOn), and the bar is full at 20 cuts' worth
+  const RUSH_GOAL = 20,
     RUSH_DURATION = 3,
     HIT_FILL = 0.5,
     CUT_FILL = 0.5;
@@ -17850,7 +17853,7 @@ export function startGeminiEngine() {
   const EVENT_IN_WX = {
     snow: {
       rain: { id: 'thaw', title: 'WINTER THAW', desc: 'A mild day! Crops sprout 35% faster.', weather: 'clear' },
-      gale: { id: 'blizzard', title: 'BLOWING SNOW', desc: 'Wild winds! Your power meter fills 2× faster.' },
+      gale: { id: 'blizzard', title: 'BLOWING SNOW', desc: 'Wild winds! Your power bar fills 2× faster.' },
     },
     leaves: { rain: { id: 'autumnrain', title: 'AUTUMN SHOWERS', desc: 'Cool rain! Crops sprout 35% faster.' } },
   };
@@ -18103,7 +18106,7 @@ export function startGeminiEngine() {
     chargeT = 0;
     chargeReady = false;
     rushTimer = tfx('a3') ? 2 : 0;
-    rushCharge = RUSH_GOAL * 0.25 * Math.min(2, tfx('p6'));
+    rushCharge = powerOn() ? RUSH_GOAL * 0.25 * Math.min(2, tfx('p6')) : 0;
     critRun = 0;
     streakNext = false;
     dayKinds = {};
@@ -18591,9 +18594,17 @@ export function startGeminiEngine() {
     }
     chainPaid = 0;
   }
+  /** 0.16: the tool in hand has a power bar (its first Power booster). */
+  function powerOn() {
+    return !!cur && (cur.chargeLv || 0) >= 1;
+  }
+  /** The Power booster's levels past the first (the first one unlocks the bar). */
+  function powerLv() {
+    return Math.max(0, (cur && cur.chargeLv ? cur.chargeLv : 0) - 1);
+  }
   /** Fills the power meter; full fires the power. During the rush it fills on, to half at most. */
   function addCharge(v) {
-    if (!(v > 0) || mode !== 'day') return;
+    if (!(v > 0) || mode !== 'day' || !powerOn()) return;
     if (rushTimer > 0) {
       rushCharge = Math.min(RUSH_GOAL * 0.5, rushCharge + v);
       return;
@@ -18604,7 +18615,7 @@ export function startGeminiEngine() {
   function powerGain() {
     return (
       chainMultiplier() *
-      (1 + 0.25 * (cur.chargeLv || 0)) *
+      (1 + 0.25 * powerLv()) *
       (cur.cleaver ? 1.5 : 1) *
       (dailyEvent && dailyEvent.chargeFast ? dailyEvent.chargeFast : 1) *
       // tree: Power cell (+5% a level), Chain fuel (twice as fast from ×1.5)
@@ -18632,10 +18643,10 @@ export function startGeminiEngine() {
     return best ? { x: best.x, y: best.y - best.r * best.ds * 0.55 } : { x: worldW / 2, y: (FIELD_TOP + HW) / 2 };
   }
   function firePower() {
-    if (mode !== 'day') return;
+    if (mode !== 'day' || !powerOn()) return;
     triggerRush();
     const at = powerSpot(),
-      lv = cur.chargeLv || 0,
+      lv = powerLv(),
       style = cur.style || 'sickle';
     today.powers = (today.powers || 0) + 1;
     powerHit = 1 + 0.2 * Math.min(3, tfx('p2'));
@@ -23431,13 +23442,84 @@ export function startGeminiEngine() {
   }
   function drawPropsCrowsAndWeather() {
     // Field Props (Fertilizer Bags & Clover Treats)
+    // 0.16 (Navid, 18 Nov: "i see one of those leaves, and i though it gives me 4 new vegetable. but instead it only
+    // gave me a dollar amount ... also their icon was exactly the same"): bigger, and each kind looks like what it gives:
+    // the fertilizer bag is a sack with a sprout and "+4", the clover treat a four-leaf clover on a gold coin
     for (const fp of fieldProps) {
-      const s = fp.ds * (0.92 + Math.sin(tNow * 5) * 0.05);
+      const s = fp.ds * (0.92 + Math.sin(tNow * 5) * 0.05) * 1.45;
       ctx.save();
       ctx.translate(fp.x, fp.y);
       ctx.scale(s, s);
       ctx.fillStyle = 'rgba(255, 235, 130, 0.25)';
       circ(ctx, 0, -12, 22);
+      if (fp.kind === 'fertilizer') {
+        // the sack
+        ctx.fillStyle = '#C89B5E';
+        ctx.strokeStyle = '#2B1708';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-12, -2);
+        ctx.quadraticCurveTo(-15, -20, -7, -24);
+        ctx.lineTo(7, -24);
+        ctx.quadraticCurveTo(15, -20, 12, -2);
+        ctx.quadraticCurveTo(0, 2, -12, -2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#A7783F';
+        ctx.beginPath();
+        ctx.roundRect(-8, -28, 16, 5, 2);
+        ctx.fill();
+        ctx.stroke();
+        // the sprout out of the top
+        ctx.strokeStyle = '#166534';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -28);
+        ctx.lineTo(0, -36);
+        ctx.stroke();
+        ctx.fillStyle = '#4ade80';
+        ctx.strokeStyle = '#2B1708';
+        ctx.lineWidth = 1.4;
+        ell(ctx, -5, -38, 5, 3, -0.5);
+        ctx.stroke();
+        ell(ctx, 5, -39, 5, 3, 0.5);
+        ctx.stroke();
+        // +4 on a green badge
+        ctx.fillStyle = '#16a34a';
+        circ(ctx, 0, -12, 7.5);
+        ctx.strokeStyle = '#2B1708';
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('+4', 0, -9);
+      } else if (fp.kind !== 'egg') {
+        // the clover treat: a four-leaf clover on a gold coin
+        ctx.fillStyle = '#FFC23D';
+        ctx.strokeStyle = '#2B1708';
+        ctx.lineWidth = 2;
+        circ(ctx, 0, -13, 13);
+        ctx.stroke();
+        ctx.fillStyle = '#22c55e';
+        ctx.lineWidth = 1.4;
+        for (const [ox, oy] of [
+          [-4.2, -17.2],
+          [4.2, -17.2],
+          [-4.2, -8.8],
+          [4.2, -8.8],
+        ]) {
+          circ(ctx, ox, oy, 4.6);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#FFE27A';
+        circ(ctx, 0, -13, 2.4);
+        ctx.fillStyle = '#2B1708';
+        ctx.font = 'bold 8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('$', 9, -1);
+      }
       if (fp.kind === 'egg') {
         ctx.fillStyle = '#fffbeb';
         ctx.strokeStyle = '#78532a';
@@ -23448,34 +23530,6 @@ export function startGeminiEngine() {
         ctx.stroke();
         ctx.fillStyle = 'rgba(255,255,255,.9)';
         ell(ctx, -3, -15, 2.2, 3.2, -0.4);
-      } else if (fp.kind === 'fertilizer') {
-        ctx.fillStyle = '#d6b37c';
-        ctx.strokeStyle = '#78532a';
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.roundRect(-12, -24, 24, 24, 5);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = '#16a34a';
-        circ(ctx, 0, -12, 6);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 8px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('+4', 0, -9);
-      } else {
-        ctx.fillStyle = '#22c55e';
-        ctx.strokeStyle = '#14532d';
-        ctx.lineWidth = 1.5;
-        for (const [ox, oy] of [
-          [-5, -14],
-          [5, -14],
-          [0, -20],
-        ]) {
-          circ(ctx, ox, oy, 6);
-          ctx.stroke();
-        }
-        ctx.fillStyle = '#facc15';
-        circ(ctx, 0, -14, 3.5);
       }
       ctx.restore();
     } // Swooping Crow Pests
@@ -25040,6 +25094,7 @@ export function startGeminiEngine() {
             tiers: CHAIN_TIERS,
             rushCharge,
             rushGoal: RUSH_GOAL,
+            powerOn: powerOn(),
             rushT: rushTimer,
             rushDur: RUSH_DURATION,
             time,
@@ -25352,6 +25407,12 @@ export function startGeminiEngine() {
         lucky: crops.filter((c) => c.lucky && !c.dead).map((c) => ({ x: c.x, y: c.y - c.r * c.ds * 0.5 })),
         frosted: crops.filter((c) => c.frosted && !c.dead).length,
         bombs: bombs.length,
+        // 0.16: where the first bomb seed and the first caught crop are (the tips point at them)
+        bombAt: bombs.length ? { x: bombs[0].x, y: bombs[0].y } : null,
+        encasedAt: (() => {
+          const e = crops.find((c) => c.encase && !c.dead);
+          return e ? { x: e.x, y: e.y - e.r * e.ds * 0.5 } : null;
+        })(),
         encased: crops.filter((c) => c.encase && !c.dead).length,
         encaseKind: (crops.find((c) => c.encase && !c.dead) || { encase: {} }).encase.kind || '',
         crowLoot: crows.reduce((a, c) => a + (c.loot || 0), 0),
@@ -25640,6 +25701,7 @@ export function startGeminiEngine() {
             tiers: CHAIN_TIERS,
             rushCharge,
             rushGoal: RUSH_GOAL,
+            powerOn: powerOn(),
             rushT: rushTimer,
             rushDur: RUSH_DURATION,
             time,

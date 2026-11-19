@@ -60,16 +60,24 @@ export function chestSvg(tier: number): string {
   </svg>`;
 }
 
-/** Coins and sparkles that burst out when the lid opens (positions are fixed so the burst looks the same). */
+/** Coins and sparkles that burst out when the lid opens (positions are fixed so the burst looks the same).
+ *  0.16 (Navid, 18 Nov: "you could present the chest a bit more exciting. not just dump it in the middle of screen"):
+ *  light rays turn behind the chest, sparkles twinkle round it, dust puffs where it lands, and a white flash and a
+ *  bigger shower of coins come with the lid. */
 export function chestBurst(tier: number): string {
-  const n = 6 + tier * 2;
+  const n = 10 + tier * 3;
   let out = '';
   for (let i = 0; i < n; i++) {
-    const a = -Math.PI / 2 + (i / (n - 1) - 0.5) * 2.4;
-    const d = 70 + ((i * 37) % 40);
-    out += `<i class="ch-coin" style="--dx: ${(Math.cos(a) * d).toFixed(0)}px; --dy: ${(Math.sin(a) * d - 20).toFixed(0)}px; --dl: ${(i * 0.035).toFixed(2)}s"></i>`;
+    const a = -Math.PI / 2 + (i / (n - 1) - 0.5) * 2.8;
+    const d = 90 + ((i * 37) % 70);
+    out += `<i class="ch-coin" style="--dx: ${(Math.cos(a) * d).toFixed(0)}px; --dy: ${(Math.sin(a) * d - 30).toFixed(0)}px; --dl: ${(i * 0.03).toFixed(2)}s"></i>`;
   }
-  return `<span class="ch-glow"></span>${out}`;
+  const sparks = [
+    [-74, -52, 0], [70, -64, 0.5], [-90, 6, 1.1], [86, 0, 0.8], [-40, -88, 1.4], [36, -92, 0.3],
+  ]
+    .map(([x, y, d]) => `<i class="ch-spark" style="--x: ${x}px; --y: ${y}px; --dl: ${d}s"></i>`)
+    .join('');
+  return `<span class="ch-rays"></span><span class="ch-glow"></span><span class="ch-flash"></span><span class="ch-dust"></span>${sparks}${out}`;
 }
 
 const ICONS: Record<string, string> = {

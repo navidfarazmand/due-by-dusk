@@ -9,6 +9,14 @@
 import { t } from '../i18n/i18n';
 import { engine } from './engine';
 import { touchy } from './hud';
+import { arthurTalk } from './arthur';
+import { SPRITE } from './art';
+
+/** A crop's picture for a tip's bubble. */
+export function cropIcon(type: string): string {
+  const u = SPRITE[type];
+  return u ? `<img src="${u}" alt="" draggable="false">` : '';
+}
 
 const INK = '#2B1708';
 /** Pointer ids for the ghost fingers (well away from real ones). */
@@ -38,6 +46,9 @@ export interface FieldPeek {
   frosted: number;
   /** v0.12: the boss's bomb seeds and storm casings, the coins thief crows carry, and its armour. */
   bombs?: number;
+  /** 0.16: where the first bomb seed and the first caught crop are. */
+  bombAt?: Pt | null;
+  encasedAt?: Pt | null;
   encased?: number;
   encaseKind?: string;
   crowLoot?: number;
@@ -60,11 +71,20 @@ const HAND = `<svg width="56" height="70" viewBox="0 0 48 60" aria-hidden="true"
 /** Where the fingertip sits in the hand drawing (CSS px). */
 const TIP = { x: 20, y: 6 };
 
+/** The tips' arrow (0.16): a fat gold arrow pointing up; it is turned towards the thing the tip is about. */
+const ARROW = `<svg width="46" height="52" viewBox="0 0 46 52" aria-hidden="true"><path d="M23 3 L42 25 H31 V48 H15 V25 H4 Z" fill="#FFC23D" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/><path d="M23 10 L35 23" stroke="#FFF4B0" stroke-width="3" stroke-linecap="round"/></svg>`;
+
 const COACH_HTML = `<div id="dbdCoach" hidden>
   <div class="co-block"></div>
   <div class="co-bars"><i></i><i></i></div>
   <div class="co-veil"></div>
   <div class="co-hole" hidden></div>
+  <div class="ct-spot" hidden></div>
+  <div class="ct-blk" data-s="t" hidden></div><div class="ct-blk" data-s="b" hidden></div><div class="ct-blk" data-s="l" hidden></div><div class="ct-blk" data-s="r" hidden></div>
+  <div class="ct-catch" hidden></div>
+  <div class="ct-arrow" hidden>${ARROW}</div>
+  <div class="ct-tip" hidden role="status" aria-live="polite"><span class="ct-who" hidden></span><span class="ct-body"><b class="ct-t"></b><span class="ct-d"></span><span class="ct-p" hidden><i class="ct-pf"></i><b class="ct-pt"></b></span></span><span class="ct-go" hidden></span></div>
+  <div class="ct-burst" hidden></div>
   <div class="co-cap" hidden></div>
   <div class="co-hand" data-i="0" hidden><span class="co-press"></span>${HAND}</div>
   <div class="co-hand" data-i="1" hidden><span class="co-press"></span>${HAND}</div>
@@ -89,12 +109,14 @@ export class Coach {
   private handAt: Pt[] = [{ x: -99, y: -99 }, { x: -99, y: -99 }];
   private down = [false, false];
   private onSkip: (() => void) | null = null;
+  private tips: Tips;
   /** A lesson or moment is on screen. */
   busy = false;
 
   constructor() {
     document.body.insertAdjacentHTML('beforeend', COACH_HTML);
     this.root = document.getElementById('dbdCoach') as HTMLElement;
+    this.tips = new Tips(this.root);
     const q = (s: string) => this.root.querySelector(s) as HTMLElement;
     this.veil = q('.co-veil');
     this.hole = q('.co-hole');
@@ -145,6 +167,7 @@ export class Coach {
     this.lift(0);
     this.lift(1);
     this.restoreTime();
+    this.hideTip();
     this.busy = false;
     this.root.hidden = true;
     this.root.classList.remove('cinema', 'blocking');
@@ -519,58 +542,81 @@ export class Coach {
 
   /** Level 0, the practice farm (v0.11.1, Navid 3 Nov: "make a level 0 where people can train, and it should wait until
    *  the player actually does it"). The daylight clock is stopped (the shell's job) while the player learns to cut and
-   *  chain; each step waits for the player. Resolves when the player has done them all. */
-  async practice(o: { jar: () => Element | null; combo: () => number; onSun: () => void; onSkip: () => void }): Promise<void> {
+   *  chain; each step waits for the player. Resolves when the player has done them all.
+   *  0.16 (Navid, 18 Nov: "our toturial is shit. please look at other games that clearly show player what to do
+   *  beautifully and with animation"): every step is a tip on the thing itself: the carrot lit with a hand dragging over
+   *  it, a bar for five carrots, the jar and Arthur's bill pointed at, a bar for the chain, then the sun. */
+  async practice(o: {
+    jar: () => Element | null;
+    bill: () => Element | null;
+    chain: () => Element | null;
+    sun: () => Element | null;
+    combo: () => number;
+    onSun: () => void;
+    onSkip: () => void;
+  }): Promise<void> {
     await this.run(async () => {
       this.showSkip(t('Skip practice'), o.onSkip);
       const count = () => peek()?.today.count || 0;
       await this.until(() => (peek()?.crops || []).filter(c => !c.dead && c.age > 0.35).length >= 2, 3000);
-      // 1. touch and drag: the ghost finger shows it (a picture only) until the player touches the field
-      this.stepCard(
-        touchy ? t('Touch the field and drag over a carrot') : t('Move the mouse over a carrot'),
-        touchy ? t('Keep your finger down and slide it. The sickle cuts just above your fingertip.') : t('The sickle follows the mouse and cuts what it touches.'),
-      );
-      const demo = async () => {
-        const c = nearestCrop(this, { x: innerWidth * 0.5, y: innerHeight * 0.6 });
-        if (!c) return;
-        const p = this.cropAt(c);
-        this.showHand(0, { x: p.x - 110, y: p.y + 30 });
-        this.press(0, false);
-        await this.glide(0, { x: p.x + 60, y: p.y - 10 }, 900);
-        this.lift(0);
-        await this.wait(500);
+      // 1. a carrot lit up, a ghost hand dragging across it, until the player cuts one
+      let aim: Pt | null = null;
+      let lock: { x: number; y: number } | null = null;
+      const carrot = (): Pt | null => {
+        const p = peek();
+        let c = lock && p ? p.crops.find(k => !k.dead && k.x === lock!.x && k.y === lock!.y) : undefined;
+        if (!c) {
+          const n = nearestCrop(this, aim || { x: innerWidth * 0.5, y: innerHeight * 0.62 });
+          c = n && p ? p.crops.find(k => k.x === n.x && k.y === n.y) : undefined;
+          lock = c ? { x: c.x, y: c.y } : null;
+        }
+        if (!c) return aim;
+        aim = this.cropAt(c);
+        return aim;
       };
-      const t0 = performance.now();
-      while (!peek()?.pointer.active && count() === 0) {
-        await demo();
-        if (performance.now() - t0 > 60000) break;
-      }
-      this.hideHand(0);
-      // 2. cut six carrots
-      const goal = 6;
-      while (count() < goal) {
-        this.stepCard(t('Cut carrots'), t('Each carrot pays a few coins.'), `${Math.min(count(), goal)} / ${goal}`);
-        await this.until(() => count() >= goal, 400);
-      }
-      this.stepCard(t('Cut carrots'), t('Each carrot pays a few coins.'), `${goal} / ${goal}`);
-      await this.wait(500);
-      // 3. coins go to the jar, and the jar pays the bills
-      const jar = o.jar();
-      this.stepCard(t('Coins go to your jar'), t('At dusk, the jar pays the bills from Grumble & Sons. Miss one and the bank takes the farm.'));
-      jar?.classList.add('co-pulse');
-      await this.wait(3200);
-      jar?.classList.remove('co-pulse');
-      // 4. a chain: cut quickly, one after another
-      const chainGoal = 6;
-      while (o.combo() < chainGoal) {
-        this.stepCard(t('Make a chain'), t('Cut crops quickly, one after another. A longer chain pays more for every crop.'), `${t('Chain')} ${Math.min(o.combo(), chainGoal)} / ${chainGoal}`);
-        await this.until(() => o.combo() >= chainGoal, 300);
-      }
-      this.say(t('Nice!'), undefined, 40);
-      await this.wait(900);
-      this.hush();
-      // 5. the sun: the shell starts the clock; the day ends at dusk
-      this.stepCard(t('The sun is your clock'), t('When it sets, the day is over. Cut as much as you can before dusk!'));
+      await this.tip({
+        at: carrot,
+        r: 64,
+        mode: 'play',
+        hand: 'drag',
+        dim: true,
+        icon: cropIcon('carrot'),
+        title: touchy ? t('Drag your finger over the carrot') : t('Move the mouse over the carrot'),
+        text: t('Keep the sickle on it: a carrot takes 2 cuts.'),
+        done: () => count() >= 1,
+      });
+      await this.cheer(aim, t('Nice!'));
+      // 2. five carrots, with a bar
+      const goal = 5;
+      await this.tip({
+        mode: 'play',
+        dim: false,
+        place: 'top',
+        icon: cropIcon('carrot'),
+        title: t('Cut 5 carrots'),
+        text: t('Every carrot pays you coins.'),
+        progress: () => ({ text: `${Math.min(count(), goal)} / ${goal}`, share: count() / goal }),
+        done: () => count() >= goal,
+      });
+      await this.cheer(null, t('Great!'));
+      // 3. the coins are in the jar; 4. Arthur's bill
+      await this.tip({ el: o.jar, pad: 6, title: t('Your coins go into this jar'), text: t('The jar pays your bills.') });
+      await this.tip({ el: o.bill, pad: 6, arthur: true, title: t('And this is my bill!'), text: t('At dusk on its day, your jar pays me. If it is short, I take half of it!') });
+      // 5. a chain, with a bar
+      const chainGoal = 5;
+      await this.tip({
+        el: o.chain,
+        pad: 6,
+        mode: 'play',
+        dim: false,
+        title: t('Now make a chain'),
+        text: t('Cut carrots one right after another. A long chain pays more.'),
+        progress: () => ({ text: `${t('Chain')} ${Math.min(o.combo(), chainGoal)} / ${chainGoal}`, share: o.combo() / chainGoal }),
+        done: () => o.combo() >= chainGoal,
+      });
+      await this.cheer(null, t('Nice!'));
+      // 6. the sun: the shell starts the clock; the day ends at dusk
+      await this.tip({ el: o.sun, pad: 4, title: t('The sun is your clock'), text: t('When it sets, the day ends. Cut all you can!') });
       o.onSun();
       await this.until(() => peek()?.mode !== 'day', 30000);
     });
@@ -612,6 +658,107 @@ export class Coach {
     });
   }
 
+  // ---------------------------------------------------------------- tips (0.16)
+
+  private hideTip(): void {
+    this.tips?.hide();
+  }
+
+  /** One tip, inside a running script: it stays until the player taps (a 'tap' tip) or does what it asks (`done`).
+   *  Resolves true when it was done, false when it gave up (`ms`). */
+  async tip(o: TipOpts): Promise<boolean> {
+    const my = this.token;
+    const mode = o.mode || 'tap';
+    this.root.hidden = false;
+    this.tips.show(o, cv => arthurTalk(cv));
+    let held = false;
+    if (o.hold ?? mode === 'tap') {
+      try {
+        held = engine().hold(true);
+      } catch {
+        held = false;
+      }
+    }
+    let tapped = false;
+    const off = mode === 'tap' ? this.tips.onTap(() => (tapped = true)) : null;
+    // a 'tap' tip can't be tapped away in its first moments (a tap meant for the field must not skip it)
+    const t0 = performance.now();
+    const minMs = mode === 'tap' ? 450 : 0;
+    const hand = o.hand;
+    this.pic = true;
+    try {
+      return await new Promise<boolean>((res, rej) => {
+        const tick = () => {
+          if (my !== this.token) return rej(new Stop());
+          const now = performance.now();
+          const c = this.tips.place(o);
+          if (o.progress) this.tips.setProgress(o);
+          // the ghost hand
+          if (hand && c) {
+            const k = ((now - t0) % 1400) / 1400;
+            if (hand === 'tap') {
+              this.showHand(0, { x: c.cx + 6, y: c.cy + 10 - (k < 0.3 ? (0.3 - k) * 40 : 0) });
+              if (k > 0.3 && k < 0.55) this.hands[0].classList.add('down');
+              else this.hands[0].classList.remove('down');
+            } else {
+              const span = 90;
+              const x = c.cx - span + span * 2 * Math.min(1, k / 0.75);
+              this.showHand(0, { x, y: c.cy + 12 });
+              this.hands[0].classList.toggle('down', k < 0.78);
+            }
+          } else if (hand) this.hands[0].hidden = true;
+          let ok = false;
+          try {
+            ok = o.done ? o.done() : false;
+          } catch {
+            ok = false;
+          }
+          if (ok) return res(true);
+          if (mode === 'tap' && tapped && now - t0 >= minMs) return res(true);
+          if (mode === 'tap') tapped = false;
+          if (o.ms && now - t0 > o.ms) return res(false);
+          requestAnimationFrame(tick);
+        };
+        tick();
+      });
+    } finally {
+      off?.();
+      this.pic = false;
+      if (hand) {
+        this.hands[0].classList.remove('down');
+        this.hands[0].hidden = true;
+      }
+      this.tips.hide();
+      if (held) {
+        try {
+          engine().hold(false);
+        } catch {
+          /* the engine is gone */
+        }
+      }
+    }
+  }
+
+  /** Tips one after another, as a script of their own (Skip ends them). Resolves true if all were shown. */
+  async tour(steps: Array<TipOpts | (() => Promise<void>)>, onSkip?: () => void): Promise<boolean> {
+    return this.run(async () => {
+      if (onSkip) this.showSkip(t('Skip'), onSkip);
+      for (const s of steps) {
+        if (typeof s === 'function') await s();
+        else await this.tip(s);
+      }
+    });
+  }
+
+  /** Well done: a burst of stars and a word. */
+  async cheer(at: Pt | null, word = t('Nice!')): Promise<void> {
+    const p = at || { x: innerWidth / 2, y: innerHeight * 0.45 };
+    this.tips.burst(p);
+    this.say(word, { x: p.x, y: p.y - 40 }, 40);
+    await this.wait(750);
+    this.hush();
+  }
+
   /** Points at a button the player should press (the Start button, a chest): waits until `done`. */
   async point(el: () => Element | null, word: string, done: () => boolean, ms = 60000): Promise<void> {
     await this.run(async () => {
@@ -629,6 +776,261 @@ export class Coach {
         await this.tapHint(e2, 1);
       }
     });
+  }
+}
+
+export interface TipOpts {
+  /** What the tip is about: a thing on screen, or a point on the field (screen px); neither: the bubble sits mid-screen. */
+  el?: () => Element | null;
+  at?: () => Pt | null;
+  /** A field point's spotlight radius, and the margin around an element (screen px). */
+  r?: number;
+  pad?: number;
+  /** A round spotlight on an element (a button, a chip). */
+  round?: boolean;
+  /** An icon (HTML) or Arthur Grumble, who speaks for the bank. */
+  icon?: string;
+  arthur?: boolean;
+  title: string;
+  text?: string;
+  /** 'tap': a tap anywhere goes on (the field holds still); 'press': only the lit thing can be pressed, and the tip
+   *  goes when done() is true; 'play': the field plays on, and the tip goes when done() is true. */
+  mode?: 'tap' | 'press' | 'play';
+  done?: () => boolean;
+  /** A live progress line ("2 / 5") and how full its bar is (0..1). */
+  progress?: () => { text: string; share: number } | null;
+  /** A ghost hand on the thing: tapping it, or dragging across it. */
+  hand?: 'tap' | 'drag';
+  /** Hold the field still while the tip is up (default: for 'tap' tips). */
+  hold?: boolean;
+  /** Dim everything around the spotlight (default: not for 'play' tips). */
+  dim?: boolean;
+  /** Give up after this long (ms; 'press' and 'play' tips). */
+  ms?: number;
+  /** Where the bubble goes: by the thing (default), or at the top or the bottom of the screen. */
+  place?: 'auto' | 'top' | 'bottom';
+}
+
+/** The tips (0.16; Navid, 18 Nov: "the tutorial is not interactive at all. it is not showing which menu you are talking
+ *  about"; "please look at other games that clearly show player what to do beautifully and with animation"): the
+ *  screen dims around the thing a tip is about, a gold ring pulses on it, a fat arrow bounces at it, a ghost hand shows
+ *  what to do, and a bubble of a few words says why. A tip that asks for something waits until the player does it. */
+export class Tips {
+  private wrap: HTMLElement;
+  private spot: HTMLElement;
+  private blks: HTMLElement[];
+  private catcher: HTMLElement;
+  private arrow: HTMLElement;
+  private tip: HTMLElement;
+  private who: HTMLElement;
+  private go: HTMLElement;
+  private burstEl: HTMLElement;
+  private shownAt: Pt | null = null;
+  private placed = { x: -1, y: -1 };
+
+  constructor(root: HTMLElement) {
+    const q = (s: string) => root.querySelector(s) as HTMLElement;
+    this.wrap = root;
+    this.spot = q('.ct-spot');
+    this.blks = Array.from(root.querySelectorAll<HTMLElement>('.ct-blk'));
+    this.catcher = q('.ct-catch');
+    this.arrow = q('.ct-arrow');
+    this.tip = q('.ct-tip');
+    this.who = q('.ct-who');
+    this.go = q('.ct-go');
+    this.burstEl = q('.ct-burst');
+  }
+
+  /** Shows a tip's bubble with its words (the spotlight and the arrow follow in `place`). */
+  show(o: TipOpts, arthur: (cv: HTMLCanvasElement) => void): void {
+    const tip = this.tip;
+    (tip.querySelector('.ct-t') as HTMLElement).textContent = o.title;
+    const d = tip.querySelector('.ct-d') as HTMLElement;
+    d.textContent = o.text || '';
+    d.hidden = !o.text;
+    const who = this.who;
+    if (o.arthur) {
+      who.innerHTML = `<canvas class="ct-arthur" data-w="64" data-h="64" data-tall="58"></canvas>`;
+      who.hidden = false;
+      who.className = 'ct-who arthur';
+      arthur(who.querySelector('canvas') as HTMLCanvasElement);
+    } else if (o.icon) {
+      who.innerHTML = o.icon;
+      who.hidden = false;
+      who.className = 'ct-who';
+    } else {
+      who.innerHTML = '';
+      who.hidden = true;
+    }
+    const mode = o.mode || 'tap';
+    this.go.hidden = mode !== 'tap';
+    this.go.textContent = t('Tap to continue');
+    tip.classList.toggle('acting', mode !== 'tap');
+    tip.hidden = false;
+    tip.classList.remove('pop');
+    void tip.offsetWidth;
+    tip.classList.add('pop');
+    this.placed = { x: -1, y: -1 };
+    this.shownAt = null;
+    this.setProgress(o);
+  }
+
+  setProgress(o: TipOpts): void {
+    const p = this.tip.querySelector('.ct-p') as HTMLElement;
+    const v = o.progress ? o.progress() : null;
+    p.hidden = !v;
+    if (!v) return;
+    (p.querySelector('.ct-pt') as HTMLElement).textContent = v.text;
+    (p.querySelector('.ct-pf') as HTMLElement).style.width = `${Math.round(Math.max(0, Math.min(1, v.share)) * 100)}%`;
+  }
+
+  /** Puts the spotlight, the arrow and the bubble around the target (called every frame). */
+  place(o: TipOpts): { cx: number; cy: number } | null {
+    const vw = innerWidth,
+      vh = innerHeight;
+    const mode = o.mode || 'tap';
+    let box: { l: number; t: number; w: number; h: number; round: boolean } | null = null;
+    const el = o.el ? o.el() : null;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        const pad = o.pad ?? 8;
+        box = { l: r.left - pad, t: r.top - pad, w: r.width + pad * 2, h: r.height + pad * 2, round: !!o.round };
+      }
+    } else if (o.at) {
+      const p = o.at();
+      if (p) {
+        const rr = o.r ?? 60;
+        box = { l: p.x - rr, t: p.y - rr, w: rr * 2, h: rr * 2, round: true };
+      }
+    }
+    const dim = o.dim ?? mode !== 'play';
+    const spot = this.spot;
+    if (box) {
+      Object.assign(spot.style, { left: `${box.l.toFixed(1)}px`, top: `${box.t.toFixed(1)}px`, width: `${box.w.toFixed(1)}px`, height: `${box.h.toFixed(1)}px` });
+      spot.classList.toggle('round', box.round);
+      spot.classList.toggle('dim', dim);
+      spot.hidden = false;
+    } else {
+      spot.hidden = true;
+    }
+    this.wrap.classList.toggle('ct-dimall', dim && !box);
+    // only the lit thing can be pressed ('press'): blockers cover the rest
+    const blk = mode === 'press' && box;
+    for (const b of this.blks) b.hidden = !blk;
+    if (blk && box) {
+      const [top, bot, left, right] = this.blks;
+      Object.assign(top.style, { left: '0', top: '0', width: '100%', height: `${Math.max(0, box.t)}px` });
+      Object.assign(bot.style, { left: '0', top: `${box.t + box.h}px`, width: '100%', bottom: '0', height: 'auto' });
+      Object.assign(left.style, { left: '0', top: `${box.t}px`, width: `${Math.max(0, box.l)}px`, height: `${box.h}px` });
+      Object.assign(right.style, { left: `${box.l + box.w}px`, top: `${box.t}px`, right: '0', width: 'auto', height: `${box.h}px` });
+    }
+    // the bubble: below the thing if there is room, else above, else beside it
+    const tip = this.tip;
+    const tr = tip.getBoundingClientRect();
+    const tw = tr.width,
+      th = tr.height;
+    const gap = 58;
+    let bx: number, by: number, dir: 'up' | 'down' | 'left' | 'right' | '' = '';
+    if (!box || o.place === 'top' || o.place === 'bottom') {
+      bx = (vw - tw) / 2;
+      by = o.place === 'bottom' ? vh - th - 14 : o.place === 'top' ? 12 : (vh - th) / 2;
+      if (box) dir = by > box.t + box.h ? 'up' : by + th < box.t ? 'down' : '';
+    } else {
+      const cx = box.l + box.w / 2;
+      if (box.t + box.h + gap + th < vh - 6) {
+        by = box.t + box.h + gap;
+        dir = 'up';
+      } else if (box.t - gap - th > 6) {
+        by = box.t - gap - th;
+        dir = 'down';
+      } else {
+        by = Math.max(8, Math.min(vh - th - 8, box.t + box.h / 2 - th / 2));
+        dir = box.l + box.w / 2 > vw / 2 ? 'right' : 'left';
+      }
+      if (dir === 'left') bx = box.l + box.w + gap;
+      else if (dir === 'right') bx = box.l - gap - tw;
+      else bx = cx - tw / 2;
+      bx = Math.max(10, Math.min(vw - tw - 10, bx));
+    }
+    // keep it still unless the thing really moved
+    if (Math.abs(bx - this.placed.x) > 6 || Math.abs(by - this.placed.y) > 6) {
+      this.placed = { x: bx, y: by };
+      tip.style.left = `${bx.toFixed(0)}px`;
+      tip.style.top = `${by.toFixed(0)}px`;
+    }
+    // the arrow, between the bubble and the thing, pointing at it
+    const ar = this.arrow;
+    if (box && dir) {
+      const cx = box.l + box.w / 2,
+        cy = box.t + box.h / 2;
+      let ax = cx,
+        ay = cy,
+        rot = 0;
+      if (dir === 'up') {
+        ay = box.t + box.h + 4;
+        rot = 0;
+      } else if (dir === 'down') {
+        ay = box.t - 4 - 52;
+        rot = 180;
+      } else if (dir === 'left') {
+        ax = box.l + box.w + 4;
+        ay = cy - 26;
+        rot = -90;
+      } else {
+        ax = box.l - 4 - 46;
+        ay = cy - 26;
+        rot = 90;
+      }
+      if (dir === 'up' || dir === 'down') ax = Math.max(8, Math.min(vw - 54, cx - 23));
+      ar.style.left = `${ax.toFixed(0)}px`;
+      ar.style.top = `${ay.toFixed(0)}px`;
+      ar.style.setProperty('--rot', `${rot}deg`);
+      ar.hidden = false;
+    } else ar.hidden = true;
+    this.catcher.hidden = mode !== 'tap';
+    if (!box) return null;
+    return { cx: box.l + box.w / 2, cy: box.t + box.h / 2 };
+  }
+
+  /** A burst of gold stars at a point: well done. */
+  burst(at: Pt): void {
+    const b = this.burstEl;
+    let html = '';
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2;
+      const d = 60 + (k % 3) * 22;
+      html += `<i style="--dx: ${(Math.cos(a) * d).toFixed(0)}px; --dy: ${(Math.sin(a) * d).toFixed(0)}px; --dl: ${((k % 4) * 0.03).toFixed(2)}s"></i>`;
+    }
+    b.innerHTML = html;
+    b.style.left = `${at.x.toFixed(0)}px`;
+    b.style.top = `${at.y.toFixed(0)}px`;
+    b.hidden = false;
+    b.classList.remove('go');
+    void b.offsetWidth;
+    b.classList.add('go');
+    setTimeout(() => (b.hidden = true), 900);
+  }
+
+  hide(): void {
+    this.spot.hidden = true;
+    for (const b of this.blks) b.hidden = true;
+    this.catcher.hidden = true;
+    this.arrow.hidden = true;
+    this.tip.hidden = true;
+    this.wrap.classList.remove('ct-dimall');
+    this.who.innerHTML = '';
+  }
+
+  /** The catcher: the next tap on it (a 'tap' tip goes on). */
+  onTap(fn: () => void): () => void {
+    const h = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fn();
+    };
+    this.catcher.addEventListener('pointerdown', h);
+    return () => this.catcher.removeEventListener('pointerdown', h);
   }
 }
 

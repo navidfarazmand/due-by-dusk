@@ -3,7 +3,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from '../game/world';
-import { GROW_FAST, PRACTICE_SPAWN, cropName, goldCredit, niceMoney, paceMul, planFor, toughnessFor, updatePace, winCredit, type BillKind, type CityPlan, avgDay } from '../game/plan';
+import { GROW_FAST, PRACTICE_CROP_HP, PRACTICE_SPAWN, cropName, goldCredit, niceMoney, paceMul, planFor, toughnessFor, updatePace, winCredit, type BillKind, type CityPlan, avgDay } from '../game/plan';
 import { CROP_LEVEL_MAX, cropLevel, cropLevelProgress, cropPay, cropPayTable } from '../game/road';
 import { bestPower } from '../game/power';
 import {
@@ -13,7 +13,7 @@ import {
 import { FLAIR, buyFlair, equipFlair, flairById, lookFor, type FlairKind } from '../game/flair';
 import { DAILY_AD_TRIES, MEDAL_NAME, dailyFor, duelFor, medalOf, newDaily, sidePlan, triesLeft, type SideDef } from '../game/daily';
 import { SHED_FX, emptyLevels, formatDuration, type Levels, type UpgradeId } from '../game/workshop';
-import { TOOLS, isToolId, modCost, modLevel, newTools, toolDef, toolStats, toolSummary, type ToolId } from '../game/tools';
+import { POWER_UNLOCK_LINE, TOOLS, anyPower, hasPower, isToolId, modCost, modLevel, newTools, toolDef, toolStats, toolSummary, type ToolId } from '../game/tools';
 import { ART, BAND, MAP, NODES, PREVIEW, SPRITE, bandFor, cropChip, spriteImg } from './art';
 import { $, ICON, TOOL_ICON, cap, clamp, esc, money, stars } from './dom';
 import { engine, on, type BillInfo, type ChestInfo, type DayEvent, type EngineState, type Today } from './engine';
@@ -21,7 +21,8 @@ import { CHEST_UP_ICON, chestBurst, chestName, chestSvg, newTodayHtml, perkCard,
 import { FarmHud, deviceText, eventIcon, touchy } from './hud';
 import { REPORT_EMAIL, reportDetails, sendReport, watchErrors, watchShake } from '../platform/report';
 import { checkForUpdate, startUpdate, type UpdateOffer } from '../platform/update';
-import { Coach, peek, type FieldPeek, type Pt } from './coach';
+import { Coach, cropIcon, peek, type FieldPeek, type Pt, type TipOpts } from './coach';
+import { playStory } from './story';
 import { LANGS, deviceLang, inner, isLang, lang, setLang, t, tn, tx, type Lang } from '../i18n/i18n';
 import { watchLayout, layout } from './layout';
 import { adsAvailable, canOffer, coinsWait, onAdsChanged, watch } from './offers';
@@ -37,7 +38,7 @@ import { TREE_PX, TREE_STEP, centerTree, sizeTree, treeFitPx, treeMapHtml } from
 import { attachTreeGestures, zoomTreeBy, type TreeZoomHost } from './treezoom';
 import { hapticImpact } from '../platform/mobile';
 import { addWorker, collectPen, newPen, penFill, penRate, penStored, workerCount, workerLevel, workerRate as workerRateOf, PEN_CAP_HOURS } from '../game/pen';
-import { TREE_SKILL, buildingNode, buyNode, setTreeMoney, settleTree, treeNode, treeReady } from '../game/tree';
+import { TREE_SKILL, buildingNode, buyNode, setTreeMoney, setTreePower, settleTree, treeLevel as treeLevelOf, treeNode, treeReady } from '../game/tree';
 
 type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'tree' | 'barn' | 'daily' | 'duel' | 'side' | 'pen';
 
@@ -79,9 +80,11 @@ interface CityResult {
   own?: boolean;
   cityId: string;
   stars: number;
+  /** The second star: 0.16, a big day (it was money kept after the big bill; the name stays for old saves). */
   spare: boolean;
-  /** The second star's goal in this run (0.15: it follows the run's bills). */
+  /** The second star's goal in this run (0.16: the town's big day), and the run's best day. */
   goal?: number;
+  best?: number;
   /** 0.15 (the third star, after rivals and crowns left): caught without the bank ever coming in this town. */
   firstTry: boolean;
   firstWin: boolean;
@@ -110,6 +113,14 @@ const BIG_BILL_ICON = (size: number) =>
 function billIcon(kind: BillKind | undefined, size: number): string {
   return kind === 'rent' ? ICON.house(size) : kind === 'bank' ? BANK_ICON(size) : kind === 'big' ? BIG_BILL_ICON(size) : ICON.notice(size);
 }
+
+/** 0.16: the things to grab on the field, as the field draws them (gemini-engine.js, drawPropsCrowsAndWeather), for
+ *  their tips: a fertilizer bag (a sack with a sprout, +4), a clover treat (a four-leaf clover on a gold coin), an egg. */
+const PROP_ICON: Record<'fertilizer' | 'clover' | 'egg', string> = {
+  fertilizer: `<svg width="40" height="44" viewBox="-20 -44 40 48" aria-hidden="true"><path d="M-12 -2 Q-15 -20 -7 -24 L7 -24 Q15 -20 12 -2 Q0 2 -12 -2 Z" fill="#C89B5E" stroke="#2B1708" stroke-width="2"/><rect x="-8" y="-28" width="16" height="5" rx="2" fill="#A7783F" stroke="#2B1708" stroke-width="2"/><path d="M0 -28 V-36" stroke="#166534" stroke-width="2"/><ellipse cx="-5" cy="-38" rx="5" ry="3" transform="rotate(-29 -5 -38)" fill="#4ade80" stroke="#2B1708" stroke-width="1.4"/><ellipse cx="5" cy="-39" rx="5" ry="3" transform="rotate(29 5 -39)" fill="#4ade80" stroke="#2B1708" stroke-width="1.4"/><circle cx="0" cy="-12" r="7.5" fill="#16a34a" stroke="#2B1708" stroke-width="1.4"/><text x="0" y="-9" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff" font-family="sans-serif">+4</text></svg>`,
+  clover: `<svg width="36" height="36" viewBox="-16 -29 32 32" aria-hidden="true"><circle cx="0" cy="-13" r="13" fill="#FFC23D" stroke="#2B1708" stroke-width="2"/><g fill="#22c55e" stroke="#2B1708" stroke-width="1.4"><circle cx="-4.2" cy="-17.2" r="4.6"/><circle cx="4.2" cy="-17.2" r="4.6"/><circle cx="-4.2" cy="-8.8" r="4.6"/><circle cx="4.2" cy="-8.8" r="4.6"/></g><circle cx="0" cy="-13" r="2.4" fill="#FFE27A"/></svg>`,
+  egg: `<svg width="30" height="36" viewBox="-12 -24 24 26" aria-hidden="true"><ellipse cx="0" cy="-11" rx="8.5" ry="11" fill="#fffbeb" stroke="#78532a" stroke-width="1.6"/><ellipse cx="-3" cy="-15" rx="2.2" ry="3.2" fill="#fff"/></svg>`,
+};
 
 /** 0.14: the Pen's sign, a fence with a gate. */
 const PEN_ICON = (size: number) =>
@@ -377,8 +388,11 @@ export class GameApp {
   private syncTreeMoney(): void {
     const run = this.g.run;
     const k = Math.max(0, routeIndex(run ? run.cityId : frontierCity(this.g)));
-    const scale = run && run.scale ? run.scale : this.paceScale();
-    setTreeMoney(avgDay(k, 3) * scale, scale);
+    // 0.16 (Navid, 19 Nov, asked whether a better player should pay more: "Same skill prices"): an average player's
+    // day there, for everyone; the bills still follow the player's own days
+    setTreeMoney(avgDay(k, 3), 1);
+    // 0.16: the Power branch opens with the first tool that has its power bar
+    setTreePower(anyPower(this.g.tools));
   }
 
   private tick(): void {
@@ -492,7 +506,8 @@ export class GameApp {
     const p = (this.g.cities[run.cityId] ||= { ...cityProgress(this.g, run.cityId) });
     const firstWin = !p.won;
     // 0.15: the third star is for a town caught on the first try (the bank never came here)
-    const res = starsFor({ won: true, cashLeft: d.cash, spare: plan.spare, firstTry: !(p.fails || 0) });
+    // 0.16: the second star is a big day (plan.bigDay in one day of the town)
+    const res = starsFor({ won: true, bestDay: run.bestDay, bigDay: plan.bigDay, firstTry: !(p.fails || 0) });
     p.won = true;
     p.stars = Math.max(p.stars, res.stars);
     p.bestDays = p.bestDays ? Math.min(p.bestDays, d.days) : d.days;
@@ -507,7 +522,7 @@ export class GameApp {
     p.paid = paidAfterRun(run, banked);
     this.g.run = null;
     this.result = {
-      kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.spare, goal: plan.spare, firstTry: res.firstTry, firstWin, credit,
+      kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.big, goal: plan.bigDay, best: run.bestDay, firstTry: res.firstTry, firstWin, credit,
       days: d.days, earned: d.earned, harvested: d.harvested, wallet: this.g.wallet, banked, mark: run.mark, kept: Math.round(d.cash), own: !!run.own,
     };
     this.saveNow();
@@ -560,8 +575,8 @@ export class GameApp {
       } catch {
         /* engine not ready */
       }
-      if (!chest) this.pointAtStart();
-    }
+      if (!chest && !this.showGoals()) this.pointAtStart();
+    } else if (s === 'tree') this.treeLesson();
     // the first win's credit: where it goes
     if (s === 'won' && this.result && this.result.credit && !this.g.seen.gains && this.coachOn) {
       this.g.seen.gains = true;
@@ -683,11 +698,14 @@ export class GameApp {
       case 'shakeReport': this.g.settings.shakeReport = this.g.settings.shakeReport === false; this.save(); this.openSettings(); break;
       case 'update-now': this.closeModal(); if (this.updateOffer) void startUpdate(this.updateOffer); break;
       case 'replay-practice': this.closeModal(); void this.playPractice(true); break;
+      case 'replay-story': this.closeModal(); void playStory(); break;
       case 'replay-intro': this.closeModal(); void this.playIntro(true); break;
       case 'sound': this.toggleEffects(); break;
       case 'music': this.g.settings.music = !this.g.settings.music; this.save(); this.music.setEnabled(this.g.settings.music); this.openSettings(); break;
       case 'haptics': this.g.settings.haptics = !this.g.settings.haptics; this.save(); this.openSettings(); window.dispatchEvent(new CustomEvent('dbd:haptics', { detail: this.g.settings.haptics })); break;
       case 'close': this.closeModal(); break;
+      case 'goals': this.openGoals(); break;
+      case 'goals-ok': this.closeModal(); if (this.scr === 'farmhouse') this.pointAtStart(); break;
       case 'reset': this.confirmReset(); break;
       case 'reset-yes': this.resetGame(); break;
       case 'leave-yes': this.leaveRunAndStart(arg); break;
@@ -1111,6 +1129,12 @@ export class GameApp {
   private play(): void {
     // a new player starts on Level 0, the practice farm (Navid, 3 Nov); the intro film is in Settings
     const fresh = this.coachOn && !this.g.seen.intro && !this.g.seen.practice && !this.g.run && this.g.totals.days === 0 && totalStars(this.g) === 0;
+    // 0.16 (Navid, 18 Nov: "what is the story of the game at all"): the story first, then the practice farm
+    if (fresh && !this.g.seen.story) {
+      this.g.seen.story = true;
+      this.saveNow();
+      return void playStory().then(() => this.playPractice(false));
+    }
     if (fresh) return void this.playPractice(false);
     if (this.g.run) {
       this.citySel = this.g.run.cityId;
@@ -1146,7 +1170,9 @@ export class GameApp {
     // 0.15: a bare field is thin now (3 crops, one every 2 s); practice has a well-fed field, so six carrots and a
     // chain of six come quickly
     // (0.15.1: and its crops ripen quickly, as all did before)
-    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: { ...emptyLevels(), soil: 16 }, plan: { ...plan, grow: GROW_FAST, spawn: PRACTICE_SPAWN }, tools: [tool] })) {
+    // 0.16: practice's carrots take 2 cuts (PRACTICE_CROP_HP)
+    const cropHp = { ...plan.cropHp, [plan.runaway || 'carrot']: PRACTICE_CROP_HP / Math.max(0.01, plan.hp) };
+    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: { ...emptyLevels(), soil: 16 }, plan: { ...plan, grow: GROW_FAST, spawn: PRACTICE_SPAWN, cropHp }, tools: [tool] })) {
       this.restoreFarm(snap, sound);
       return this.show('world');
     }
@@ -1159,6 +1185,9 @@ export class GameApp {
     e.setClock(false);
     await this.coach.practice({
       jar: () => document.getElementById('dbdBank'),
+      bill: () => document.querySelector('#dbdBank .hb-bill'),
+      chain: () => document.getElementById('dbdChain'),
+      sun: () => document.querySelector('#dbdHud .hb-dialbg'),
       combo: () => {
         try {
           return engine().hud().combo;
@@ -1291,16 +1320,186 @@ export class GameApp {
     const first = ROUTE[0].id;
     if (it.replay) this.show('menu');
     else if (!this.g.run && cityLock(this.g, first).open) {
+      // (0.16: the town's goals card opens on it, so no toast over it)
       this.beginRun(first);
-      if (it.practice) this.toast(t('Practice done! Your first farm is waiting.'), 2600);
     } else this.show('world');
   }
 
-  /** The Start button gets a finger until it is pressed (first farm only). */
+  /** 0.16: a lesson that goes on on another screen (the Skills lesson opens the tree). */
+  private lesson = '';
+
+  /** 0.16 (Navid, 19 Nov: "when can we see if we keep 22$ we can win another star?"; his pick: "Skill star + show
+   *  goals"): a town's three stars, on the first morning of every run there, before its tips. Returns true when the
+   *  card opened. */
+  private showGoals(): boolean {
+    const run = this.g.run;
+    if (!run || run.goals || !this.coachOn || this.coach.busy || !this.modal.hidden) return false;
+    let day = 0;
+    try {
+      day = engine().state().day;
+    } catch {
+      return false;
+    }
+    if (day !== 1) return false;
+    run.goals = true;
+    this.save();
+    this.openGoals();
+    return true;
+  }
+
+  /** The three stars of the running town (the stars on the day card open it again). The first-try star is crossed out
+   *  once the bank has taken the town. */
+  private openGoals(): void {
+    const run = this.g.run;
+    if (!run) return;
+    const plan = this.farmPlan(run);
+    const ct = cityById(run.cityId)!;
+    const p = this.g.cities[run.cityId];
+    const missed = !!(p && p.fails);
+    const goal = (cls: string, icon: string, label: string, i: number) =>
+      `<div class="gl-goal${cls}" style="animation-delay: ${(0.12 + 0.15 * i).toFixed(2)}s">${ICON.star(false, 30)}<span class="gl-ic">${icon}</span><b>${label}</b></div>`;
+    this.openModal('goals', `<div class="gl-head"><span class="eyebrow">${esc(ct.short.toUpperCase())}</span><h2 class="m-title">${t('Win 3 stars here')}</h2></div>
+      <div class="gl-goals">${goal('', spriteImg(plan.runaway, 42, ''), t('Catch the runaway'), 0)}${goal('', ICON.coin(38), t('A big day: {amt}', { amt: money(plan.bigDay) }), 1)}${goal(missed ? ' miss' : '', '<i class="gl-1st">1</i>', t('Catch it on the first try'), 2)}</div>
+      <button type="button" class="st-btn gold btn-md" data-act="goals-ok">${t("Let's go!")}</button>`, 440);
+  }
+
+  /** The farmhouse's lessons (0.16; Navid, 18 Nov: "why on earth you didn't talk about bills ... what is a chest or
+   *  perk?"; "upgrading tool also should be one of the toturials"), each once, each a few tips on the thing itself:
+   *  the first farm's day card (its bill, its days, its runaway, then Start), then, when the player can pay for them,
+   *  the Power booster in Tools (the power bar is a tool upgrade now) and a first skill, then the Perks and the Pen. */
   private pointAtStart(): void {
-    if (this.g.seen.start || this.coach.busy || !this.coachOn) return;
-    const btn = () => this.sections.farmhouse.querySelector('[data-act="start"]');
-    void this.coach.point(btn, t('Start'), () => this.scr !== 'farmhouse' || !this.modal.hidden);
+    if (this.coach.busy || !this.coachOn || !this.g.run || this.scr !== 'farmhouse' || !this.modal.hidden) return;
+    const seen = this.g.seen;
+    const fh = this.sections.farmhouse;
+    const q = (sel: string) => () => fh.querySelector(sel);
+    const e = engine();
+    const st = e.state();
+    const run = this.g.run;
+    const plan = this.farmPlan(run);
+    const steps: Array<TipOpts | (() => Promise<void>)> = [];
+    const mark = (key: string) => {
+      seen[key] = true;
+      this.save();
+    };
+    if (!seen.start) {
+      // the first farm: its bill, its days and its runaway, then Start
+      if (!seen.tour && routeIndex(run.cityId) === 0 && st.day === 1) {
+        mark('tour');
+        const due = e.bill();
+        steps.push(
+          {
+            el: q('.dc-bill'),
+            arthur: true,
+            title: t('Your first bill: {amt}', { amt: money(due.amt) }),
+            text: t('Due on day {day}. At dusk that day, your jar pays it.', { day: due.dueDay }),
+          },
+          { el: q('.dc-dots'), title: t('{n} days in this town', { n: plan.totalDays }), text: t('Each dot is a day. The red dots are bill days.') },
+          { el: q('.dc-rw'), icon: cropIcon(plan.runaway), title: t("This town's runaway"), text: t('Pay the last bill, the big one, and you catch it.') },
+        );
+      }
+      steps.push({
+        el: q('[data-act="start"]'),
+        mode: 'press',
+        hand: 'tap',
+        title: t('Start the day!'),
+        text: t('Cut all you can before the sun sets.'),
+        done: () => this.scr !== 'farmhouse' || !this.modal.hidden,
+      });
+      void this.coach.tour(steps);
+      return;
+    }
+    // the power bar is a tool upgrade (0.16): when the Power booster is within reach, Tools, then its button
+    const boost = modCost(this.g.tools.equipped, 'charge', 0);
+    if (!seen.lessonTools && !anyPower(this.g.tools) && boost != null && this.wallet() >= boost) {
+      mark('lessonTools');
+      const buy = () => this.modal.querySelector('.mod-row[data-mod="charge"] [data-act="buy-mod"]');
+      void this.coach.tour([
+        {
+          el: q('[data-act="panel"][data-arg="tools"]'),
+          mode: 'press',
+          hand: 'tap',
+          title: t('Unlock your power bar!'),
+          text: t('You have enough for the Power booster. Open Tools.'),
+          done: () => !!buy(),
+        },
+        {
+          el: buy,
+          mode: 'press',
+          hand: 'tap',
+          title: t('Buy the Power booster'),
+          text: t('It gives your sickle a power bar.'),
+          done: () => hasPower(this.g.tools),
+        },
+        {
+          el: () => this.modal.querySelector('.mod-row[data-mod="charge"]'),
+          icon: '<span class="ct-emo">⚡</span>',
+          title: t('Your power bar is unlocked!'),
+          text: t('Cut crops to fill it. When it is full, your sickle cleaves everything around it.'),
+        },
+      ]);
+      return;
+    }
+    // a first skill, when one is within reach: Skills (the tree goes on with treeLesson)
+    if (!seen.lessonSkill && this.upgradesReady() > 0) {
+      mark('lessonSkill');
+      this.lesson = 'skill';
+      void this.coach.tour([
+        {
+          el: q('[data-act="tree"]'),
+          mode: 'press',
+          hand: 'tap',
+          title: t('You can buy a skill!'),
+          text: t('Skills make you stronger, in every town. Open Skills.'),
+          done: () => this.scr !== 'farmhouse',
+        },
+      ]);
+      return;
+    }
+    // after the first chest: where the farm's perks are
+    if (!seen.lessonPerks && seen.chest && st.perks.length) {
+      mark('lessonPerks');
+      void this.coach.tour([{ el: q('[data-act="panel"][data-arg="perks"]'), title: t('Your perks are here'), text: t('They help you on this farm until you catch its runaway.') }]);
+      return;
+    }
+    // after the first catch: the Pen
+    if (!seen.lessonPen && workerCount(this.g.pen) > 0) {
+      mark('lessonPen');
+      void this.coach.tour([{ el: q('[data-act="pen"]'), title: t('Your runaways work in the Pen'), text: t('They earn coins, even while the game is closed. Collect them here.') }]);
+    }
+  }
+
+  /** The Skills lesson on the tree (0.16): a skill ready to buy, then its Buy button. */
+  private treeLesson(): void {
+    if (this.lesson !== 'skill' || !this.coachOn) return;
+    this.lesson = '';
+    const tr = this.sections.tree;
+    let id = '';
+    let before = 0;
+    void this.coach.tour([
+      {
+        el: () => tr.querySelector('.tr-row.ready'),
+        mode: 'press',
+        hand: 'tap',
+        title: t('Pick a skill'),
+        text: t('These are the ones you can buy now.'),
+        done: () => {
+          const b = tr.querySelector<HTMLElement>('.tr-buy');
+          if (!b) return false;
+          id = b.dataset.arg || '';
+          before = id ? treeLevelOf(this.g, id) : 0;
+          return true;
+        },
+      },
+      {
+        el: () => tr.querySelector('.tr-buy'),
+        mode: 'press',
+        hand: 'tap',
+        title: t('Buy it'),
+        text: t('The coins come out of your jar.'),
+        done: () => !!id && treeLevelOf(this.g, id) > before,
+      },
+      { el: () => tr.querySelector('.tr-card'), icon: '<span class="ct-emo">⭐</span>', title: t('Yours, for good!'), text: t('Skills stay with you in every town.') },
+    ]);
   }
 
   /** The lesson at the start of a day on a real farm: cutting, on a new player's first day (the power meter has a
@@ -1322,61 +1521,91 @@ export class GameApp {
   }
 
   /** First sights on the field (v0.11.1): the field holds still and a card says what the new thing is, until the
-   *  player taps (Navid, 3 Nov: no more dimmed screen and words that vanish in three seconds). Once each. */
+   *  player taps (Navid, 3 Nov: no more dimmed screen and words that vanish in three seconds). Once each.
+   *  0.16 (Navid, 18 Nov: "it is not showing which menu you are talking about ... you just showed a message there!"):
+   *  each one is a tip on the thing itself: the field dims around it, a ring pulses on it and an arrow points at it. */
   private watchField(now: number): void {
     if (this.scr !== 'farm' || this.side || this.intro || this.coach.busy || this.carding || now < this.momentCool || !this.coachOn) return;
     const p = peek();
     if (!p || p.mode !== 'day' || p.time < 2 || engine().state().paused) return;
     const seen = this.g.seen;
-    const img = (type: string) => (SPRITE[type] ? `<img src="${SPRITE[type]}" alt="" draggable="false">` : '');
-    const card = (key: string, icon: string, title: string, desc: string) => {
+    const co = this.coach;
+    const tip = (key: string, o: TipOpts) => {
       seen[key] = true;
       this.save();
       this.carding = true;
-      void this.hud.showCard(icon, title, desc).then(() => {
-        this.carding = false;
-        this.momentCool = performance.now() + 4000;
-      });
+      void co
+        .run(async () => {
+          await co.tip({ mode: 'tap', ...o });
+        })
+        .then(() => {
+          this.carding = false;
+          this.momentCool = performance.now() + 4000;
+        });
       return true;
     };
-    const live = (pred: (c: FieldPeek['crops'][number]) => boolean) => (p.crops || []).some(c => !c.dead && c.age > 0.4 && pred(c));
+    const spotAt = (x: number, y: number) => () => co.toScreen(x, y);
+    const liveOne = (pred: (c: FieldPeek['crops'][number]) => boolean) => (p.crops || []).find(c => !c.dead && c.age > 0.4 && pred(c));
+    const cropSpot = (c: FieldPeek['crops'][number]) => () => co.cropAt(c);
     const st = engine().state();
-    if (!seen.mBoss2 && st.boss && st.boss.onField && live(c => c.boss))
-      return void card('mBoss2', '👑', t('{boss} is here', { boss: t(st.boss.name) }), t('It eats your best crops. Its armour is off only right after it eats: hit it then and it spits the coins back. The big bill waits until it is down.'));
-    if (!seen.mBomb && (p.bombs || 0) > 0)
-      return void card('mBomb', '💣', t('Bomb seeds'), t("Don't cut them! Swipe around them, or you lose cash and your sickle gets dizzy."));
-    if (!seen.mEncase && (p.encased || 0) > 0) {
+    const boss = liveOne(c => c.boss);
+    if (!seen.mBoss2 && st.boss && st.boss.onField && boss)
+      return void tip('mBoss2', { at: cropSpot(boss), r: 90, icon: '<span class="ct-emo">👑</span>', title: t('{boss} is here', { boss: t(st.boss.name) }), text: t('It eats your best crops. Hit it right after it eats, when its armour is off. The big bill waits until it is down.') });
+    if (!seen.mBomb && p.bombAt)
+      return void tip('mBomb', { at: spotAt(p.bombAt.x, p.bombAt.y), r: 50, icon: '<span class="ct-emo">💣</span>', title: t('Bomb seeds'), text: t("Don't cut them! Swipe around them, or you lose cash and your sickle gets dizzy.") });
+    if (!seen.mEncase && p.encasedAt) {
       const k = p.encaseKind;
-      return void card('mEncase', k === 'ice' ? '🧊' : k === 'sand' ? '🏜️' : '🟫', k === 'ice' ? t('Frozen solid') : k === 'sand' ? t('Buried in sand') : t('Stuck in mud'), t('Two hits free the crop. The boss\'s storm pays no bonus.'));
+      return void tip('mEncase', { at: spotAt(p.encasedAt.x, p.encasedAt.y), r: 56, icon: `<span class="ct-emo">${k === 'ice' ? '🧊' : k === 'sand' ? '🏜️' : '🟫'}</span>`, title: k === 'ice' ? t('Frozen solid') : k === 'sand' ? t('Buried in sand') : t('Stuck in mud'), text: t("Two hits free the crop. The boss's storm pays no bonus.") });
     }
-    if (!seen.mRadish && live(c => c.type === 'radish'))
-      return void card('mRadish', img('radish'), t('Runaway Radish'), t('It runs from your sickle. Corner it against the edge.'));
-    if (!seen.mGolden && (p.lucky || []).length)
-      return void card('mGolden', img('golden'), t('A golden crop'), t('Worth far more than the others. Cut it before it goes back into the ground.'));
+    const radish = liveOne(c => c.type === 'radish');
+    if (!seen.mRadish && radish)
+      return void tip('mRadish', { at: cropSpot(radish), r: 56, icon: cropIcon('radish'), title: t('Runaway Radish'), text: t('It runs from your sickle. Corner it against the edge.') });
+    const lucky = (p.lucky || [])[0];
+    if (!seen.mGolden && lucky)
+      return void tip('mGolden', { at: spotAt(lucky.x, lucky.y), r: 56, icon: cropIcon('golden'), title: t('A golden crop'), text: t('Worth far more than the others. Cut it before it goes back into the ground.') });
     const tr = this.g.tree || {};
     const treaty = st.perks.includes('treaty') || tr.a1 > 0 || tr.a14 > 0;
-    if (!seen.mGoat && !treaty && p.goat) return void card('mGoat', '🐐', t('The goat'), t("Don't touch it! A bumped goat gets angry and costs you daylight."));
-    if (!seen.mGoatPet && treaty && p.goat) return void card('mGoatPet', '🐐', t('A friendly goat'), t('Touch it with your sickle: it tips you cash.'));
-    if (!seen.mThief && (p.crows || []).length) return void card('mThief', '🐦', t('A thief crow'), t('It steals coins from your jar. Swipe it before it flies off and you get them back.'));
-    if (!seen.mProp && (p.props || []).length) return void card('mProp', '🎁', t('Something to grab'), t('Swipe over it for a bonus.'));
-    if (!seen.mBolt && p.bolts > 0) return void card('mBolt', '⚡', t('Lightning'), t('Your crits throw lightning at crops nearby.'));
-    // the HUD: the chain bonus, a harvest rush
+    if (!seen.mGoat && !treaty && p.goat)
+      return void tip('mGoat', { at: spotAt(p.goat.x, p.goat.y - 24), r: 62, icon: '<span class="ct-emo">🐐</span>', title: t('The goat'), text: t("Don't touch it! A bumped goat gets angry and costs you daylight.") });
+    if (!seen.mGoatPet && treaty && p.goat)
+      return void tip('mGoatPet', { at: spotAt(p.goat.x, p.goat.y - 24), r: 62, icon: '<span class="ct-emo">🐐</span>', title: t('A friendly goat'), text: t('Touch it with your sickle: it tips you cash.') });
+    const crow = (p.crows || [])[0];
+    if (!seen.mThief && crow)
+      return void tip('mThief', { at: spotAt(crow.x, crow.y), r: 50, icon: '<span class="ct-emo">🐦</span>', title: t('A thief crow'), text: t('It steals coins from your jar. Swipe it before it flies off and you get them back.') });
+    // 0.16 (Navid, 18 Nov: "i though it gives me 4 new vegetable. but instead it only gave me a dollar amount ... no
+    // explanation of what they are!"): each kind of thing to grab has its own look and its own tip
+    for (const f of p.props || []) {
+      const kind = f.kind === 'fertilizer' || f.kind === 'egg' ? f.kind : 'clover';
+      const key = kind === 'fertilizer' ? 'mFert' : kind === 'egg' ? 'mEgg' : 'mClover';
+      if (seen[key]) continue;
+      const words =
+        kind === 'fertilizer'
+          ? [t('A fertilizer bag'), t('Swipe it: 4 new crops sprout on the field.')]
+          : kind === 'egg'
+            ? [t('An egg'), t('Swipe it for coins.')]
+            : [t('A clover treat'), t('Swipe it for coins. It calms the goat too.')];
+      return void tip(key, { at: spotAt(f.x, f.y - 18), r: 46, icon: PROP_ICON[kind], title: words[0], text: words[1] });
+    }
+    if (!seen.mBolt && p.bolts > 0) return void tip('mBolt', { icon: '<span class="ct-emo">⚡</span>', title: t('Lightning'), text: t('Your crits throw lightning at crops nearby.') });
+    // the HUD: the chain bonus, the power bar, a harvest rush
     const h = engine().hud();
+    const chainEl = () => document.getElementById('dbdChain');
     if (!seen.mChain && h.tiers.length > 1 && h.combo >= h.tiers[1].count)
-      return void card('mChain', '🔗', t('Chain bonus!'), t('Cut crops quickly, one after another: every crop in a long chain pays more.'));
-    // the power meter, half full: what it does with the tool in hand (once for each tool, v0.12)
+      return void tip('mChain', { el: chainEl, pad: 6, icon: '<span class="ct-emo">🔗</span>', title: t('Chain bonus!'), text: t('Cut crops quickly, one after another: every crop in a long chain pays more.') });
+    // 0.16: the power bar, the first day a tool has one (once for each tool, v0.12)
     const style = String(engine().stats().style || 'sickle') as ToolId;
     const pk = style === 'sickle' ? 'mPower' : 'mPower_' + style;
-    if (!seen[pk] && h.rushT <= 0 && h.rushCharge >= h.rushGoal * 0.5) {
+    if (!seen[pk] && h.powerOn !== false && h.rushT <= 0) {
       const what: Record<ToolId, string> = {
-        sickle: t("Cut crops to fill it. A chain fills it faster. When it's full, your sickle cleaves everything around it."),
-        scythe: t("Cut crops to fill it. A chain fills it faster. When it's full, a whirlwind follows your finger."),
-        flame: t("Cut crops to fill it. A chain fills it faster. When it's full, a ring of fire sets the crops around you alight."),
-        blaster: t("Cut crops to fill it. A chain fills it faster. When it's full, a storm of seeds hits crops all over the field."),
+        sickle: t("Cut crops to fill it; a chain fills it faster. When it's full, your sickle cleaves everything around it."),
+        scythe: t("Cut crops to fill it; a chain fills it faster. When it's full, a whirlwind follows your finger."),
+        flame: t("Cut crops to fill it; a chain fills it faster. When it's full, a ring of fire sets the crops around you alight."),
+        blaster: t("Cut crops to fill it; a chain fills it faster. When it's full, a storm of seeds hits crops all over the field."),
       };
-      return void card(pk, '⚡', t('Your power meter'), what[style] || what.sickle);
+      return void tip(pk, { el: () => document.getElementById('dbdRush'), pad: 6, icon: '<span class="ct-emo">⚡</span>', title: t('Your power bar'), text: what[style] || what.sickle });
     }
-    if (!seen.mRush && h.rushT > 0) return void card('mRush', '⚡', t('Harvest Rush!'), t('For a few seconds every crop pays 50% more and the field grows faster.'));
+    if (!seen.mRush && h.rushT > 0)
+      return void tip('mRush', { el: chainEl, pad: 6, icon: '<span class="ct-emo">⚡</span>', title: t('Harvest Rush!'), text: t('For a few seconds every crop pays 50% more and the field grows faster.') });
   }
 
   private payBill(): void {
@@ -2482,7 +2711,7 @@ export class GameApp {
         ${this.walletChip()}${coinsOffer}</div></div>
       <div class="grp mcb fh-v3"><div class="st-chip fh-board">
         <div class="day-card">
-          <div class="dc-city"><span>${esc(ct.short)}</span>${plan.boss ? `<i class="dc-boss-tag">${t('BOSS')}</i>` : ''}</div>
+          <div class="dc-city"><span>${esc(ct.short)}</span><button type="button" class="dc-stars" data-act="goals" aria-label="${t('Win 3 stars here')}">${[0, 1, 2].map(i => ICON.star(i < cityProgress(this.g, run.cityId).stars, 15)).join('')}</button>${plan.boss ? `<i class="dc-boss-tag">${t('BOSS')}</i>` : ''}${plan.runaway ? `<span class="dc-rw" aria-label="${esc(t('Runaway: {name}', { name: t(cropName(plan.runaway)) }))}">${spriteImg(plan.runaway, 26, '')}</span>` : ''}</div>
           <h2 class="dc-day">${t('Day {day}', { day: st.day })}</h2>
           <div class="dc-dots${total > 20 ? ' many' : ''}" role="img" aria-label="${t('Day {day} of {n}', { day: st.day, n: total })}">${dots}</div>
           ${billRow}${bossRow}${lateRow}${repairRow}${newRow}
@@ -2574,7 +2803,9 @@ export class GameApp {
           const can = cash >= cost;
           btn = `<button type="button" class="st-btn btn-mod${can ? ' gold' : ' off'}" data-act="buy-mod" data-arg="${sel.id}.${m.id}" ${can ? '' : 'disabled'}>${money(cost)}</button>`;
         }
-        return `<div class="mod-row"><span class="mod-txt"><b>${esc(t(m.name))}</b><span>${esc(t(m.line))}</span></span><span class="pips">${pips}</span>${btn}</div>`;
+        // 0.16: the Power booster's first level gives the tool its power bar
+        const unlock = m.id === 'charge' && l === 0;
+        return `<div class="mod-row${unlock ? ' mod-unlock' : ''}" data-mod="${m.id}"><span class="mod-txt"><b>${esc(t(m.name))}</b><span>${esc(t(unlock ? POWER_UNLOCK_LINE : m.line))}</span></span><span class="pips">${pips}</span>${btn}</div>`;
       })
       .join('');
     return `<div class="tools-tab"><div class="tool-list">${list}</div><div class="tool-detail">
@@ -2703,22 +2934,20 @@ export class GameApp {
     if (r.kind === 'won') {
       const next = ROUTE[routeIndex(r.cityId) + 1];
       const nextOpen = next && cityLock(this.g, next.id).open;
-      // star 2 is shown as the piggy bank filling past the town's goal; star 3 (0.15) is a first-try catch
-      const kept = Math.max(0, r.kept ?? r.banked + r.mark);
-      const goal = r.goal ?? plan.spare;
-      const top = Math.max(kept, goal) * 1.25;
-      const keptPct = Math.min(100, (kept / Math.max(1, top)) * 100);
-      const goalPct = Math.min(100, (goal / Math.max(1, top)) * 100);
+      // 0.16 (Navid, 19 Nov: "what is that piggy bank?? i have no idea what is that 22$ and what is the star given"):
+      // each star says what it is for in words. Star 2 is a big day (best day / the goal), star 3 a first-try catch
+      const goal = r.goal ?? plan.bigDay;
+      const best = Math.max(0, r.best ?? 0);
       const starRow = [
-        `<div class="star-row ok" style="animation-delay: .25s">${ICON.star(true, 26)}<span>${t('Paid the big bill')}</span></div>`,
-        `<div class="star-row spare-row${r.spare ? ' ok' : ''}" style="animation-delay: .5s">${ICON.star(r.spare, 26)}<span class="sp-pig">${ICON.piggy(24)}</span>
-          <span class="sp-bar" aria-label="${t('Kept {amt} after the big bill; the goal is {goal}', { amt: money(kept), goal: money(goal) })}"><i style="--w: ${keptPct.toFixed(1)}%"></i><b style="left: ${goalPct.toFixed(1)}%"></b></span>
-          <span class="sp-amt">${money(kept)}<small> / ${money(goal)}</small></span></div>`,
+        `<div class="star-row ok" style="animation-delay: .25s">${ICON.star(true, 26)}<span>${t('Caught the runaway')}</span></div>`,
+        `<div class="star-row big-row${r.spare ? ' ok' : ''}" style="animation-delay: .5s">${ICON.star(r.spare, 26)}<span>${t('A big day: {amt}', { amt: money(goal) })}</span>
+          <span class="sp-amt">${t('Best: {amt}', { amt: money(best) })}</span></div>`,
         `<div class="star-row try-row${r.firstTry ? ' ok' : ''}" style="animation-delay: .75s">${ICON.star(r.firstTry, 26)}<span>${t('Caught on the first try')}</span></div>`,
       ].join('');
-      const gains =
-
-        (r.credit ? `<button type="button" class="dia dia-btn" data-act="tree" aria-label="${t('Skills')}">${ICON.coin(18)} +${money(r.credit)}</button>` : '');
+      // the first win's credit says what it is for
+      const gains = r.credit
+        ? `<button type="button" class="dia dia-btn" data-act="tree" aria-label="${t('Skills')}">${ICON.coin(18)} +${money(r.credit)} <small>${t('for Skills')}</small></button>`
+        : '';
       return `<div class="grp mc" style="width: 470px; height: 350px"><div class="st-chip result-card">
         <div class="letter-head"><span class="eyebrow">${t('GRUMBLE &amp; SONS SAVINGS &amp; LOAN')}</span><span class="stamp ok big">${t('PAID IN FULL')}</span></div>
         <h2 class="r-title r-caught">${spriteImg(plan.runaway, 44, cropName(plan.runaway))}<span>${t('Caught: {name}!', { name: esc(t(cropName(plan.runaway))) })}</span><button type="button" class="up-info" data-act="info" data-arg="farm" aria-label="${t('About this farm')}"><i class="info-i">i</i></button></h2>
@@ -2752,6 +2981,7 @@ export class GameApp {
   private openModal(kind: string, inner: string, width = 380): void {
     if (kind !== 'tracks') this.music.setPreview(null);
     this.modal.dataset.kind = kind;
+    delete this.modal.dataset.chest;
     this.modal.innerHTML = `<div class="grp mc" style="width: ${width}px; height: 330px"><div class="st-chip modal-card" style="width: ${width}px">${inner}</div></div>`;
     this.modal.hidden = false;
     layout(this.root);
@@ -2760,6 +2990,7 @@ export class GameApp {
   private closeModal(): void {
     this.modal.hidden = true;
     this.modal.dataset.kind = '';
+    delete this.modal.dataset.chest;
     this.music.setPreview(null);
   }
 
@@ -2779,23 +3010,54 @@ export class GameApp {
         ? `<button type="button" class="st-btn blue btn-md ad-btn chest-up" data-act="ad-chest">${ICON.play()}<span>${t('Upgrade')}</span>${CHEST_UP_ICON}</button>`
         : '';
     const sub = two ? `<p class="chest-sub picks">${picks > 1 ? t('Pick 2') : t('Pick 1 more')}</p>` : '';
-    this.openModal('perks', `<div class="chest-box ch-t${c.tier}${two ? ' two' : ''}${two && picks < 2 ? ' one-left open' : ''}">
+    // 0.16: a new chest drops in on a dark stage with turning light (the stage is the modal's, while it is closed)
+    const fresh = !again && !(two && picks < 2);
+    this.openModal('perks', `<div class="chest-box ch-t${c.tier}${two ? ' two' : ''}${two && picks < 2 ? ' one-left open' : ''}${fresh ? ' arrive' : ''}">
         <div class="chest-head"><span class="eyebrow">${t('BILL {n} OF {m} PAID', { n: st.billsPaid, m: st.billCount })}</span><h2 class="m-title">${esc(t(chestName(c.tier) + '!'))}</h2>${sub}</div>
         <button type="button" class="chest-btn" data-act="chest-open" aria-label="${t('Open the chest')}"><span class="ch-stage">${chestBurst(c.tier)}${chestSvg(c.tier)}</span><span class="chest-tap">${t('Tap to open')}</span></button>
         ${up}
         <div class="chest-cards perk-grid">${cards}</div>
       </div>`, two ? 600 : 480);
-    // the first chest: a finger taps it
+    this.modal.dataset.chest = two && picks < 2 ? 'open' : 'closed';
+    try {
+      navigator.vibrate?.(fresh ? [10, 60, 30] : 10);
+    } catch {
+      /* no vibration */
+    }
+    // the first chest (0.16; Navid, 18 Nov: "what is a chest or perk?"): what it is, then the perks, on the things themselves
     if (!this.g.seen.chest && !again && this.coachOn) {
       this.g.seen.chest = true;
       this.save();
       const box = () => this.modal.querySelector<HTMLElement>('.chest-box');
-      void this.coach.point(
-        () => this.modal.querySelector('.chest-btn'),
-        t('Tap'),
-        () => this.modal.hidden || !!box()?.classList.contains('open'),
-        20000,
-      );
+      const perksUp = () => this.modal.hidden || this.modal.dataset.kind !== 'perks';
+      void this.coach.tour([
+        () => this.coach.wait(900),
+        {
+          el: () => this.modal.querySelector('.ch-stage'),
+          round: true,
+          mode: 'press',
+          hand: 'tap',
+          icon: ICON.chest(36),
+          title: t('A chest for paying a bill!'),
+          text: t('Every bill you pay brings one. Tap it to open it.'),
+          done: () => perksUp() || !!box()?.classList.contains('open') || !!box()?.classList.contains('opening'),
+        },
+        () => this.coach.wait(1500),
+        {
+          el: () => (perksUp() ? null : this.modal.querySelector('.chest-cards')),
+          title: t('Pick a perk'),
+          text: t('A perk helps you on this farm, until you catch its runaway.'),
+          done: perksUp,
+        },
+        {
+          el: () => (perksUp() ? null : this.modal.querySelector('.chest-cards')),
+          mode: 'press',
+          hand: 'tap',
+          title: t('Tap a card, then tap it again'),
+          text: t('The second tap takes it.'),
+          done: () => perksUp() || !!this.modal.querySelector('.perk-card.taken'),
+        },
+      ]);
     }
   }
 
@@ -2834,15 +3096,31 @@ export class GameApp {
     this.modal.querySelector('.chest-up')?.remove();
   }
 
+  /** 0.16: the chest rattles and glows for half a second, then the lid flies open with a flash and the cards fly out. */
   private openChest(): void {
     const box = this.modal.querySelector<HTMLElement>('.chest-box');
-    if (!box || box.classList.contains('open')) return;
-    box.classList.add('open');
+    if (!box || box.classList.contains('open') || box.classList.contains('opening')) return;
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const open = () => {
+      box.classList.remove('opening', 'arrive');
+      box.classList.add('open');
+      this.modal.dataset.chest = 'open';
+      try {
+        navigator.vibrate?.([30, 40, 60]);
+      } catch {
+        /* no vibration */
+      }
+    };
+    if (calm) return open();
+    box.classList.add('opening');
     try {
-      navigator.vibrate?.(18);
+      navigator.vibrate?.([12, 50, 12, 50, 12]);
     } catch {
       /* no vibration */
     }
+    setTimeout(() => {
+      if (box.isConnected) open();
+    }, 520);
   }
 
   /** The vegetable that joins the field this morning: the one the bill paid last night brought (0.13, the road). */
@@ -2932,6 +3210,7 @@ export class GameApp {
       <div class="m-links"><a id="linkPrivacyPolicy" href="https://khoreh.com/due-by-dusk/privacy.html">${t('Privacy policy')}</a>
         <button type="button" class="linkish" id="btnPrivacyChoices" hidden>${t('Privacy choices')}</button>
         <button type="button" class="linkish" data-act="credits">${t('Credits')}</button>
+        <button type="button" class="linkish" data-act="replay-story">${t('The story')}</button>
         <button type="button" class="linkish" data-act="replay-practice">${t('Practice farm')}</button>
         <button type="button" class="linkish" data-act="replay-intro">${t('Watch the intro')}</button>
         <button type="button" class="linkish" data-act="reset">${t('Start over')}</button></div>

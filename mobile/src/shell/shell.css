@@ -239,7 +239,7 @@
 .m-text { margin: 0; font-weight: 800; font-size: 13px; line-height: 1.4; color: var(--dbd-muted); }
 .m-top { position: relative; min-height: 22px; }
 .m-top .stamp { top: -4px; right: 0; }
-.m-row > .st-btn { flex: 1; height: 44px; font-size: 18px; padding: 0 10px; }
+.m-row > .st-btn { flex: 1; height: auto; min-height: 44px; font-size: 18px; line-height: 1.1; padding: 6px 10px; }
 .perk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .perk-card { display: flex; flex-direction: column; gap: 4px; text-align: left; min-height: 104px; padding: 9px 10px; border: 3px solid var(--dbd-ink); border-radius: 14px; background: #fff;
   box-shadow: 0 3px 0 var(--dbd-ink); cursor: pointer; font-family: var(--ui-body); color: var(--dbd-ink); }
@@ -922,3 +922,214 @@ button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tab
   @keyframes dbdPenPop { from { transform: scale(.88); } to { transform: none; } }
 }
 .scr-modal .pen-held { margin: 6px 0 10px; }
+
+/* 0.16 tips (Navid, 18 Nov: "the tutorial is not interactive at all. it is not showing which menu you are talking about"):
+   the screen dims around the thing, a gold ring pulses on it, a fat arrow bounces at it, a ghost hand shows what to do,
+   and a bubble of a few words says why */
+.ct-spot { position: absolute; border-radius: 16px; pointer-events: none; box-shadow: 0 0 0 4px var(--dbd-gold), 0 0 18px 6px rgba(255, 214, 92, .7);
+  transition: left .3s ease, top .3s ease, width .3s ease, height .3s ease, border-radius .3s; }
+.ct-spot.dim { box-shadow: 0 0 0 4px var(--dbd-gold), 0 0 18px 6px rgba(255, 214, 92, .7), 0 0 0 4000px rgba(24, 11, 3, .62); }
+.ct-spot.round { border-radius: 50%; }
+.ct-spot[hidden] { display: none; }
+.ct-spot::after { content: ''; position: absolute; inset: -5px; border-radius: inherit; border: 4px solid #FFE27A; opacity: 0; }
+#dbdCoach.ct-dimall::before { content: ''; position: absolute; inset: 0; background: rgba(24, 11, 3, .55); }
+.ct-blk { position: absolute; pointer-events: auto; }
+.ct-catch { position: absolute; inset: 0; pointer-events: auto; }
+.ct-blk[hidden], .ct-catch[hidden], .ct-arrow[hidden], .ct-tip[hidden], .ct-burst[hidden], .ct-who[hidden], .ct-p[hidden], .ct-go[hidden] { display: none; }
+.ct-arrow { position: absolute; width: 46px; height: 52px; transform: rotate(var(--rot, 0deg)); transform-origin: 23px 26px; pointer-events: none;
+  filter: drop-shadow(0 3px 0 rgba(43, 23, 8, .35)); }
+.ct-arrow svg { display: block; }
+.ct-tip { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 10px; max-width: min(360px, 88vw); box-sizing: border-box;
+  padding: 10px 16px 12px 10px; background: var(--dbd-cream); border: 3px solid var(--dbd-ink); border-radius: 18px; box-shadow: 0 5px 0 var(--dbd-ink);
+  pointer-events: none; color: var(--dbd-ink); text-align: left; }
+.ct-tip.acting { background: #FFF6D6; }
+.ct-who { flex: none; display: grid; place-items: center; width: 54px; height: 54px; box-sizing: border-box; border-radius: 50%; background: #FFF4DC;
+  border: 3px solid var(--dbd-ink); overflow: hidden; }
+.ct-who.arthur { background: #DCEBFA; }
+.ct-who canvas { display: block; width: 64px; height: 64px; margin-top: 10px; }
+.ct-who img, .ct-who > svg { display: block; width: 36px; height: 36px; object-fit: contain; }
+.ct-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ct-t { font: 400 20px/1.08 var(--ui-display); }
+.ct-d { font: 800 13.5px/1.3 var(--ui-body); color: var(--dbd-muted); }
+.ct-p { position: relative; display: block; margin-top: 4px; height: 19px; border-radius: 999px; border: 2.5px solid var(--dbd-ink); background: #fff; overflow: hidden; }
+.ct-pf { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--dbd-gold); transition: width .25s; }
+.ct-pt { position: relative; display: block; text-align: center; font: 900 12.5px/14px var(--ui-body); }
+.ct-go { position: absolute; right: 14px; bottom: -14px; padding: 1px 10px 2px; border-radius: 999px; background: var(--dbd-gold); border: 2.5px solid var(--dbd-ink);
+  font: 900 11.5px var(--ui-body); white-space: nowrap; }
+.ct-burst { position: absolute; width: 0; height: 0; pointer-events: none; }
+.ct-burst i { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; background: #FFC23D; opacity: 0;
+  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+@media (prefers-reduced-motion: no-preference) {
+  .ct-spot::after { animation: ctRing 1.4s ease-out infinite; }
+  .ct-arrow svg { animation: ctBob .65s ease-in-out infinite alternate; }
+  .ct-tip.pop { animation: ctPop .36s cubic-bezier(.2, 1.6, .4, 1) both; }
+  .ct-go { animation: ctBlink 1.3s ease-in-out infinite; }
+  .ct-burst.go i { animation: ctStar .8s ease-out both; animation-delay: var(--dl); }
+}
+@keyframes ctRing { 0% { transform: scale(.92); opacity: .95; } 100% { transform: scale(1.3); opacity: 0; } }
+@keyframes ctBob { from { transform: translateY(9px); } to { transform: translateY(-3px); } }
+@keyframes ctPop { from { transform: scale(.55); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes ctBlink { 50% { transform: scale(1.08); } }
+@keyframes ctStar { 0% { opacity: 1; transform: translate(0, 0) scale(.4) rotate(0); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1.15) rotate(170deg); } }
+
+/* 0.16 the story: four short animated scenes before the practice farm */
+#dbdStory { position: fixed; inset: 0; z-index: 160; overflow: hidden; background: #1B1026; color: var(--dbd-ink); font-family: var(--ui-display); touch-action: none; user-select: none; }
+#dbdStory.out { opacity: 0; transition: opacity .3s; }
+.sty-stage, .sty-scene { position: absolute; inset: 0; }
+.sty-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 70%; }
+.sty-cap { position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(560px, 90vw); box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 18px 12px; text-align: center; background: var(--dbd-cream);
+  border: 3px solid var(--dbd-ink); border-radius: 18px; box-shadow: 0 5px 0 var(--dbd-ink); }
+.sty-t { font: 400 clamp(19px, 3.4vh + 6px, 26px)/1.1 var(--ui-display); }
+.sty-d { font: 800 13.5px/1.3 var(--ui-body); color: var(--dbd-muted); }
+.sty-dots { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); display: flex; gap: 8px; }
+.sty-dots i { width: 11px; height: 11px; border-radius: 50%; border: 2.5px solid var(--dbd-ink); background: rgba(255, 248, 225, .5); }
+.sty-dots i.on { background: var(--dbd-gold); }
+.sty-tap { position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); padding: 3px 12px; border-radius: 999px;
+  background: var(--dbd-gold); border: 2.5px solid var(--dbd-ink); font: 900 12.5px var(--ui-body); opacity: 0; transition: opacity .3s; }
+.sty-tap.on { opacity: 1; }
+.sty-skip { position: absolute; right: max(12px, env(safe-area-inset-right)); top: 10px; height: 38px; padding: 0 12px 0 16px; font-size: 17px; gap: 4px; }
+/* 1. the farm: the vegetables run off */
+.sty-run { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; }
+.sty-hop { position: absolute; inset: 0; display: block; }
+.sty-hop img { display: block; filter: drop-shadow(0 4px 0 rgba(43, 23, 8, .3)); }
+.sty-bang { position: absolute; left: 44px; top: -16px; font: 400 26px var(--ui-display); font-style: normal; color: #E5484D; -webkit-text-stroke: 5px var(--dbd-ink); paint-order: stroke fill; opacity: 0; }
+.sty-dust { position: absolute; left: 6px; bottom: -6px; width: 26px; height: 14px; border-radius: 50%; background: rgba(255, 244, 220, .8); opacity: 0; }
+/* 2. the map: a flag for each country, its runaway peeking out */
+.s-map { display: grid; place-items: center; background: #8FD0EE; }
+.sty-map { position: relative; width: min(100vw, 216vh); aspect-ratio: 844 / 390; margin-top: -4vh; }
+.sty-mapimg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sty-pin { position: absolute; width: 0; height: 0; }
+.sty-flag { position: absolute; left: -17px; top: -12px; display: block; transform: scale(1.35); opacity: 0; filter: drop-shadow(0 2px 0 rgba(43, 23, 8, .35)); }
+.sty-peek { position: absolute; left: -23px; top: -44px; opacity: 0; }
+/* 3. the bank: Arthur and his bill */
+.s-bank { background: #2F5D50; }
+.sty-wall { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, #2F5D50 0 28px, #2A5347 28px 56px); }
+.sty-wall::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 30%; background: #6B4632; border-top: 5px solid var(--dbd-ink); }
+.sty-arthur { position: absolute; left: max(4%, calc(50% - 300px)); bottom: 18%; width: 200px; height: 220px; }
+.sty-bill { position: absolute; left: 52%; top: 12%; width: 220px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 16px 16px;
+  background: #FFFDF4; border: 3px solid var(--dbd-ink); border-radius: 12px; box-shadow: 0 6px 0 var(--dbd-ink); transform: rotate(4deg); }
+.sty-bill .sb-bank { font: 700 10px 'Courier Prime', 'Courier New', monospace; letter-spacing: .5px; text-align: center; }
+.sty-bill b { font: 400 26px var(--ui-display); }
+.sty-bill .sb-amt { font: 400 40px var(--ui-display); color: #B8452F; }
+.sty-bill .sb-due { font: 800 13px var(--ui-body); color: var(--dbd-muted); }
+/* (below the card's foot, so "Due at dusk" stays readable) */
+.sty-bill .sb-stamp { position: absolute; right: -26px; bottom: -20px; padding: 2px 10px; border: 4px solid #C43D2E; border-radius: 10px; color: #C43D2E; font: 400 20px var(--ui-display);
+  background: rgba(255, 235, 230, .7); transform: rotate(-12deg); opacity: 0; white-space: nowrap; }
+/* 4. the catch: a net drops on the runaway, then it works in the Pen */
+.sty-catchme { position: absolute; left: 50%; top: 58%; width: 80px; height: 80px; margin: -40px 0 0 -40px; }
+.sty-catchme img { display: block; }
+.sty-net { position: absolute; left: 50%; top: 58%; width: 140px; height: 116px; margin: -78px 0 0 -70px; opacity: 0; }
+.sty-net svg { width: 100%; height: 100%; overflow: visible; }
+.sty-caught { position: absolute; left: 50%; top: 30%; transform: translateX(-50%) rotate(-6deg); padding: 2px 14px; border: 5px solid var(--dbd-deep-green); border-radius: 12px;
+  color: var(--dbd-deep-green); background: rgba(234, 246, 220, .85); font: 400 34px var(--ui-display); opacity: 0; white-space: nowrap; }
+.sty-pen { position: absolute; right: 6%; bottom: 26%; width: 220px; height: 80px; opacity: 0; }
+.sty-pen > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sty-worker { position: absolute; left: 88px; top: -18px; }
+.sty-coin { position: absolute; left: 104px; top: -10px; width: 16px; height: 16px; box-sizing: border-box; border: 2.5px solid var(--dbd-ink); border-radius: 50%; background: var(--dbd-gold); opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .sty-cap.pop { animation: styCap .4s cubic-bezier(.2, 1.5, .4, 1) both; }
+  .sty-run { animation: styRun 1.7s cubic-bezier(.5, 0, .9, .6) both; animation-delay: calc(var(--dl) + .5s); }
+  .sty-hop { animation: styHop .26s ease-in-out infinite alternate; animation-delay: var(--dl); }
+  .sty-bang { animation: styBang .5s ease-out both; animation-delay: var(--dl); }
+  .sty-dust { animation: styDust .5s ease-out infinite; animation-delay: calc(var(--dl) + .5s); }
+  .sty-flag { animation: styFlag .45s cubic-bezier(.2, 1.6, .4, 1) both; animation-delay: var(--dl); }
+  .sty-peek { animation: styPeek .5s cubic-bezier(.2, 1.6, .4, 1) both, styHop .5s ease-in-out infinite alternate; animation-delay: calc(var(--dl) + .2s), calc(var(--dl) + .7s); }
+  .sty-bill { animation: styBill .55s cubic-bezier(.2, 1.4, .4, 1) .35s both; }
+  .sty-bill .sb-stamp { animation: styStamp .32s cubic-bezier(.3, 1.6, .5, 1) 1.2s both; }
+  .sty-catchme { animation: styDodge 1s ease-in-out both; }
+  .sty-net { animation: styNet .45s cubic-bezier(.3, 1.3, .6, 1) 1s both; }
+  .sty-caught { animation: styStamp2 .32s cubic-bezier(.3, 1.6, .5, 1) 1.45s both; }
+  .sty-pen { animation: styPen .5s ease-out 2.2s both; }
+  .sty-worker img { animation: styHop .4s ease-in-out 2.6s infinite alternate; }
+  .sty-coin { animation: styCoin .9s ease-out var(--dl) infinite; }
+}
+/* no animation: everything in its place */
+@media (prefers-reduced-motion: reduce) {
+  .sty-flag, .sty-peek, .sb-stamp, .sty-net, .sty-caught, .sty-pen { opacity: 1; }
+  .sty-run { display: none; }
+}
+@keyframes styCap { from { transform: translateX(-50%) translateY(20px) scale(.8); opacity: 0; } to { transform: translateX(-50%) translateY(0) scale(1); opacity: 1; } }
+@keyframes styRun { from { transform: translate(0, 0); } to { transform: translate(calc(var(--dx) * 100vw), calc(var(--dy) * 100vh)); } }
+@keyframes styHop { from { transform: translateY(0) rotate(-5deg); } to { transform: translateY(-14px) rotate(5deg); } }
+@keyframes styBang { 0% { opacity: 0; transform: scale(.3); } 40% { opacity: 1; transform: scale(1.3); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes styDust { 0% { opacity: .8; transform: scale(.4); } 100% { opacity: 0; transform: translateX(-16px) scale(1.4); } }
+@keyframes styFlag { from { opacity: 0; transform: scale(.2); } to { opacity: 1; transform: scale(1.35); } }
+@keyframes styPeek { from { opacity: 0; transform: translateY(26px) scale(.6); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes styBill { from { opacity: 0; transform: translateX(60vw) rotate(30deg); } to { opacity: 1; transform: translateX(0) rotate(4deg); } }
+@keyframes styStamp { from { opacity: 0; transform: rotate(-12deg) scale(2.6); } to { opacity: 1; transform: rotate(-12deg) scale(1); } }
+@keyframes styStamp2 { from { opacity: 0; transform: translateX(-50%) rotate(-6deg) scale(2.6); } to { opacity: 1; transform: translateX(-50%) rotate(-6deg) scale(1); } }
+@keyframes styDodge { 0% { transform: translateX(-90px); } 30% { transform: translateX(60px) translateY(-20px); } 60% { transform: translateX(-30px); } 100% { transform: translateX(0); } }
+@keyframes styNet { from { opacity: 1; transform: translateY(-70vh); } to { opacity: 1; transform: translateY(0); } }
+@keyframes styPen { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes styCoin { 0% { opacity: 1; transform: translateY(0) scale(.6); } 100% { opacity: 0; transform: translateY(-50px) scale(1); } }
+.ct-emo { font-size: 28px; line-height: 1; font-style: normal; }
+
+/* 0.16 (Navid, 18 Nov: "you could present the chest a bit more exciting. not just dump it in the middle of screen"):
+   a dark stage with turning light; the chest drops in and lands in a puff of dust, sparkles twinkle round it, a tap
+   rattles it and it bursts open in a white flash and a shower of coins, and the cards fly out of it */
+.scr-modal[data-kind="perks"] { background: radial-gradient(circle at 50% 46%, rgba(255, 205, 110, .32), rgba(30, 14, 4, .9) 62%); }
+.scr-modal[data-chest="closed"] .modal-card { background: transparent; border-color: transparent; box-shadow: none; }
+.scr-modal[data-chest="closed"] .chest-head .m-title, .scr-modal[data-chest="closed"] .chest-head .eyebrow { color: var(--dbd-cream); -webkit-text-stroke: 6px var(--dbd-ink); paint-order: stroke fill; }
+.scr-modal[data-chest="closed"] .chest-head .m-title { font-size: 32px; }
+.ch-rays { position: absolute; left: 50%; top: 48%; width: 420px; height: 420px; margin: -210px 0 0 -210px; border-radius: 50%; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 226, 122, .5) 0 9deg, rgba(255, 226, 122, 0) 9deg 24deg);
+  -webkit-mask: radial-gradient(circle, #000 18%, rgba(0, 0, 0, .55) 42%, transparent 70%); mask: radial-gradient(circle, #000 18%, rgba(0, 0, 0, .55) 42%, transparent 70%); }
+.chest-box.open .ch-rays { opacity: 0; transition: opacity .6s .4s; }
+.ch-flash { position: absolute; left: 50%; top: 42%; width: 140px; height: 140px; margin: -70px 0 0 -70px; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle, #FFFFFF 0 30%, rgba(255, 248, 220, .85) 50%, rgba(255, 248, 220, 0) 72%); }
+.ch-dust { position: absolute; left: 50%; bottom: 6px; width: 190px; height: 36px; margin-left: -95px; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse, rgba(255, 240, 210, .85), rgba(255, 240, 210, 0) 70%); }
+.ch-spark { position: absolute; left: 50%; top: 46%; width: 16px; height: 16px; margin: -8px 0 0 -8px; transform: translate(var(--x), var(--y)); pointer-events: none; opacity: 0;
+  background: #FFF4B0; clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%); }
+.chest-box.open .ch-spark, .chest-box.open .ch-dust { display: none; }
+.chest-box .perk-grid { perspective: 700px; }
+@media (prefers-reduced-motion: no-preference) {
+  .ch-rays { animation: chRays 9s linear infinite; }
+  .chest-box:not(.open) .ch-spark { animation: chSpark 1.6s ease-in-out infinite; animation-delay: var(--dl); }
+  .chest-box.arrive:not(.open):not(.opening) .ch-svg { animation: chDrop .75s cubic-bezier(.3, 1.2, .5, 1) both, dbdChestWiggle 1.8s ease-in-out 1s infinite; transform-origin: 50% 90%; }
+  .chest-box.arrive:not(.open) .ch-dust { animation: chDust .7s ease-out .42s both; }
+  .chest-box.arrive:not(.open) .chest-head { animation: chHead .5s cubic-bezier(.2, 1.5, .4, 1) .55s both; }
+  .chest-box.arrive:not(.open) .chest-tap { animation: chHead .4s cubic-bezier(.2, 1.5, .4, 1) .8s both, chTap 1.1s ease-in-out 1.3s infinite; }
+  .chest-box.opening .ch-svg { animation: chRattle .52s linear both; transform-origin: 50% 90%; }
+  .chest-box.opening .ch-rays { animation-duration: 1.4s; }
+  .chest-box.opening .ch-glow { opacity: .9; transform: scale(.9); transition: opacity .5s, transform .5s; }
+  .chest-box.open .ch-flash { animation: chFlash .55s ease-out both; }
+  .chest-box.open .perk-card { animation: chCardOut .62s cubic-bezier(.2, 1.3, .4, 1) both; animation-delay: calc(.2s + var(--i) * .13s); }
+}
+@keyframes chRays { to { transform: rotate(360deg); } }
+@keyframes chSpark { 0%, 100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(.3) rotate(0); } 50% { opacity: 1; transform: translate(var(--x), var(--y)) scale(1.15) rotate(45deg); } }
+@keyframes chDrop { 0% { transform: translateY(-420px) scale(.9, 1.15); } 55% { transform: translateY(0) scale(1.18, .78); } 72% { transform: translateY(-14px) scale(.94, 1.08); } 86% { transform: translateY(0) scale(1.04, .96); } 100% { transform: none; } }
+@keyframes chDust { 0% { opacity: .9; transform: scale(.4, .5); } 100% { opacity: 0; transform: scale(1.5, 1.2); } }
+@keyframes chHead { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+@keyframes chTap { 50% { transform: scale(1.1); } }
+@keyframes chRattle { 0% { transform: none; filter: none; } 15% { transform: rotate(-7deg) translateY(-2px); } 30% { transform: rotate(7deg); } 45% { transform: rotate(-9deg) translateY(-4px) scale(1.04); filter: brightness(1.3); }
+  60% { transform: rotate(9deg) scale(1.08); } 75% { transform: rotate(-11deg) translateY(-6px) scale(1.12); filter: brightness(1.7); } 100% { transform: translateY(-8px) scale(1.16); filter: brightness(2.2); } }
+@keyframes chFlash { 0% { opacity: 1; transform: scale(.3); } 100% { opacity: 0; transform: scale(3.2); } }
+@keyframes chCardOut { 0% { opacity: 0; transform: translateY(-70px) scale(.15) rotateY(180deg) rotate(-14deg); } 55% { opacity: 1; transform: translateY(6px) scale(1.08) rotateY(0) rotate(2deg); } 100% { opacity: 1; transform: none; } }
+.dc-rw { display: inline-flex; align-items: center; margin-left: 6px; vertical-align: middle; }
+.dc-rw img { height: 26px; filter: drop-shadow(0 2px 0 rgba(43, 23, 8, .3)); }
+
+/* 0.16: a town's three star goals (on its first morning; the stars on the day card open them again) */
+.gl-head { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.gl-head .m-title { font-size: 28px; }
+.gl-goals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.gl-goal { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px 8px 12px; border: 3px solid var(--dbd-ink); border-radius: 16px;
+  background: #FFF6DE; box-shadow: 0 4px 0 var(--dbd-ink); text-align: center; animation: dbdStarIn .5s cubic-bezier(.2, 1.6, .4, 1) both; }
+.gl-goal > svg { position: absolute; top: -17px; left: 50%; margin-left: -15px; filter: drop-shadow(0 2px 0 rgba(43, 23, 8, .25)); }
+.gl-goal > svg path { fill: #FFE9A8; }
+.gl-ic { height: 44px; display: flex; align-items: center; justify-content: center; }
+.gl-ic img { filter: drop-shadow(0 2px 0 rgba(43, 23, 8, .3)); }
+.gl-goal b { font: 900 13.5px/1.2 var(--ui-body); color: var(--dbd-ink); }
+.gl-1st { display: grid; place-items: center; width: 38px; height: 38px; border: 3px solid var(--dbd-ink); border-radius: 50%; background: #7CC4F0; box-sizing: border-box;
+  font: 400 24px/1 var(--ui-display); font-style: normal; color: #fff; -webkit-text-stroke: 4px var(--dbd-ink); paint-order: stroke fill; }
+.gl-goal.miss { opacity: .5; }
+.gl-goal.miss b { text-decoration: line-through 2px; }
+.scr-modal[data-kind="goals"] .modal-card { gap: 22px; padding-top: 16px; }
+.scr-modal[data-kind="goals"] .modal-card > .st-btn { align-self: center; min-width: 180px; }
+.dc-stars { display: inline-flex; gap: 1px; padding: 2px 4px; margin-left: 2px; border: 0; background: none; cursor: pointer; }
+/* the win card: three buttons on one line ("Next town" wrapped) and the big day's best on the right */
+.r-actions .st-btn { white-space: nowrap; min-width: 0; }
+.r-actions .st-btn.btn-md { padding: 0 12px; }
+.r-actions [data-act="next-city"] { flex: 1.45; }
+.star-row.big-row .sp-amt { margin-left: auto; font: 800 13px var(--ui-body); color: var(--dbd-muted); }

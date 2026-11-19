@@ -90,6 +90,24 @@ export class ArthurView {
   }
 }
 
+/** 0.16: Arthur in a tip's bubble, gloating while he talks about his bills, until the canvas leaves the page. */
+export function arthurTalk(cv: HTMLCanvasElement | null): void {
+  if (!cv) return;
+  const v = new ArthurView(cv, Number(cv.dataset.w) || 64, Number(cv.dataset.h) || 64, Number(cv.dataset.tall) || 58, 2, 0);
+  v.mood = 'gloat';
+  v.intensity = 0.6;
+  let last = 0;
+  const loop = (ms: number) => {
+    if (!cv.isConnected) return;
+    const now = ms / 1000;
+    const dt = last ? Math.min(0.1, now - last) : 1 / 60;
+    last = now;
+    v.frame(now, dt);
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+
 /** Runs an Arthur on a card (won: he faints; lost: he dances) until the canvas leaves the page. */
 export function arthurOnCard(cv: HTMLCanvasElement | null, kind: 'won' | 'lost'): void {
   if (!cv) return;

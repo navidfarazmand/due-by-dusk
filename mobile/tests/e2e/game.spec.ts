@@ -12,7 +12,8 @@ function seeded(won: string[], wallet: number, extra: Save = {}): Save {
     // treeV 1: a save of 0.13 (the tree is the one upgrade system); a test of the migration leaves it out. econ 12: 0.15
     v: 3, econ: 12, treeV: 1, createdAt: 1, cities, run: null, wallet,
     workshop: { levels: { scythe: 6, swing: 2, hands: 2, days: 2, soil: 2, market: 2, clover: 1 }, job: null },
-    tools: { owned: ['sickle'], equipped: 'sickle', mods: {} },
+    // 0.16: the power bar is a tool upgrade (the Power booster); most tests play with it
+    tools: { owned: ['sickle'], equipped: 'sickle', mods: { 'sickle.charge': 1 } },
     ads: { date: '', coins: 0, doubles: 0, finishes: 0, lastCoinsAt: 0 },
     settings: { music: false, haptics: true }, seen: {}, totals: { days: 0, crops: 0, earned: 0 },
     ...extra,
@@ -49,6 +50,30 @@ async function takePerk(card: Locator): Promise<void> {
   await expect(card.locator('.pk-ok')).toBeVisible();
   await card.click();
 }
+
+/** 0.16: a tip that waits for a tap (the catcher over the screen takes it, after the tip's first moments). */
+async function tapTip(page: Page): Promise<void> {
+  await expect(page.locator('#dbdCoach .ct-catch')).toBeVisible();
+  await page.waitForTimeout(600);
+  await page.locator('#dbdCoach .ct-catch').dispatchEvent('pointerdown');
+}
+
+/** 0.16: a town's goals card (its three stars) opens on the first morning of a run when the coach is on. */
+async function closeGoals(page: Page): Promise<void> {
+  await expect(page.locator('.scr-modal[data-kind="goals"] .gl-goal')).toHaveCount(3);
+  // the card and its three goals fit the screen
+  const fit = await page.evaluate(() => {
+    const r = document.querySelector('.scr-modal .modal-card')!.getBoundingClientRect();
+    const goals = [...document.querySelectorAll('.scr-modal .gl-goal')].map(e => e.getBoundingClientRect());
+    return { ok: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, inCard: goals.every(g => g.left >= r.left && g.right <= r.right && g.bottom <= r.bottom) };
+  });
+  expect(fit).toEqual({ ok: true, inCard: true });
+  await page.locator('.scr-modal [data-act="goals-ok"]').click();
+  await expect(page.locator('.scr-modal')).toBeHidden();
+}
+
+/** Every first-sight tip on the field, seen (the tests that look at one leave it out). */
+const SEEN_ALL = { intro: true, story: true, practice: true, cut: true, start: true, tour: true, cleave: true, mBoss: true, mBoss2: true, mBomb: true, mEncase: true, mRadish: true, mGolden: true, mGoat: true, mGoatPet: true, mCrow: true, mThief: true, mProp: true, mFert: true, mEgg: true, mClover: true, mBolt: true, mRival: true, mChain: true, mPower: true, mRush: true };
 
 /** Speeds the field up for tests (the engine multiplies its time step). */
 async function fast(page: Page, k = 8): Promise<void> {
@@ -321,9 +346,9 @@ test('an older save: learned skills become owned tree nodes, diamonds become sav
   // 0.15.1: Pasture accord sits in the middle of the Rancher branch now (an old save keeps it); Barn owl opens the
   // branch, by the trunk
   await page.locator('.scr-tree .tr-nd[data-arg="a6"]').click();
-  // 0.15: priced in the player's own days (one of them here, ring 1), a round amount
+  // 0.16: priced in an average player's days there (two of them, ring 1), the same for every player, a round amount
   const price = Number((await page.locator('.scr-tree [data-act="tree-buy"][data-arg="a6"] b').textContent())!.replace(/[^0-9]/g, ''));
-  expect(price).toBe(await page.evaluate(() => { const P = (window as any).__DBD_PLANS; return P.niceMoney(P.avgDay(3, 3)); }));
+  expect(price).toBe(await page.evaluate(() => { const P = (window as any).__DBD_PLANS; return P.niceMoney(2 * P.avgDay(3, 3)); }));
   await page.locator('.scr-tree [data-act="tree-buy"][data-arg="a6"]').click();
   const g2 = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g2.tree.a6).toBe(1);
@@ -462,36 +487,68 @@ async function harvest(page: Page, ms: number): Promise<void> {
   });
 }
 
-test('a new player: Play opens the practice farm; each step waits for the player; then the first farm', async ({ page }) => {
+test('a new player: the story, the practice farm (each tip on the thing it explains, the sun waiting), then the first farm, its goals and its bill', async ({ page }) => {
+  test.setTimeout(120_000);
   const errors = await boot(page, undefined, true);
   await act(page, 'play');
-  const step = page.locator('#dbdCoach .co-step .cs-t');
-  await expect(step).toContainText(/drag over a carrot|mouse over a carrot/);
+  // 0.16 (Navid, 18 Nov: "what is the story of the game at all"): four scenes first; Skip ends them
+  await expect(page.locator('#dbdStory')).toBeVisible();
+  await page.locator('#dbdStory .sty-skip').click();
+  await expect(page.locator('#dbdStory')).toHaveCount(0);
+  const tip = page.locator('#dbdCoach .ct-tip .ct-t');
+  await expect(tip).toContainText(/over the carrot/);
   // the sun waits: the daylight clock does not run while the player learns
   const t0 = await page.evaluate(() => (window as any).__DBD_ENGINE.state().time);
   await page.waitForTimeout(1500);
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().time)).toBe(t0);
   await expect(page.locator('#dbdCoach.cinema')).toHaveCount(0);
-  await harvest(page, 3500);
-  await expect(step).toHaveText(/Coins go to your jar|Make a chain|The sun is your clock/, { timeout: 8000 });
-  await page.waitForTimeout(3500);
-  await harvest(page, 8000);
-  await expect(step).toHaveText('The sun is your clock', { timeout: 10_000 });
+  // each tip waits for the player: the cutting ones for cuts, the others for a tap (every title shown is logged, as a
+  // tip can end at once: a chain already 5 long when the chain tip comes)
+  await page.evaluate(() => {
+    const w = window as any, root = document.getElementById('dbdCoach')!;
+    w.__titles = [];
+    const log = () => {
+      const tt = root.querySelector('.ct-tip:not([hidden]) .ct-t');
+      const v = ((tt && tt.textContent) || '').trim();
+      if (v && w.__titles[w.__titles.length - 1] !== v) w.__titles.push(v);
+    };
+    new MutationObserver(log).observe(root, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] });
+    log();
+  });
+  for (let i = 0; i < 60 && !(await page.locator('.scr-farmhouse').isVisible()); i++) {
+    const title = (await tip.isVisible()) ? ((await tip.textContent()) || '').trim() : '';
+    if (title === 'The sun is your clock') await fast(page);
+    if (/jar|my bill|sun is your clock/.test(title)) await tapTip(page);
+    else if (title) await harvest(page, 1500);
+    else await page.waitForTimeout(250);
+  }
+  const titles: string[] = await page.evaluate(() => (window as any).__titles);
+  expect(titles.slice(titles.indexOf('Cut 5 carrots'), titles.indexOf('The sun is your clock') + 1)).toEqual(['Cut 5 carrots', 'Your coins go into this jar', 'And this is my bill!', 'Now make a chain', 'The sun is your clock']);
   await expect(page.locator('.scr-farmhouse')).toBeVisible({ timeout: 20_000 });
   const st = await page.evaluate(() => ({ run: (window as any).__DBD_APP.g.run?.cityId, seen: (window as any).__DBD_APP.g.seen, cash: (window as any).__DBD_ENGINE.state().cash }));
   expect(st.run).toBe('ca_charlottetown');
   expect(st.seen.practice).toBe(true);
   expect(st.cash).toBe(0);
-  await expect(page.locator('#dbdCoach .co-hole')).toBeVisible();
+  // 0.16 (Navid, 19 Nov: "when can we see ... we can win another star?"): the town's three stars, then its first bill
+  await expect(page.locator('.scr-modal .gl-goals')).toContainText('Catch the runaway');
+  await expect(page.locator('.scr-modal .gl-goals')).toContainText('A big day: $');
+  await closeGoals(page);
+  await expect(tip).toContainText('Your first bill');
+  await tapTip(page);
+  await expect(tip).toContainText('days in this town');
+  // the stars on the day card open the goals again
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.goals)).toBe(true);
   expect(errors).toEqual([]);
 });
 
 test('Skip practice lands on the first farm; the intro plays from Settings and Skip ends it', async ({ page }) => {
   const errors = await boot(page, undefined, true);
   await act(page, 'play');
+  await page.locator('#dbdStory .sty-skip').click();
   await expect(page.locator('#dbdCoach .co-skip')).toBeVisible();
   await page.locator('#dbdCoach .co-skip').click();
   await expect(page.locator('.scr-farmhouse')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('.scr-modal[data-kind="goals"]')).toBeVisible();
   expect(await page.evaluate(() => (window as any).__DBD_APP.g.run?.cityId)).toBe('ca_charlottetown');
   // the intro film, from Settings, ends back on the menu with the farm as it was
   await page.evaluate(() => (window as any).__DBD_APP.show('menu'));
@@ -504,21 +561,29 @@ test('Skip practice lands on the first farm; the intro plays from Settings and S
   expect(errors).toEqual([]);
 });
 
-test('something new on a real farm holds the field with a card until a tap', async ({ page }) => {
+test('something new on a real farm holds the field with a tip on it until a tap', async ({ page }) => {
   const errors = await boot(page, seeded([], 0), true);
-  await page.evaluate(() => { const g = (window as any).__DBD_APP.g; g.seen = { intro: true, practice: true, cut: true, start: true, cleave: true, mBoss: true, mBoss2: true, mBomb: true, mEncase: true, mRadish: true, mGolden: true, mGoat: true, mGoatPet: true, mCrow: true, mThief: true, mProp: true, mBolt: true, mRival: true, mRush: true }; });
+  // the chain bonus is the one left to see
+  await page.evaluate(s => { (window as any).__DBD_APP.g.seen = { ...s, mChain: false }; }, SEEN_ALL);
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await closeGoals(page);
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
-  // the chain bonus is the one left to see: cut until it shows
-  await harvest(page, 9000);
-  await expect(page.locator('#dbdBanner.new-thing')).toBeVisible({ timeout: 6000 });
-  await expect(page.locator('#dbdCoach .co-veil.on')).toHaveCount(0);
+  // (a bare first field is too thin for a chain of 8 in one day: the test puts the chain there, after the day's first
+  // seconds, when tips may come)
+  await page.waitForTimeout(2300);
+  const need = await page.evaluate(() => (window as any).__DBD_ENGINE.hud().tiers[1].count);
+  await E(page, 'devClock', { combo: need });
+  const tip = page.locator('#dbdCoach .ct-tip .ct-t');
+  await expect(tip).toHaveText('Chain bonus!', { timeout: 6000 });
+  // (0.16: the tip points at the chain strip)
+  await expect(page.locator('#dbdCoach .ct-spot')).toBeVisible();
   const t1 = await page.evaluate(() => (window as any).__DBD_ENGINE.state().time);
   await page.waitForTimeout(700);
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().time)).toBe(t1);
-  await page.mouse.click(300, 300);
-  await expect(page.locator('#dbdBanner.new-thing')).toHaveCount(0);
+  await tapTip(page);
+  await expect(page.locator('#dbdCoach .ct-tip')).toBeHidden();
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.seen.mChain)).toBe(true);
   expect(errors).toEqual([]);
 });
 
@@ -905,21 +970,20 @@ test('touch: a second finger does nothing; a still finger just keeps cutting (v0
   expect(errors).toEqual([]);
 });
 
-test('the power meter: a card at half full (once), then the tool\'s power and the rush fire together', async ({ page }) => {
+test('the power bar: a tip on it the first day the tool has one (once), then the tool\'s power and the rush fire together', async ({ page }) => {
   const errors = await boot(page, seeded([], 0), true);
-  await page.evaluate(() => { const g = (window as any).__DBD_APP.g; g.seen = { intro: true, practice: true, cut: true, start: true, cleave: true, mBoss: true, mBoss2: true, mBomb: true, mEncase: true, mRadish: true, mGolden: true, mGoat: true, mGoatPet: true, mCrow: true, mThief: true, mProp: true, mBolt: true, mRival: true, mChain: true, mRush: true }; });
+  await page.evaluate(s => { (window as any).__DBD_APP.g.seen = { ...s, mPower: false }; }, SEEN_ALL);
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await closeGoals(page);
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();
   // beside the sun dial, a bar with no number on it
   await expect(page.locator('#dbdHud .grp.tc #dbdRush')).toBeVisible();
   await expect(page.locator('#dbdRushLbl')).toHaveText('POWER');
-  await page.waitForTimeout(2200);
-  await page.evaluate(() => (window as any).__DBD_ENGINE.devPower(0.6));
-  await expect(page.locator('#dbdBanner.new-thing')).toBeVisible({ timeout: 6000 });
-  await expect(page.locator('#dbdBanner')).toContainText('Your power meter');
-  await page.mouse.click(300, 300);
-  await expect(page.locator('#dbdBanner.new-thing')).toHaveCount(0);
+  // 0.16: the tip comes once the day has started (a tool with its Power booster), on the bar itself
+  await expect(page.locator('#dbdCoach .ct-tip .ct-t')).toHaveText('Your power bar', { timeout: 8000 });
+  await tapTip(page);
+  await expect(page.locator('#dbdCoach .ct-tip')).toBeHidden();
   expect(await page.evaluate(() => (window as any).__DBD_APP.g.seen.mPower)).toBe(true);
   // full: the sickle's Cleave and the Harvest Rush, at once
   await page.evaluate(() => {
@@ -1170,9 +1234,9 @@ test('the tree: one gold money and no reset; nodes not next to one you own are l
   await page.locator('.scr-tree .tr-nd[data-arg="p1"]').click();
   await expect(page.locator('.scr-tree .tr-card')).toContainText('Power cell');
   expect(await page.evaluate(() => typeof (window as any).__DBD_ENGINE.uiSound)).toBe('function');
-  // 0.15: a day of the player's own earnings where they are (ring 1)
+  // 0.16: two of an average player's days where they are (ring 1)
   const price = Number((await page.locator('.scr-tree [data-act="tree-buy"][data-arg="p1"] b').textContent())!.replace(/[^0-9]/g, ''));
-  expect(price).toBe(await page.evaluate(() => { const P = (window as any).__DBD_PLANS; return P.niceMoney(P.avgDay(2, 3)); }));
+  expect(price).toBe(await page.evaluate(() => { const P = (window as any).__DBD_PLANS; return P.niceMoney(2 * P.avgDay(2, 3)); }));
   await page.locator('.scr-tree [data-act="tree-buy"][data-arg="p1"]').click();
   const g = await page.evaluate(() => (window as any).__DBD_APP.g);
   expect(g.tree.p1).toBe(1);
@@ -1486,13 +1550,15 @@ test('tree tricks, the power and the reach of a swing: each does what its text s
   expect(await T()).toMatchObject({ windLeft: 5, swingBoost: 2 });
   for (let k = 0; k < 5; k++) await swing(0);
   expect(await T()).toMatchObject({ windLeft: 0, swingBoost: 1 });
-  // Static: a crit that lands fills the meter by half a cut (0.15: the meter is 8 cuts; a hit on a crop this tough
-  // fills next to nothing by itself)
+  // Static: a crit that lands fills the meter by half a cut (0.16: the bar is 20 cuts, it was 8 in 0.15; a hit on a
+  // crop this tough fills next to nothing by itself)
+  const goal = (await E(page, 'hud')).rushGoal;
+  expect(goal).toBe(20);
   await fx(page, { b6: 2, p10: 1 });
   await E(page, 'devClock', { meter: 0, rush: 0 });
   await swing(0);
   await swing(0);
-  expect((await T()).meter).toBeCloseTo(1 / 8, 5);
+  expect((await T()).meter).toBeCloseTo(1 / goal, 5);
   // Sweep: a swing that hits 4 or more crops pays 25% more (then 50%)
   await fx(page, {});
   await E(page, 'devClock', { time: len / 2 });
@@ -1519,7 +1585,7 @@ test('tree tricks, the power and the reach of a swing: each does what its text s
   expect(await cut(page, 'carrot')).toBeCloseTo(2 * one, 6);
   // (a cut fills the meter by itself too: 0.15, half a cut for the cut, the hits being the other half, and Chain
   // reaction's half)
-  expect((await T()).meter).toBeCloseTo(1 / 8, 6);
+  expect((await T()).meter).toBeCloseTo(1 / goal, 6);
   await E(page, 'devClock', { powerKill: false, meter: 0 });
   // Rush gold and Rush bloom: during the rush, three times the golden corn and crops sprouting twice as fast
   await fx(page, {});
@@ -1541,7 +1607,7 @@ test('tree tricks, the power and the reach of a swing: each does what its text s
 });
 
 test('Tool master doubles a Whirlwind (0.13)', async ({ page }) => {
-  const errors = await boot(page, seeded(CA.slice(0, 2), 0, { tools: { owned: ['sickle', 'scythe'], equipped: 'scythe', mods: {} } }));
+  const errors = await boot(page, seeded(CA.slice(0, 2), 0, { tools: { owned: ['sickle', 'scythe'], equipped: 'scythe', mods: { 'scythe.charge': 1 } } }));
   await act(page, 'play');
   await act(page, 'start');
   await expect(page.locator('#dbdHud')).toBeVisible();

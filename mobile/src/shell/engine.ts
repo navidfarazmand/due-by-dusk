@@ -84,6 +84,8 @@ export interface HudState {
   tiers: Array<{ count: number; mul: number }>;
   rushCharge: number;
   rushGoal: number;
+  /** 0.16: the tool in hand has its power bar (its first Power booster). */
+  powerOn?: boolean;
   rushT: number;
   rushDur: number;
   time: number;

@@ -98,6 +98,8 @@ export interface CityPlan {
   totalDays: number;
   /** Keep this much cash after paying the deed for the second star. */
   spare: number;
+  /** 0.16: the second star, a big day: earn this much in one day (half again an average player's day here). */
+  bigDay: number;
   /** The day's gazette event this city leans towards (every other day). */
   signatureEvent: string;
   /** What a steady player earns on a day here once the whole ladder is out (used for bills and ad rewards). */
@@ -195,6 +197,10 @@ export const GROW_FAST = 5;
 /** 0.15.1: and they sprout three times as fast as their town's field would (a bare field sprouts one every 5 s), so
  *  practice's six carrots and chain of six still come in a few seconds. */
 export const PRACTICE_SPAWN = 3;
+/** 0.16: the second star's big day, in an average player's days there. */
+export const BIG_DAY = 1.5;
+/** 0.16: practice's carrots take 2 cuts, as the first town's do (a one-cut carrot was "wrong"). */
+export const PRACTICE_CROP_HP = 1.5;
 
 /**
  * A field's vegetables by size, smallest first: value, toughness and how often each comes up. Value per cut stays
@@ -203,6 +209,10 @@ export const PRACTICE_SPAWN = 3;
  */
 export const LADDER_VAL = [1, 3, 5, 7.5, 10, 12.5, 15, 18];
 export const LADDER_HP = [1, 2.5, 4.5, 7, 10, 13, 16.5, 20];
+/** 0.16: a crop's health on its town's first day is at least this (a sickle without upgrades hits for 1): 2 cuts
+ *  (Navid, 18 Nov: 3 cuts for a carrot was "a bit steep ... try 2"). */
+export const FIRST_TOWN_CROP_HP = 1.5;
+export const MIN_CROP_HP = 1.5;
 const LADDER_W = [14, 16, 18, 20, 22, 22, 22, 22];
 
 /**
@@ -480,12 +490,17 @@ export function avgDay(k: number, d: number): number {
  * as possible"): as bills follow each player's days, a harder field alone adds no ads; this is what does. Town 2 asks
  * 1.1 of a day, town 3 1.2 and from town 4 1.3 (were 1.0, 1.1, 1.15): about 7 to 8 ads in ten minutes from town 4
  * (about 5 before); the first town still needs none.
+ * 0.16 (Navid, 19 Nov: "i was wrong about making it harder ... i cannot keep up and have to watch ads every day, even
+ * i can't pay for skills. maybe make it a bit easier for everyone for the bill?"): a bill asks a little less than the
+ * day it covers, so the bills can be paid without an ad and some money is left for skills: 0.6 of a day in the first
+ * town, 0.8 in the second, 0.85 in the third and 0.9 from the fourth. Ads (the day doubled, free coins) now buy the
+ * skills, which cost far more (tree.ts), and help when a surprise or a bad day comes.
  */
-export const BILL_RATE = 1.3;
+export const BILL_RATE = 0.9;
 export function billPressure(k: number): number {
-  if (k <= 0) return 0.7;
-  if (k === 1) return 1.1;
-  if (k === 2) return 1.2;
+  if (k <= 0) return 0.6;
+  if (k === 1) return 0.8;
+  if (k === 2) return 0.85;
   return BILL_RATE;
 }
 
@@ -620,11 +635,15 @@ export function planFor(cityId: string, scale = 1): CityPlan {
   const unlock = Math.min(5, Math.floor(k / 2));
   // the field (road.ts): the country's runaways caught so far, then this town's, the biggest crop. Sizes come from the
   // ladder; a field of one or two kinds uses its middle (a country's first town is not all tiny crops), except the
-  // very first town, whose carrots fall to one swipe
+  // very first town, whose carrots are the ladder's smallest
   const kindsHere = fieldKinds(k, n);
   const top = LADDER_VAL.length - 1;
   const start = k === 0 ? 0 : Math.max(0, 3 - kindsHere.length);
-  const stages: StageCrop[] = kindsHere.map((f, i) => ({ type: f.type, stage: f.stage, debut: f.debut, val: LADDER_VAL[Math.min(top, start + i)], hp: LADDER_HP[Math.min(top, start + i)] }));
+  // 0.16 (Navid, 18 Nov: "for first levels the sickle can cut carrot in one cut which is wrong"; then "try 2"): no
+  // crop falls to one cut of a sickle without upgrades: every town's softest crop takes at least 2 (MIN_CROP_HP: health
+  // on the town's first day, a sickle without upgrades hitting for 1)
+  const floorHp = (k === 0 ? FIRST_TOWN_CROP_HP : MIN_CROP_HP) / hpMul(k);
+  const stages: StageCrop[] = kindsHere.map((f, i) => ({ type: f.type, stage: f.stage, debut: f.debut, val: LADDER_VAL[Math.min(top, start + i)], hp: Math.max(floorHp, LADDER_HP[Math.min(top, start + i)]) }));
   const crops: CropWeight[] = [];
   kindsHere.forEach((f, i) => {
     const w = LADDER_W[Math.min(top, start + i)];
@@ -677,6 +696,10 @@ export function planFor(cityId: string, scale = 1): CityPlan {
     cropHp,
     totalDays,
     spare: niceMoney(bills[n - 1].amt * 0.5),
+    // 0.16 (Navid, 19 Nov, of the star for money kept: "just because i didn't spend my money on skill the last night
+    // i won another star???"): the second star is for playing well, a day that earns half again an average day here
+    // (a quarter again in a King's town, where time on the King earns nothing). The same for every player.
+    bigDay: niceMoney((boss ? 1.25 : BIG_DAY) * ref * avgDayShare(k)),
     signatureEvent: SIGNATURE[cityId] || 'market',
     dayRef: ref,
     billMul: mul,

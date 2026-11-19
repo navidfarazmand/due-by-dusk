@@ -237,6 +237,8 @@ function cardHtml(g: GameSave, n: TreeNode, ui: TreeUi, building: string | null)
   } else {
     const why: Record<string, string> = {
       soon: t('Coming soon.'), max: have && n.levels > 1 ? t('Maxed') : '', pair: t('You own its partner keystone.'),
+      // 0.16: the Power branch waits for the first Power booster (Tools)
+      power: t('First unlock your power bar: Tools, Power booster.'),
     };
     if (why[chk.why]) action = `<p class="tr-small">${esc(why[chk.why])}</p>`;
   }

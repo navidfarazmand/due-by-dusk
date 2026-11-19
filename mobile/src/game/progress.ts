@@ -57,6 +57,8 @@ export interface RunInfo {
   /** 0.15: this town's bills, tax, repairs and bounty, as a share of its own (paceMul of the player's pace when it
    *  started; the bills never change while the town runs). */
   scale?: number;
+  /** 0.16: the town's three star goals were shown (once a run, on its first morning). */
+  goals?: boolean;
 }
 
 export interface AdCounters {
@@ -243,6 +245,7 @@ export function parseGame(raw: string | null): GameSave {
         ? { repair: { what: o.run.repair.what.slice(0, 40), amt: Math.round(num(o.run.repair.amt)) } }
         : {}),
       ...(num(o.run.surpriseDay) > 0 ? { surpriseDay: Math.floor(num(o.run.surpriseDay)) } : {}),
+      ...(o.run.goals ? { goals: true } : {}),
     };
   }
   g.wallet = Math.max(0, num(o.wallet));
@@ -487,18 +490,19 @@ export function nextCity(g: GameSave): string {
 export interface StarResult {
   stars: number;
   win: boolean;
-  spare: boolean;
+  /** A big day: a day of the town earned the plan's bigDay or more. */
+  big: boolean;
   firstTry: boolean;
 }
 
 /**
- * Stars for a town: one for catching its runaway, one for keeping money to spare after the big bill (`spare` or more),
- * one for catching it on the first try (0.15: the bank never came in this town; it replaced the rival's crown).
+ * Stars for a town: one for catching its runaway, one for a big day (0.16: a day that earned `bigDay` or more; it was
+ * money kept after the big bill), one for catching it on the first try (0.15: the bank never came in this town).
  */
-export function starsFor(opts: { won: boolean; cashLeft: number; spare: number; firstTry: boolean }): StarResult {
-  if (!opts.won) return { stars: 0, win: false, spare: false, firstTry: false };
-  const spare = opts.cashLeft >= opts.spare;
-  return { stars: 1 + (spare ? 1 : 0) + (opts.firstTry ? 1 : 0), win: true, spare, firstTry: opts.firstTry };
+export function starsFor(opts: { won: boolean; bestDay: number; bigDay: number; firstTry: boolean }): StarResult {
+  if (!opts.won) return { stars: 0, win: false, big: false, firstTry: false };
+  const big = opts.bigDay > 0 && opts.bestDay >= opts.bigDay;
+  return { stars: 1 + (big ? 1 : 0) + (opts.firstTry ? 1 : 0), win: true, big, firstTry: opts.firstTry };
 }
 
 /** After a foreclosure the bank keeps this farm's earnings: you leave with at most what you came with. */

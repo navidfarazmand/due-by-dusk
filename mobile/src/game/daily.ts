@@ -117,6 +117,7 @@ export function sidePlan(cityId: string, tool?: ToolId, levels?: Levels): CityPl
     bills: [{ name: 'Best day', kind: 'big', amt: 999_999_999, days: 99, note: `One day on the ${name} farm.` }],
     totalDays: 1,
     spare: 0,
+    bigDay: 0,
     crops,
     stages,
     cropVal,

@@ -42,7 +42,7 @@ export interface TreeNode {
 
 export const BRANCHES: Array<{ id: TreeBranch; name: string; about: string }> = [
   { id: 'blade', name: 'Blade', about: 'damage and crits' },
-  { id: 'power', name: 'Power', about: 'the power meter' },
+  { id: 'power', name: 'Power', about: 'the power bar' },
   { id: 'reach', name: 'Reach', about: 'area and speed' },
   { id: 'field', name: 'Field', about: 'crops and daylight' },
   { id: 'market', name: 'Market', about: 'prices and bills' },
@@ -77,7 +77,7 @@ type Row = [string, string, string | number, string, Array<number | string>?];
 const ROWS: Record<TreeBranch, Row[]> = {
   blade: [
     ['edge', 'Sharper blade', 'T100', '+4% damage a level.'],
-    ['clover', 'Lucky clover', 'T30', '+0.8% crit chance a level.'],
+    ['clover', 'Lucky clover', 'T30', '+0.8% chance of a crit a level (a crit hits 2.8 times as hard).'],
     ['star', 'Keen edge', 3, 'Crits hit ×{v} instead of ×2.8.', [3.2, 3.6, 4]],
     ['drop', 'Bleeding cut', 3, 'A crop you hit keeps losing {v}% of the hit over a second.', [33, 50, 67]],
     ['bolt', 'Storm rod', 1, 'Crits throw lightning at a crop nearby.'],
@@ -94,22 +94,22 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['flame', 'Frenzy', 'K', 'Each crop in a chain makes you swing 1.5% faster, up to 40%, until the chain breaks.'],
   ],
   power: [
-    ['battery', 'Power cell', 'T20', 'The power meter fills 5% faster a level.'],
+    ['battery', 'Power cell', 'T20', 'Your power bar fills 5% faster a level.'],
     ['up', 'Big power', 3, 'Your power hits {v}% harder.', [20, 40, 60]],
-    ['link', 'Chain fuel', 1, 'From ×1.5 on, chained crops fill the meter twice as fast.'],
-    ['clock', 'Long rush', 2, 'The rush lasts {v} s longer.', [1, 2]],
-    ['wave', 'Sundering cleave', 1, 'The meter fills 50% faster and your power hits a wider circle.'],
-    ['half', 'Spark start', 2, 'Each day starts with the meter {v}% full.', [25, 50]],
-    ['corn', 'Rush gold', 1, 'During the rush, golden corn comes three times as often.'],
+    ['link', 'Chain power', 1, 'With a chain of ×1.5 or more, each cut fills your power bar twice as fast.'],
+    ['clock', 'Long rush', 2, 'Harvest Rush lasts {v} s longer.', [1, 2]],
+    ['wave', 'Sundering cleave', 1, 'Your power bar fills 50% faster and your power hits a wider circle.'],
+    ['half', 'Spark start', 2, 'Each day starts with your power bar {v}% full.', [25, 50]],
+    ['corn', 'Rush gold', 1, 'During Harvest Rush, golden corn comes three times as often.'],
     ['tornado', 'Whirlwind echo', 1, 'Your power leaves a spinning vortex that keeps cutting for 1.8 s.'],
     ['sprout', 'Green thumb', 1, 'Your power ripens the young crops around it.'],
-    ['spark', 'Static', 1, 'Every crit that lands fills the meter by half a cut.'],
+    ['spark', 'Static', 1, 'Every crit fills your power bar by half a cut.'],
     ['rings', 'Aftershock', 1, 'A second power at half strength fires half a second later in the same place.'],
-    ['plus', 'Overcharge', 1, 'The meter keeps filling to 150%; an overcharged power fires twice.'],
-    ['seed', 'Rush bloom', 1, 'During the rush, crops sprout twice as fast.'],
+    ['plus', 'Overcharge', 1, 'Your power bar can fill to 150%. Full past 100%, your power fires twice.'],
+    ['seed', 'Rush bloom', 1, 'During Harvest Rush, crops sprout twice as fast.'],
     ['coin', 'Power payout', 2, 'Crops your power cuts down pay {v}% more.', [50, 100]],
     ['tool', 'Tool master', 'K', "Each tool's power doubles: a Cleave twice as wide, a Whirlwind twice as long, a Fire wave twice as far, 24 seeds in a Seed storm."],
-    ['recycle', 'Chain reaction', 'K', 'Every crop your power cuts down fills the meter by half a cut.'],
+    ['recycle', 'Chain reaction', 'K', 'Every crop your power cuts down fills your power bar by half a cut.'],
   ],
   reach: [
     ['arrows', 'Wider swing', 'T30', '+2% reach a level.'],
@@ -171,7 +171,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
   ranch: [
     ['goat', 'Pasture accord', 1, 'The goat never headbutts; it tips you instead.'],
     ['hat', 'Scarecrow', 2, 'Thief crows take half as much.', ['Thief crows take half as much.', 'Thief crows take nothing: they only come to look.']],
-    ['comb', 'Rooster', 1, 'Each day starts with a 2 s rush.'],
+    ['comb', 'Rooster', 1, 'Each day starts with a 2 s Harvest Rush.'],
     ['paw', 'Farm dog', 1, 'Every 8 s the dog chases a crow off and brings back what it took.'],
     ['bee', 'Beehive', 2, 'Every {v} s a bee lands on a crop: it pays ×2.', [3, 2]],
     ['owl', 'Barn owl', 1, "In the last 3 s of the day crows can't land."],
@@ -201,8 +201,8 @@ const MOVED: Partial<Record<TreeBranch, Record<number, number>>> = {
 
 /** Between each branch and the next one round the trunk. */
 const BRIDGES: Row[] = [
-  ['bolt', 'Charged edge', 1, 'During the rush, every swing crits.'],
-  ['chevrons', 'Momentum', 1, 'During the rush, swings are 30% faster.'],
+  ['bolt', 'Charged edge', 1, 'During Harvest Rush, every swing is a crit.'],
+  ['chevrons', 'Momentum', 1, 'During Harvest Rush, swings are 30% faster.'],
   ['basket', 'Clearing', 1, 'A swing that cuts 3 or more crops at once leaves a fertilizer bag (one every 3 s at most).'],
   ['tag', 'Organic label', 1, 'Twins and crops that sprout again pay 50% more.'],
   ['milk', 'Goat milk', 1, 'The goat drops coins every 10 s it is on the field.'],
@@ -306,20 +306,36 @@ export function nodeLive(id: string): boolean {
  * 0.15 (Navid, 15 Nov: "skill tree many of things are super cheap. like scarecrow is only 2000 and i can make it in 1
  * day. i can upgrade my whole skill set in one country"): a node costs days of the player's own earnings in the town
  * they are in (an average day there times their pace, setTreeMoney), so the tree is as dear late as early and as
- * dear for a strong player as for anyone. By ring from the trunk: 1, 2, 3, 5, 8, 12 days, a keystone 20, a bridge
- * 8; each further level of a trick 1.7 times the one before, a level of Power cell 12% more. A Workshop
- * track keeps the Workshop's prices (tuned with the bots against the bills) times the pace, and never less than
- * 0.4 of the player's day.
+ * dear for a strong player as for anyone. By ring from the trunk (0.16, below): 2, 4, 7, 12, 20, 30 days, a
+ * keystone 50, a bridge 16, and never less than the ring's floor ($50 to $150,000, about four times a ring); each
+ * further level of a trick 1.7 times the one before, a level of a track 20% more. A Workshop track keeps the
+ * Workshop's prices (tuned with the bots against the bills) times the pace, and never less than 0.8 of the player's
+ * day.
  */
-export const RING_DAYS = [0, 1, 2, 3, 5, 8, 12, 20];
-export const BRIDGE_DAYS = 8;
-/** Nodes with a price of their own, in the player's days. 0.15.1 (Navid, 18 Nov: "280$ for goat is still nothing! 11
- *  days? you mean 11 days each 15 sec?"): Pasture accord, the end of the goat's headbutts, costs 50 days, more than two
- *  keystones; after the bills, most of that comes from ads. */
-export const NODE_DAYS: Record<string, number> = { a1: 50 };
+// 0.16 (Navid, 18 Nov: "why on earth upgrades are soooo cheap. level 3 of power cel is 22 and it increased from 15
+// then 18 then 20"; then "i told you to make each skill that is a layer after the other, much more expensive ... 5
+// layers down and i can buy perennial bloom with 120$ ... this skill should be something in the order of 10k"): a day
+// is about 15 seconds of play, and a ring priced only in the town's days was as cheap as that town's money. Now each
+// ring also has a floor in the first country's money, about four times the ring before: $50, 200, 800, 3,000,
+// 10,000, 40,000 and 150,000 for a keystone (times the player's pace), so the deep rings wait for later towns.
+// From there on the days rule: 2, 4, 7, 12, 20, 30 days and 50 for a keystone. A level of a track costs 20% more
+// than the one before (it was 12%), and a Workshop track at least 0.8 of a day (it was 0.4).
+export const RING_DAYS = [0, 2, 4, 7, 12, 20, 30, 50];
+export const BRIDGE_DAYS = 16;
+/** Each ring's lowest price (the first country's money, times the pace): about four times the ring before. */
+export const RING_FLOOR = [0, 50, 200, 800, 3000, 10_000, 40_000, 150_000];
+export const BRIDGE_FLOOR = 8000;
+/** Nodes with a price of their own, in the player's days and as a floor. 0.15.1 (Navid, 18 Nov: "280$ for goat is
+ *  still nothing! 11 days? you mean 11 days each 15 sec?"): Pasture accord, the end of the goat's headbutts, costs
+ *  more than two keystones in days (100 since 0.16) and at least $10,000; after the bills, most of that comes from ads. */
+export const NODE_DAYS: Record<string, number> = { a1: 100 };
+export const NODE_FLOOR: Record<string, number> = { a1: 10_000 };
 export const TRICK_LEVEL_STEP = 1.7;
+/** Each level of a track (Power cell, Mulch) costs this much more than the one before. */
+export const TRACK_LEVEL_STEP = 1.2;
 /** A Workshop track's level costs at least this many of the player's days (3% more a level). */
-export const TRACK_FLOOR_DAYS = 0.4;
+export const TRACK_FLOOR_DAYS = 0.8;
+export const TRACK_FLOOR_STEP = 1.03;
 let TREE_DAY = 0,
   TREE_SCALE = 1;
 /** The player's own day where they are, and their pace (the shell sets both before the tree is shown or bought). */
@@ -333,8 +349,17 @@ export function nodeDays(n: TreeNode, level: number): number {
   if (n.kind === 'bridge') return BRIDGE_DAYS;
   if (n.kind === 'key') return RING_DAYS[RING_DAYS.length - 1];
   const ring = RING_DAYS[Math.max(1, Math.min(RING_DAYS.length - 1, Math.round(n.d)))];
-  if (n.kind === 'track') return ring * Math.pow(1.12, level);
+  if (n.kind === 'track') return ring * Math.pow(TRACK_LEVEL_STEP, level);
   return ring * Math.pow(TRICK_LEVEL_STEP, level);
+}
+
+/** A node's lowest price, in the first country's money (before the pace): its ring's floor, rising by level. */
+export function nodeFloor(n: TreeNode, level: number): number {
+  const step = n.kind === 'track' ? TRACK_LEVEL_STEP : TRICK_LEVEL_STEP;
+  if (NODE_FLOOR[n.id]) return NODE_FLOOR[n.id] * Math.pow(step, level);
+  if (n.kind === 'bridge') return BRIDGE_FLOOR;
+  if (n.kind === 'key') return RING_FLOOR[RING_FLOOR.length - 1];
+  return RING_FLOOR[Math.max(1, Math.min(RING_FLOOR.length - 1, Math.round(n.d)))] * Math.pow(step, level);
 }
 
 /** The list price of a node's next level, from `level`. A Workshop track costs what the Workshop charges. */
@@ -344,11 +369,11 @@ export function nodeCost(n: TreeNode, level: number): number {
     const c = upgradeCost(w, level);
     if (c == null) return 0;
     const paced = TREE_SCALE === 1 ? c : niceMoney(c * TREE_SCALE);
-    // never less than 0.4 of the player's day (3% more a level): an old country's level is no gift in a new one
-    return TREE_DAY > 0 ? Math.max(paced, niceMoney(TRACK_FLOOR_DAYS * Math.pow(1.03, level) * TREE_DAY)) : paced;
+    // never less than 0.8 of the player's day (3% more a level): an old country's level is no gift in a new one
+    return TREE_DAY > 0 ? Math.max(paced, niceMoney(TRACK_FLOOR_DAYS * Math.pow(TRACK_FLOOR_STEP, level) * TREE_DAY)) : paced;
   }
-  if (TREE_DAY > 0) return niceMoney(nodeDays(n, level) * TREE_DAY);
-  if (n.kind === 'track') return Math.round(n.price[0] * Math.pow(1.12, level));
+  if (TREE_DAY > 0) return niceMoney(Math.max(nodeDays(n, level) * TREE_DAY, nodeFloor(n, level) * TREE_SCALE));
+  if (n.kind === 'track') return Math.round(n.price[0] * Math.pow(TRACK_LEVEL_STEP, level));
   return n.price[Math.min(level, n.price.length - 1)];
 }
 
@@ -426,7 +451,18 @@ export function wayOpen(g: TreeHolder, n: TreeNode, seen: Set<string> = new Set(
 
 export type BuyCheck =
   | { ok: true; cost: number; dur: number }
-  | { ok: false; why: 'soon' | 'max' | 'locked' | 'pair' | 'busy' | 'building'; cost?: number };
+  | { ok: false; why: 'soon' | 'max' | 'locked' | 'pair' | 'busy' | 'building' | 'power'; cost?: number };
+
+/** 0.16 (Navid, 18 Nov: "who said power bar is free? it should be one of the tools upgrades!"): a tool's power bar
+ *  comes with its first Power booster (Tools). Until the player has one, the Power branch is not for sale (the
+ *  shell says whether they have it before it shows or sells the tree). */
+let POWER_ON = true;
+export function setTreePower(on: boolean): void {
+  POWER_ON = !!on;
+}
+export function treePowerOn(): boolean {
+  return POWER_ON;
+}
 
 /** Whether a node's next level is for sale now (money aside), and its price and build time. */
 export function canBuyNode(g: TreeHolder, n: TreeNode): BuyCheck {
@@ -434,6 +470,7 @@ export function canBuyNode(g: TreeHolder, n: TreeNode): BuyCheck {
   if (!nodeLive(n.id)) return { ok: false, why: 'soon' };
   const lv = treeLevel(g, n.id);
   if (lv >= n.levels) return { ok: false, why: 'max' };
+  if (n.branch === 'power' && !POWER_ON) return { ok: false, why: 'power', cost: nodePrice(g, n) };
   const building = buildingNode(g);
   if (building === n.id) return { ok: false, why: 'building' };
   if (n.pair && (treeLevel(g, n.pair) > 0 || building === n.pair)) return { ok: false, why: 'pair' };
@@ -446,7 +483,7 @@ export function canBuyNode(g: TreeHolder, n: TreeNode): BuyCheck {
   return { ok: true, cost, dur };
 }
 
-export type BuyResult = { ok: true; instant: boolean; cost: number } | { ok: false; why: 'soon' | 'max' | 'locked' | 'pair' | 'busy' | 'building' | 'cash' };
+export type BuyResult = { ok: true; instant: boolean; cost: number } | { ok: false; why: 'soon' | 'max' | 'locked' | 'pair' | 'busy' | 'building' | 'power' | 'cash' };
 
 /** Buys a node's next level, or starts building it. `pay(cost)` takes the money (tree credit, savings, farm cash). */
 export function buyNode(g: TreeHolder, n: TreeNode, now: number, pay: (cost: number) => boolean): BuyResult {
