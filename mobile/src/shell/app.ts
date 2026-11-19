@@ -1056,10 +1056,13 @@ export class GameApp {
       const owed = tax - paid;
       if (owed > 0) run.debt = (run.debt || 0) + Math.round(owed * 1.2);
       this.saveNow();
+      // 0.16 (Navid, 19 Nov: "i just saw a tax day, this as well as repair also should be explained. why? what
+      // happened?"): the card says who took it, from where, and why the jar should keep some cash
       this.surpriseCard(
         'tax',
-        t('Tax day'),
-        owed > 0 ? t('The jar was short: the collector takes {amt} from today\'s harvest.', { amt: money(Math.round(owed * 1.2)) }) : '',
+        t('Tax day!'),
+        t("The town's tax collector came by and took this from your jar.") +
+          (owed > 0 ? ' ' + t('Your jar was short, so he takes {amt} from today\'s harvest.', { amt: money(Math.round(owed * 1.2)) }) : ''),
         `<b class="sp-amt money">-${money(tax)}</b>`,
         `<button type="button" class="st-btn gold btn-md flex1" data-act="surprise-ok">${t('Start')}${ICON.next()}</button>`,
       );
@@ -1075,7 +1078,7 @@ export class GameApp {
       this.surpriseCard(
         'repair',
         t(what),
-        t('Fewer crops grow until it is fixed.'),
+        t('Until you fix it, {p}% fewer crops grow. Fix it now, or later from the farmhouse.', { p: Math.round((1 - GameApp.REPAIR_MUL) * 100) }),
         `<b class="sp-amt money">${money(plan.repair)}</b>`,
         `<button type="button" class="st-btn btn-md flex1" data-act="surprise-ok">${t('Later')}</button>` +
           `<button type="button" class="st-btn gold btn-md flex1${can ? '' : ' off'}" data-act="repair-now"${can ? '' : ' disabled'}>${ICON.wrench(24)}<span>${t('Fix {amt}', { amt: money(plan.repair) })}</span></button>`,
@@ -1088,8 +1091,9 @@ export class GameApp {
   /** The card for a surprise: what came up, what it costs, and the way on. */
   private surpriseCard(kind: string, title: string, text: string, amt: string, buttons: string): void {
     const icon = kind === 'tax' ? ICON.notice(54) : ICON.wrench(54);
+    // (0.16: and why it came: surprises are not shown ahead, so the jar should keep some cash)
     this.openModal('surprise', `<div class="sp-card ${kind}"><span class="sp-icon">${icon}</span><h2 class="m-title">${esc(title)}</h2>${amt}
-      ${text ? `<p class="m-text">${esc(text)}</p>` : ''}<div class="m-row">${buttons}</div></div>`, 360);
+      ${text ? `<p class="m-text">${esc(text)}</p>` : ''}<p class="sp-why">${ICON.notice(16)}<span>${esc(t('Taxes and repairs come by surprise, from the second town on. Keep some cash in your jar for them.'))}</span></p><div class="m-row">${buttons}</div></div>`, 380);
     try {
       navigator.vibrate?.([30, 50, 30]);
     } catch {

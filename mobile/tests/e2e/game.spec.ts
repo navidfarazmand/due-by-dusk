@@ -851,12 +851,16 @@ test('surprises: a tax comes out of the jar at sunrise, a short jar leaves the c
   // a tax with money in the jar: it is taken at once, and the card's button starts the day
   await morning(2, 0, 1000, 'tax');
   await expect(page.locator('.scr-modal .sp-card.tax')).toContainText('Tax day');
+  // 0.16 (Navid, 19 Nov: "should be explained. why? what happened?"): who took it, and why to keep cash in the jar
+  await expect(page.locator('.scr-modal .sp-card.tax')).toContainText('tax collector came by');
+  await expect(page.locator('.scr-modal .sp-card.tax .sp-why')).toContainText('Keep some cash in your jar');
+  await expect(page.locator('.scr-modal .sp-card.tax')).not.toContainText('was short');
   expect((await E(page, 'state')).cash).toBe(1000 - plan.tax);
   await endDay();
   await act(page, 'farmhouse');
   // a tax with an empty jar: the collector takes it from the day's harvest, with 20% on top
   await morning(4, 1, 0, 'tax');
-  await expect(page.locator('.scr-modal .sp-card.tax')).toContainText('collector');
+  await expect(page.locator('.scr-modal .sp-card.tax')).toContainText(`Your jar was short, so he takes $${(Math.round(plan.tax * 1.2)).toLocaleString('en-US')} from today's harvest.`);
   expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.debt)).toBe(Math.round(plan.tax * 1.2));
   await endDay(1000);
   await expect(page.locator('.scr-sundown .sd-fee')).toContainText('collector took');
@@ -865,7 +869,8 @@ test('surprises: a tax comes out of the jar at sunrise, a short jar leaves the c
   // a repair: fewer crops grow until it is paid; Later starts the day, and the farmhouse keeps a Fix button
   const full = (await E(page, 'stats')).max;
   await morning(5, 1, 0, 'repair');
-  await expect(page.locator('.scr-modal .sp-card.repair')).toBeVisible();
+  await expect(page.locator('.scr-modal .sp-card.repair')).toContainText('30% fewer crops grow');
+  await expect(page.locator('.scr-modal .sp-card.repair .sp-why')).toBeVisible();
   await expect(page.locator('.scr-modal [data-act="repair-now"]')).toBeDisabled();
   await page.locator('.scr-modal [data-act="surprise-ok"]').click();
   await expect(page.locator('#dbdHud')).toBeVisible();

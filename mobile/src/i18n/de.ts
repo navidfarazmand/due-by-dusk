@@ -1239,5 +1239,10 @@ const dict: Record<string, string> = {
   "Caught the runaway": "Ausreißer gefangen",
   "Best: {amt}": "Rekord: {amt}",
   "for Skills": "für Fähigkeiten",
+  "Tax day!": "Steuertag!",
+  "The town's tax collector came by and took this from your jar.": "Der Steuereintreiber der Stadt war da und hat das aus deinem Glas genommen.",
+  "Your jar was short, so he takes {amt} from today's harvest.": "Dein Glas reichte nicht, also nimmt er {amt} von der heutigen Ernte.",
+  "Until you fix it, {p}% fewer crops grow. Fix it now, or later from the farmhouse.": "Bis zur Reparatur wächst {p} % weniger. Repariere jetzt oder später im Bauernhaus.",
+  "Taxes and repairs come by surprise, from the second town on. Keep some cash in your jar for them.": "Steuern und Reparaturen kommen überraschend, ab der zweiten Stadt. Behalte etwas Geld im Glas dafür.",
 };
 export default dict;
