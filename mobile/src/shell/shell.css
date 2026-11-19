@@ -885,6 +885,8 @@ button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tab
 .sp-why { margin: 0; display: flex; align-items: flex-start; gap: 6px; padding: 6px 10px; border-radius: 10px; background: #FFF0C2; text-align: left;
   font-weight: 800; font-size: 12px; line-height: 1.35; color: var(--dbd-ink); }
 .sp-why svg { flex: none; margin-top: 1px; }
+.sp-why[hidden] { display: none; }
+.sp-card .m-title .sp-i { margin-left: 8px; vertical-align: middle; }
 .r-caught { display: flex; align-items: center; gap: 8px; }
 .r-caught img { flex: none; filter: drop-shadow(0 3px 0 rgba(43, 23, 8, .25)); }
 .cc-runaway .trio img { display: block; }

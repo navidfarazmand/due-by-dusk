@@ -705,6 +705,7 @@ export class GameApp {
       case 'haptics': this.g.settings.haptics = !this.g.settings.haptics; this.save(); this.openSettings(); window.dispatchEvent(new CustomEvent('dbd:haptics', { detail: this.g.settings.haptics })); break;
       case 'close': this.closeModal(); break;
       case 'goals': this.openGoals(); break;
+      case 'sp-why': this.toggleWhy(); break;
       case 'goals-ok': this.closeModal(); if (this.scr === 'farmhouse') this.pointAtStart(); break;
       case 'reset': this.confirmReset(); break;
       case 'reset-yes': this.resetGame(); break;
@@ -1091,14 +1092,24 @@ export class GameApp {
   /** The card for a surprise: what came up, what it costs, and the way on. */
   private surpriseCard(kind: string, title: string, text: string, amt: string, buttons: string): void {
     const icon = kind === 'tax' ? ICON.notice(54) : ICON.wrench(54);
-    // (0.16: and why it came: surprises are not shown ahead, so the jar should keep some cash)
-    this.openModal('surprise', `<div class="sp-card ${kind}"><span class="sp-icon">${icon}</span><h2 class="m-title">${esc(title)}</h2>${amt}
-      ${text ? `<p class="m-text">${esc(text)}</p>` : ''}<p class="sp-why">${ICON.notice(16)}<span>${esc(t('Taxes and repairs come by surprise, from the second town on. Keep some cash in your jar for them.'))}</span></p><div class="m-row">${buttons}</div></div>`, 380);
+    // (0.16: and why it came, behind an (i) (Navid, 19 Nov: "make the 'taxes and repairs come by suprises, from...' into
+    // a (i) so it doesn't show everytime and also doesn't fill the whole screen"): surprises are not shown ahead, so the
+    // jar should keep some cash)
+    this.openModal('surprise', `<div class="sp-card ${kind}"><span class="sp-icon">${icon}</span><h2 class="m-title">${esc(title)}<button type="button" class="up-info sp-i" data-act="sp-why" aria-label="${t('Why?')}" aria-expanded="false"><i class="info-i">i</i></button></h2>${amt}
+      ${text ? `<p class="m-text">${esc(text)}</p>` : ''}<p class="sp-why" hidden>${ICON.notice(16)}<span>${esc(t('Taxes and repairs come by surprise, from the second town on. Keep some cash in your jar for them.'))}</span></p><div class="m-row">${buttons}</div></div>`, 380);
     try {
       navigator.vibrate?.([30, 50, 30]);
     } catch {
       /* no vibration */
     }
+  }
+
+  /** The surprise card's (i): why taxes and repairs come, shown or hidden again. */
+  private toggleWhy(): void {
+    const why = this.modal.querySelector<HTMLElement>('.sp-why');
+    if (!why) return;
+    why.hidden = !why.hidden;
+    this.modal.querySelector('[data-act="sp-why"]')?.setAttribute('aria-expanded', String(!why.hidden));
   }
 
   /** Pays the waiting repair from the jar (the farmhouse's Fix button, or the surprise card's). */

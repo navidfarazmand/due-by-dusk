@@ -853,7 +853,13 @@ test('surprises: a tax comes out of the jar at sunrise, a short jar leaves the c
   await expect(page.locator('.scr-modal .sp-card.tax')).toContainText('Tax day');
   // 0.16 (Navid, 19 Nov: "should be explained. why? what happened?"): who took it, and why to keep cash in the jar
   await expect(page.locator('.scr-modal .sp-card.tax')).toContainText('tax collector came by');
+  // (behind an (i), Navid: "so it doesn't show everytime and also doesn't fill the whole screen")
+  await expect(page.locator('.scr-modal .sp-card.tax .sp-why')).toBeHidden();
+  await page.locator('.scr-modal .sp-card.tax [data-act="sp-why"]').click();
+  await expect(page.locator('.scr-modal .sp-card.tax .sp-why')).toBeVisible();
   await expect(page.locator('.scr-modal .sp-card.tax .sp-why')).toContainText('Keep some cash in your jar');
+  await page.locator('.scr-modal .sp-card.tax [data-act="sp-why"]').click();
+  await expect(page.locator('.scr-modal .sp-card.tax .sp-why')).toBeHidden();
   await expect(page.locator('.scr-modal .sp-card.tax')).not.toContainText('was short');
   expect((await E(page, 'state')).cash).toBe(1000 - plan.tax);
   await endDay();
@@ -870,7 +876,8 @@ test('surprises: a tax comes out of the jar at sunrise, a short jar leaves the c
   const full = (await E(page, 'stats')).max;
   await morning(5, 1, 0, 'repair');
   await expect(page.locator('.scr-modal .sp-card.repair')).toContainText('30% fewer crops grow');
-  await expect(page.locator('.scr-modal .sp-card.repair .sp-why')).toBeVisible();
+  await expect(page.locator('.scr-modal .sp-card.repair .sp-why')).toBeHidden();
+  await expect(page.locator('.scr-modal .sp-card.repair [data-act="sp-why"]')).toBeVisible();
   await expect(page.locator('.scr-modal [data-act="repair-now"]')).toBeDisabled();
   await page.locator('.scr-modal [data-act="surprise-ok"]').click();
   await expect(page.locator('#dbdHud')).toBeVisible();
