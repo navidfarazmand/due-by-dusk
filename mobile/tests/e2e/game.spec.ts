@@ -515,11 +515,20 @@ test('a new player: the story, the practice farm (each tip on the thing it expla
     new MutationObserver(log).observe(root, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] });
     log();
   });
+  // (each tap tip is tapped once: a tapped tip ends on the page's next frame, so on a slow machine the loop can still
+  // read its title once more, and its catcher is gone)
+  const tapped = new Set<string>();
   for (let i = 0; i < 60 && !(await page.locator('.scr-farmhouse').isVisible()); i++) {
     const title = (await tip.isVisible()) ? ((await tip.textContent()) || '').trim() : '';
-    if (title === 'The sun is your clock') await fast(page);
-    if (/jar|my bill|sun is your clock/.test(title)) await tapTip(page);
-    else if (title) await harvest(page, 1500);
+    if (/jar|my bill|sun is your clock/.test(title)) {
+      if (tapped.has(title)) {
+        await page.waitForTimeout(250);
+        continue;
+      }
+      tapped.add(title);
+      if (title === 'The sun is your clock') await fast(page);
+      await tapTip(page);
+    } else if (title) await harvest(page, 1500);
     else await page.waitForTimeout(250);
   }
   const titles: string[] = await page.evaluate(() => (window as any).__titles);
