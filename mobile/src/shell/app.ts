@@ -32,7 +32,7 @@ import {
   barnHtml, calendarIcon, dailyHtml, duelCities, duelHtml, duelIcon, sideResultHtml,
   type DuelSetup, type SideOutcome,
 } from './extras';
-import { ribbonIcon } from './looks';
+import { birdIcon, ribbonIcon } from './looks';
 import { arthurOnCard } from './arthur';
 import { TREE_PX, TREE_STEP, centerTree, sizeTree, treeFitPx, treeMapHtml } from './treeview';
 import { attachTreeGestures, zoomTreeBy, type TreeZoomHost } from './treezoom';
@@ -1104,6 +1104,17 @@ export class GameApp {
     }
   }
 
+  /** 0.16.1 (Navid, 19 Nov: "if its a crow why you show a blue bird? always use the name of whatever bird is taking the
+   *  money"): the bird that steals is the one picked in the Bling Barn (the crow until another is bought), with its name
+   *  and its own colours. */
+  private thiefName(): string {
+    return flairById(this.g.flair.equipped.bird)?.name || 'Crow';
+  }
+  private thiefIcon(h: number): string {
+    const b = flairById(this.g.flair.equipped.bird)?.look.bird || ['#1e293b', '#f59e0b'];
+    return `<span class="ct-bird">${birdIcon(b[0], b[1], Math.round(h * 1.2), h)}</span>`;
+  }
+
   /** The surprise card's (i): why taxes and repairs come, shown or hidden again. */
   private toggleWhy(): void {
     const why = this.modal.querySelector<HTMLElement>('.sp-why');
@@ -1586,7 +1597,7 @@ export class GameApp {
       return void tip('mGoatPet', { at: spotAt(p.goat.x, p.goat.y - 24), r: 62, icon: '<span class="ct-emo">🐐</span>', title: t('A friendly goat'), text: t('Touch it with your sickle: it tips you cash.') });
     const crow = (p.crows || [])[0];
     if (!seen.mThief && crow)
-      return void tip('mThief', { at: spotAt(crow.x, crow.y), r: 50, icon: '<span class="ct-emo">🐦</span>', title: t('A thief crow'), text: t('It steals coins from your jar. Swipe it before it flies off and you get them back.') });
+      return void tip('mThief', { at: spotAt(crow.x, crow.y), r: 50, icon: this.thiefIcon(40), title: t('A thief {bird}', { bird: inner(t(this.thiefName())) }), text: t('It steals coins from your jar. Swipe it before it flies off and you get them back.') });
     // 0.16 (Navid, 18 Nov: "i though it gives me 4 new vegetable. but instead it only gave me a dollar amount ... no
     // explanation of what they are!"): each kind of thing to grab has its own look and its own tip
     for (const f of p.props || []) {
@@ -2945,7 +2956,7 @@ export class GameApp {
       <div class="sd-hero"><span class="sd-today"><b class="sd-big money">+${money(earned)}</b>${d.doubled ? '<span class="sd-x2">×2</span>' : ''}<span class="sd-lbl">${t('today')}</span></span>
         <span class="sd-cash"><span class="money">${money(cashNow)}</span><span class="sd-lbl">${t('in the jar')}</span></span></div>
       <div class="sd-bill">${billIcon(plan.bills[b.index]?.kind, 26)}<span class="sb-what"><span class="sb-name">${esc(t(b.name))}</span><span class="sb-due">${dueLine}</span></span><b class="sb-amt">${money(b.amt)}</b>${stamp}</div>
-      ${feeLine}${d.today.stolen ? `<div class="sd-fee sd-crow"><span class="ct-emo">🐦</span><span>${t('Crows took {amt} from your jar', { amt: `<b class="sd-neg">-${money(d.today.stolen)}</b>` })}</span></div>` : ''}${d.collector ? `<div class="sd-fee">${ICON.notice(18)}<span>${t('The collector took {amt} for the tax.', { amt: money(d.collector) })}</span></div>` : ''}${bossLine}${lvNow}
+      ${feeLine}${d.today.stolen ? `<div class="sd-fee sd-crow">${this.thiefIcon(24)}<span>${t('The {bird} took {amt} from your jar', { bird: inner(t(this.thiefName())), amt: `<b class="sd-neg">-${money(d.today.stolen)}</b>` })}</span></div>` : ''}${d.collector ? `<div class="sd-fee">${ICON.notice(18)}<span>${t('The collector took {amt} for the tax.', { amt: money(d.collector) })}</span></div>` : ''}${bossLine}${lvNow}
       <div class="sd-actions${dbl && nextBtn ? ' three' : ''}">${dbl}${nextBtn ? `<button type="button" class="st-btn btn-md sd-house sd-ups" data-act="tree" aria-label="${t('Skills')}">${ICON.wrench(28)}</button>${nextBtn}` : `<button type="button" class="st-btn gold btn-md flex1" data-act="farmhouse">${t('Farmhouse')}${ICON.next()}</button>`}</div>
     </div></div>`;
   }

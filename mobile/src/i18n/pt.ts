@@ -1248,6 +1248,7 @@ const dict: Record<string, string> = {
   "No ad right now": "Nenhum anúncio agora",
   "Today's event": "Evento de hoje",
   "Every day brings its own event. Tap here to read it again.": "Cada dia traz o seu evento. Toque aqui para ler de novo.",
-  "Crows took {amt} from your jar": "Os corvos levaram {amt} do seu pote",
+  "A thief {bird}": "Um ladrão: {bird}",
+  "The {bird} took {amt} from your jar": "O ladrão ({bird}) levou {amt} do seu pote",
 };
 export default dict;
