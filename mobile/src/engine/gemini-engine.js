@@ -22624,7 +22624,9 @@ export function startGeminiEngine() {
     ctx.scale(ds * gt.dir, ds); // Back legs (articulated knee + dark cloven hoof)
     const drawLeg = (hipX, hipY, phase, back) => {
       const sw = Math.sin(gt.t * freq + phase) * (angry ? 7.5 : 4.5);
-      const lift = Math.max(0, -Math.cos(gt.t * freq + phase)) * (angry ? 6 : 3.5);
+      // 0.16.1 (Navid, 19 Nov: "goat is walking forward but its legs move like backward"): a foot is up while it swings
+      // forward (towards the head) and down while it pushes back, so the goat walks instead of moonwalking
+      const lift = Math.max(0, Math.cos(gt.t * freq + phase)) * (angry ? 6 : 3.5);
       const kneeX = hipX + sw * 0.55 + 1.5;
       const kneeY = hipY + 9 - lift * 0.5;
       const footX = hipX + sw;
