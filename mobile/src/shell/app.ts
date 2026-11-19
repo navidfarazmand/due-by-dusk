@@ -170,6 +170,8 @@ export class GameApp {
   private momentCool = 0;
   /** A "something new" card is holding the field. */
   private carding = false;
+  /** When the game last came back to the screen (the shake waits a moment after it). */
+  private shownAt = 0;
   /** Where the player was when they opened Report a problem. */
   private reportPlace: { screen: string; farm?: string; day?: number; lang: string } | null = null;
   /** The update pop-up was shown this launch, and what it offered. */
@@ -247,7 +249,18 @@ export class GameApp {
     this.wirePauseCard();
     // Report a problem: one strong shake anywhere, or Settings → Report a problem
     watchErrors();
-    watchShake(() => this.openReport(), () => this.g.settings.shakeReport !== false && this.modal.hidden);
+    // (0.15.2: not while the game is in the background or in its first 3 s back, when a phone moves as apps are switched)
+    watchShake(
+      () => this.openReport(),
+      () => this.g.settings.shakeReport !== false && this.modal.hidden && !document.hidden && Date.now() - this.shownAt > 3000,
+    );
+    // 0.15.2: the report card closes when the game goes to the background (its email app opened, or the player left);
+    // a tester (Samsung, 18 Nov) came back from another app to a card whose buttons no longer answered
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (this.modal.dataset.kind === 'report') this.closeModal();
+      } else this.shownAt = Date.now();
+    });
     // v0.10 rebuilt the workshop and the farms: old upgrades were refunded, and an old farm's cash is saved too
     if (this.g.migratedRefund != null) {
       let farmCash = 0;
@@ -3005,8 +3018,12 @@ export class GameApp {
   }
 
   private async submitReport(): Promise<void> {
-    const how = await sendReport(t('What happened?'), reportDetails(this.reportPlace || { screen: this.scr, lang: lang() }));
+    const details = reportDetails(this.reportPlace || { screen: this.scr, lang: lang() });
+    // 0.15.2: the card closes first, and the email app opens once the game has drawn without it, so the game never
+    // waits behind the email app with the card still up (the email app opens in its own task: ExternalLinksPlugin)
     this.closeModal();
+    await new Promise<void>(res => requestAnimationFrame(() => requestAnimationFrame(() => res())));
+    const how = await sendReport(t('What happened?'), details);
     if (how !== 'email') this.toast(how === 'copied' ? t('Report copied. Paste it in a message to the developer.') : t("Couldn't send the report. Please try again."), 3200);
   }
 

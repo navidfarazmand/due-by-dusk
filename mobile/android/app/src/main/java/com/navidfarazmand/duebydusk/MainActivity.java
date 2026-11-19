@@ -17,6 +17,8 @@ public class MainActivity extends BridgeActivity {
         // No EdgeToEdge.enable() here (v0.11.3): called before super.onCreate it set up the window before the
         // no-title theme applied, and Android drew a title bar ("Due by Dusk") across the top of the game. The game
         // already draws under the system bars on every version (setDecorFitsSystemWindows(false) + immersive below).
+        // 0.15.2: the report's email opens in its own task (ExternalLinksPlugin).
+        registerPlugin(ExternalLinksPlugin.class);
         super.onCreate(savedInstanceState);
         lockTextSize();
         enterImmersiveMode();

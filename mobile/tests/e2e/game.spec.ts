@@ -1887,6 +1887,18 @@ test('Report a problem: from Settings and by one strong shake; no typing in the 
   await expect(page.locator('.scr-modal h2')).toHaveText('Report a problem');
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().paused)).toBe(true);
   expect(await page.evaluate(() => (window as any).__DBD_APP.reportText())).toContain('Charlottetown');
+  // 0.15.2: the card closes when the game goes to the background (a tester, back from another app on a Samsung phone,
+  // found its buttons dead), and a shake in the first seconds back does not open it again
+  const hide = (h: boolean) =>
+    page.evaluate(v => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => v });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, h);
+  await hide(true);
+  await expect(page.locator('.scr-modal')).toBeHidden();
+  await hide(false);
+  await shake(34);
+  await expect(page.locator('.scr-modal')).toBeHidden();
   expect(errors).toEqual([]);
 });
 
