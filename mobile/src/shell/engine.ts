@@ -130,6 +130,8 @@ export interface Today {
   boss?: number;
   /** Cuts by vegetable (0.13). */
   kinds?: Record<string, number>;
+  /** 0.16.1: what crows took from the jar today and kept (coins chased back are taken off). */
+  stolen?: number;
 }
 
 export interface EngineApi {

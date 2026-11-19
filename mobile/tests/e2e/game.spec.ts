@@ -902,7 +902,7 @@ test('surprises: a tax comes out of the jar at sunrise, a short jar leaves the c
   await expect(page.locator('.scr-modal .sp-card.tax')).toContainText(`Your jar was short, so he takes $${(Math.round(plan.tax * 1.2)).toLocaleString('en-US')} from today's harvest.`);
   expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.debt)).toBe(Math.round(plan.tax * 1.2));
   await endDay(1000);
-  await expect(page.locator('.scr-sundown .sd-fee')).toContainText('collector took');
+  await expect(page.locator('.scr-sundown .sd-fee:not(.sd-crow)')).toContainText('collector took');
   expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.debt)).toBe(0);
   await act(page, 'farmhouse');
   // a repair: fewer crops grow until it is paid; Later starts the day, and the farmhouse keeps a Fix button
@@ -2188,7 +2188,7 @@ test('late fees: up to three late days, each with an ad; the collector takes 20%
   await page.evaluate(() => (window as any).__DBD_ENGINE.addCash(10));
   await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
   const fee = await page.evaluate(() => (window as any).__DBD_APP.day.today);
-  if (fee.earned > 0) await expect(page.locator('.scr-sundown .sd-fee')).toContainText('20%');
+  if (fee.earned > 0) await expect(page.locator('.scr-sundown .sd-fee:not(.sd-crow)')).toContainText('20%');
   expect(fee.feeRate).toBe(0.2);
   await act(page, 'farmhouse');
   // still short: late days 2 and 3, at 40% and 60%

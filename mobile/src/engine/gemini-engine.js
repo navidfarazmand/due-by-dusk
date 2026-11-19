@@ -18440,6 +18440,7 @@ export function startGeminiEngine() {
     if (cr.loot > 0) {
       // the bag drops: every stolen coin comes back
       farm.cash += cr.loot;
+      today.stolen = Math.max(0, (today.stolen || 0) - cr.loot);
       addText('COINS BACK ' + fmtGain(cr.loot), cr.x, cr.y - 20, '#bef264', 22, -38, 1.0);
       for (let k = 0; k < Math.min(6, 2 + cr.loot / 10); k++) coin(cr.x + (Math.random() - 0.5) * 24, cr.y, k * 0.04);
       dbdEvent('crowBack', { amt: cr.loot });
@@ -18909,6 +18910,9 @@ export function startGeminiEngine() {
     cr.state = 'out';
     cr.loot = Math.max(0, amt);
     farm.cash = Math.max(0, farm.cash - cr.loot);
+    // 0.16.1 (Navid, 19 Nov: "when crows take money from jar, please show it as negative in the Sundown! card too"):
+    // what the crows took today, less what came back when they were chased off
+    today.stolen = (today.stolen || 0) + cr.loot;
     // away to the far side, low over the field so a swipe can catch it
     cr.tx = cr.side < 0 ? worldW + 60 : -60;
     cr.ty = FIELD_TOP + 50 + Math.random() * Math.max(20, HW - FIELD_TOP - 170);

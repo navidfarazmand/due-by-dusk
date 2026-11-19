@@ -1138,3 +1138,7 @@ button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tab
 .r-actions .st-btn.btn-md { padding: 0 12px; }
 .r-actions [data-act="next-city"] { flex: 1.45; }
 .star-row.big-row .sp-amt { margin-left: auto; font: 800 13px var(--ui-body); color: var(--dbd-muted); }
+
+/* 0.16.1: what the crows got away with today, on the Sundown card */
+.sd-fee .sd-neg { color: #C0392B; font-weight: 900; }
+.sd-crow .ct-emo { font-size: 16px; line-height: 1; }
