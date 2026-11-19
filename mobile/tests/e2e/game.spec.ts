@@ -217,9 +217,12 @@ test('boss farm: the big bill waits until the boss is knocked out', async ({ pag
   expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().boss.down)).toBe(true);
   await fast(page);
   await expect(page.locator('.scr-sundown .sd-boss.win')).toContainText('knocked out', { timeout: 20_000 });
-  // optional ad: double the day
+  // optional ad: double the day (0.16.1: no daily cap: forty doubles today already and it is still offered)
+  await page.evaluate(() => { const a = (window as any).__DBD_APP; a.g.ads = { ...a.g.ads, date: (window as any).__DBD_PROGRESS.todayKey(), doubles: 40 }; a.refresh(); });
+  await expect(page.locator('.scr-sundown [data-act="ad-double"]')).toBeVisible();
   await act(page, 'ad-double');
   await expect(page.locator('.scr-sundown [data-act="ad-double"]')).toHaveCount(0, { timeout: 5000 });
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.ads.doubles)).toBe(41);
   await act(page, 'farmhouse');
   await page.evaluate(() => (window as any).__DBD_ENGINE.devDue());
   await page.evaluate(() => (window as any).__DBD_APP.refresh());

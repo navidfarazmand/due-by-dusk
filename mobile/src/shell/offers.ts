@@ -7,11 +7,11 @@ import { todayKey, type GameSave } from '../game/progress';
 
 export type OfferKind = 'double' | 'coins' | 'finish' | 'extraDay' | 'ribbon' | 'daily' | 'chest' | 'pen';
 
-/** Daily caps, so ads stay a bonus and never become the game (the daily farm keeps its own count). Doubles: six
- * until 0.14 (with twelve, a bot that took every ad won every farm with three stars); twelve from 0.15, when the bills
- * follow the player's own days and an average player is meant to need about six ads in ten minutes from the fourth
- * town (Navid, 15 Nov), so the doubles last a session of about twenty minutes. */
-export const CAPS: Record<OfferKind, number> = { double: 12, coins: 6, finish: 8, extraDay: 99, ribbon: 3, daily: 99, chest: 6, pen: 4 };
+/** Daily caps (the daily farm keeps its own count). Doubles were six until 0.14 and twelve in 0.15.
+ * 0.16.1 (Navid, 19 Nov: "we made the game so hard to let people watch ad, but then you limit the number of ads people
+ * see! so now after i don't know like 10 ads ... i couldn't see ads and double my money"): no daily cap on any offer;
+ * free coins keep their 20 minutes between two ads (COINS_COOLDOWN_MIN). */
+export const CAPS: Record<OfferKind, number> = { double: Infinity, coins: Infinity, finish: Infinity, extraDay: Infinity, ribbon: 3, daily: 99, chest: Infinity, pen: Infinity };
 /** Minutes between two free-coin ads. */
 export const COINS_COOLDOWN_MIN = 20;
 
@@ -42,7 +42,12 @@ function counters(g: GameSave): GameSave['ads'] {
 }
 
 export function canOffer(g: GameSave, kind: OfferKind, now = Date.now()): boolean {
-  if (!adsAvailable()) return false;
+  return adsAvailable() && offerAllowed(g, kind, now);
+}
+
+/** Whether the caps and the free coins' gap allow this offer now, ad loaded or not (0.16.1: with no ad loaded, the
+ *  button says so instead of going away). */
+export function offerAllowed(g: GameSave, kind: OfferKind, now = Date.now()): boolean {
   const c = counters(g);
   if (kind === 'double') return c.doubles < CAPS.double;
   if (kind === 'finish') return c.finishes < CAPS.finish;

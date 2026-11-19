@@ -18,7 +18,8 @@ const PLAY_APP_ID = 'com.khoreh.duebydusk';
 const REWARDED_PRODUCTION = 'ca-app-pub-2635409921068961/7140370750';
 /** Google's Android demo rewarded unit: always returns a labelled test ad. */
 const REWARDED_DEMO = 'ca-app-pub-3940256099942544/5224354917';
-const RETRY_DELAYS_MS = [30_000, 60_000, 120_000, 300_000];
+// 0.16.1: a player waiting at Sundown sees an ad sooner after AdMob had none (was 30 s, 1, 2, then every 5 minutes)
+const RETRY_DELAYS_MS = [15_000, 30_000, 60_000, 120_000];
 
 let started = false;
 let adsReady = false;

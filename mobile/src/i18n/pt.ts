@@ -1245,5 +1245,6 @@ const dict: Record<string, string> = {
   "Until you fix it, {p}% fewer crops grow. Fix it now, or later from the farmhouse.": "Até consertar, crescem {p}% menos plantas. Conserte agora ou depois, na fazenda.",
   "Taxes and repairs come by surprise, from the second town on. Keep some cash in your jar for them.": "Impostos e consertos chegam de surpresa, a partir da segunda cidade. Guarde um pouco de dinheiro no pote para eles.",
   "Why?": "Por quê?",
+  "No ad right now": "Nenhum anúncio agora",
 };
 export default dict;

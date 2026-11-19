@@ -25,7 +25,7 @@ import { Coach, cropIcon, peek, type FieldPeek, type Pt, type TipOpts } from './
 import { playStory } from './story';
 import { LANGS, deviceLang, inner, isLang, lang, setLang, t, tn, tx, type Lang } from '../i18n/i18n';
 import { watchLayout, layout } from './layout';
-import { adsAvailable, canOffer, coinsWait, onAdsChanged, watch } from './offers';
+import { adsAvailable, canOffer, coinsWait, offerAllowed, onAdsChanged, watch } from './offers';
 import { PINS } from './pins';
 import { DEFAULT_VOLUME, LICENCE_URL, Music, TRACKS, trackById, volGain, type Mood } from './music';
 import {
@@ -2907,9 +2907,14 @@ export class GameApp {
     else if (boss && !boss.down)
       bossLine = `<div class="sd-boss">${ICON.crown('#FFC23D', 18)}<span>${t('{boss}: {n}% left', { boss: esc(t(boss.name)), n: Math.max(1, Math.round((boss.hp / Math.max(1, boss.max)) * 100)) })}</span><span class="nb-bar"><i style="width: ${(clamp(boss.hp / Math.max(1, boss.max), 0, 1) * 100).toFixed(1)}%"></i></span></div>`;
     const dueLine = b.tonight ? t('Due tonight.') : tn(b.left, 'Due in {n} day.', 'Due in {n} days.');
-    const dbl = !d.doubled && earned > 0 && canOffer(this.g, 'double')
+    // 0.16.1 (Navid, 19 Nov: "after i don't know like 10 ads ... i couldn't see ads and double my money"): no daily cap,
+    // and while AdMob has no ad ready the button says so (it wakes up when one loads) instead of going away
+    const dblOpen = !d.doubled && earned > 0 && offerAllowed(this.g, 'double');
+    const dbl = dblOpen && canOffer(this.g, 'double')
       ? `<button type="button" class="st-btn blue btn-md flex1 ad-btn" data-act="ad-double">${ICON.play()}<span>${t('Double it: +{amt}', { amt: money(earned) })}</span></button>`
-      : '';
+      : dblOpen
+        ? `<button type="button" class="st-btn blue btn-md flex1 ad-btn off" disabled aria-disabled="true">${ICON.play()}<span>${t('No ad right now')}</span></button>`
+        : '';
     // v0.11.1 (Navid, 3 Nov: less text, bigger numbers): what the day earned, big; the bill on one line; crops and the
     // chain behind the "i"
     void dots;
