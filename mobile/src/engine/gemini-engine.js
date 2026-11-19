@@ -16525,14 +16525,36 @@ export function startGeminiEngine() {
     if (tier === 2) return r < 0.75 ? 3 : 4;
     return r < 0.6 ? 2 : r < 0.9 ? 3 : 4;
   }
+  /** 0.16.1 (Navid, 19 Nov: "can you mix the perk levels with each other. for example, a silver chest that opens 3 rare
+   *  cards now, can have an epic card too (though low probablitly) and a lower grade card too (though lower
+   *  probability)"): each card of a chest rolls its own grade, mostly the chest's own. By chest [common, rare, epic];
+   *  a diamond chest (an ad's top upgrade) stays four epic cards. */
+  const CARD_ODDS = { 1: [0.85, 0.13, 0.02], 2: [0.12, 0.78, 0.1], 3: [0.03, 0.17, 0.8] };
   function perkChoices(tier) {
-    const t = Math.min(3, tier);
     const want = tier >= 4 ? 4 : 3;
     const ok = (p) => (!p.req || p.req(farm)) && (!p.once || !farm.perks.includes(p.id));
-    let pool = shuffle(FarmScene_PERKS.filter((p) => p.tier === t && ok(p)).map((p) => p.id));
-    if (pool.length < want)
-      pool = pool.concat(shuffle(FarmScene_PERKS.filter((p) => p.tier === t - 1 && ok(p)).map((p) => p.id)));
-    return pool.slice(0, want);
+    const family = (id) => id.replace(/\d+$/, '');
+    const out = [];
+    for (let k = 0; k < want; k++) {
+      let g = 3;
+      if (tier < 4) {
+        const odds = CARD_ODDS[Math.max(1, Math.min(3, tier))];
+        const r = Math.random();
+        g = r < odds[0] ? 1 : r < odds[0] + odds[1] ? 2 : 3;
+      }
+      // the rolled grade, or the nearest one that still has a card left (no card twice, nor two of one family)
+      for (const gg of [g, g - 1, g + 1, g - 2, g + 2]) {
+        if (gg < 1 || gg > 3) continue;
+        const pool = shuffle(FarmScene_PERKS.filter((p) => p.tier === gg && ok(p) && !out.some((id) => family(id) === family(p.id))).map((p) => p.id));
+        if (pool.length) {
+          out.push(pool[0]);
+          break;
+        }
+      }
+    }
+    // a chest's best card comes first
+    const tierOf = (id) => (FarmScene_PERKS.find((p) => p.id === id) || {}).tier || 1;
+    return out.sort((x, y) => tierOf(y) - tierOf(x));
   }
   function pendingChestInfo() {
     if (!farm.pendingPerks) return null;
@@ -25445,6 +25467,8 @@ export function startGeminiEngine() {
         return true;
       };
       /** Tests and tuning only: jump the farm to day `d`, with no bill due before it (and `paid` bills paid). */
+      // 0.16.1: the grades of one chest's cards (tests)
+      engineApi.devPerkDraw = (tier) => perkChoices(tier).map((id) => (FarmScene_PERKS.find((p) => p.id === id) || {}).tier || 1);
       engineApi.devDay = (d, paid) => {
         if (!window.__DBD_DEV_HOOKS || mode !== 'idle' || !farm) return false;
         farm.day = Math.max(1, Math.floor(d));

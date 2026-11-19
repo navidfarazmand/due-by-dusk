@@ -656,6 +656,27 @@ test('an ad upgrades a closed chest; a diamond chest gives two of four gold perk
   expect(errors).toEqual([]);
 });
 
+test('a chest mixes its cards: mostly its own grade, now and then one higher or lower; a diamond chest is all epic (0.16.1)', async ({ page }) => {
+  const errors = await boot(page);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_toronto'));
+  const count = (tier: number) => page.evaluate(t => {
+    const n = [0, 0, 0, 0];
+    for (let i = 0; i < 400; i++) for (const g of (window as any).__DBD_ENGINE.devPerkDraw(t)) n[g]++;
+    return n;
+  }, tier);
+  const silver = await count(2);
+  const all = silver[1] + silver[2] + silver[3];
+  expect(silver[2] / all).toBeGreaterThan(0.65);
+  expect(silver[1]).toBeGreaterThan(0);
+  expect(silver[3]).toBeGreaterThan(0);
+  expect(silver[3] / all).toBeLessThan(0.2);
+  const wooden = await count(1);
+  expect(wooden[1] / (wooden[1] + wooden[2] + wooden[3])).toBeGreaterThan(0.75);
+  const diamond = await count(4);
+  expect(diamond[1] + diamond[2]).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('perks from silver and gold chests survive a reload', async ({ page }) => {
   const errors = await boot(page);
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
