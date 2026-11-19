@@ -1246,5 +1246,7 @@ const dict: Record<string, string> = {
   "Taxes and repairs come by surprise, from the second town on. Keep some cash in your jar for them.": "Impôts et réparations arrivent par surprise, dès la deuxième ville. Garde un peu d'argent dans ton bocal pour eux.",
   "Why?": "Pourquoi ?",
   "No ad right now": "Pas de pub pour l'instant",
+  "Today's event": "Événement du jour",
+  "Every day brings its own event. Tap here to read it again.": "Chaque jour a son événement. Touche ici pour le relire.",
 };
 export default dict;

@@ -73,7 +73,7 @@ async function closeGoals(page: Page): Promise<void> {
 }
 
 /** Every first-sight tip on the field, seen (the tests that look at one leave it out). */
-const SEEN_ALL = { intro: true, story: true, practice: true, cut: true, start: true, tour: true, cleave: true, mBoss: true, mBoss2: true, mBomb: true, mEncase: true, mRadish: true, mGolden: true, mGoat: true, mGoatPet: true, mCrow: true, mThief: true, mProp: true, mFert: true, mEgg: true, mClover: true, mBolt: true, mRival: true, mChain: true, mPower: true, mRush: true };
+const SEEN_ALL = { intro: true, story: true, practice: true, cut: true, start: true, tour: true, cleave: true, mBoss: true, mBoss2: true, mBomb: true, mEncase: true, mRadish: true, mGolden: true, mGoat: true, mGoatPet: true, mCrow: true, mThief: true, mProp: true, mFert: true, mEgg: true, mClover: true, mBolt: true, mRival: true, mChain: true, mPower: true, mRush: true, mEvent: true };
 
 /** Speeds the field up for tests (the engine multiplies its time step). */
 async function fast(page: Page, k = 8): Promise<void> {
@@ -596,6 +596,27 @@ test('something new on a real farm holds the field with a tip on it until a tap'
   await tapTip(page);
   await expect(page.locator('#dbdCoach .ct-tip')).toBeHidden();
   expect(await page.evaluate(() => (window as any).__DBD_APP.g.seen.mChain)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('a day event fits the field: no crochet fair without pumpkins or onions, no gale without a power bar, no stampede before the goat; its badge gets a tip once (0.16.1)', async ({ page }) => {
+  const errors = await boot(page, seeded([], 0, { tools: { owned: ['sickle'], equipped: 'sickle', mods: {} } }), true);
+  await page.evaluate(s => { (window as any).__DBD_APP.g.seen = { ...s, mEvent: false }; }, SEEN_ALL);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await closeGoals(page);
+  const ids: string[] = [];
+  for (let d = 1; d <= 9; d++) {
+    const id = await page.evaluate(n => { const e = (window as any).__DBD_ENGINE; e.devDay(n, 0); return e.nextEvent().id; }, d);
+    ids.push(id);
+    if (d <= 2) expect(['stampede']).not.toContain(id);
+  }
+  expect(ids.filter(i => i === 'fair' || i === 'gale' || i === 'blizzard')).toEqual([]);
+  await page.evaluate(() => { (window as any).__DBD_ENGINE.devDay(1, 0); (window as any).__DBD_APP.show('farmhouse'); });
+  await act(page, 'start');
+  await expect(page.locator('#dbdHud')).toBeVisible();
+  await expect(page.locator('#dbdCoach .ct-tip .ct-t')).toHaveText("Today's event", { timeout: 10_000 });
+  await tapTip(page);
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.seen.mEvent)).toBe(true);
   expect(errors).toEqual([]);
 });
 

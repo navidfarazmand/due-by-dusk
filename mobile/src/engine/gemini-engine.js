@@ -17857,8 +17857,19 @@ export function startGeminiEngine() {
     },
     leaves: { rain: { id: 'autumnrain', title: 'AUTUMN SHOWERS', desc: 'Cool rain! Crops sprout 35% faster.' } },
   };
+  /* 0.16.1 (Navid, 19 Nov, a screenshot of day 2 in the first town: "Grandma crochet fair: Pumpkins & Drama Onions pay
+     +35% today!" on a field of carrots): a day's event must be able to do what it says here. The fair needs pumpkins or
+     onions on this field, a gale a tool with its power bar, a stampede the goat (and its clover treats). */
   function eventFits(e) {
-    return !(countryWx() === 'sun' && e.id === 'frost');
+    if (countryWx() === 'sun' && e.id === 'frost') return false;
+    if (e.pumpkinBonus) {
+      const pl = plan();
+      const kinds = pl && Array.isArray(pl.crops) ? pl.crops.map((c) => c[0]) : [];
+      if (!kinds.some((k) => k === 'pumpkin' || k === 'onion')) return false;
+    }
+    if (e.chargeFast && !powerOn()) return false;
+    if (e.propBoost && unlockLevel() < 2) return false;
+    return true;
   }
   function inWeather(e) {
     const v = (EVENT_IN_WX[countryWx()] || {})[e.id];

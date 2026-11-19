@@ -1601,6 +1601,12 @@ export class GameApp {
             : [t('A clover treat'), t('Swipe it for coins. It calms the goat too.')];
       return void tip(key, { at: spotAt(f.x, f.y - 18), r: 46, icon: PROP_ICON[kind], title: words[0], text: words[1] });
     }
+    // 0.16.1 (Navid, 19 Nov: "please also add the epxlantion for tutourail as well"): the day's event, once its card has
+    // gone into the badge beside the jar
+    const badge = document.getElementById('dbdBadge');
+    const banner = document.getElementById('dbdBanner');
+    if (!seen.mEvent && badge && !badge.hidden && badge.style.visibility !== 'hidden' && (!banner || banner.hidden))
+      return void tip('mEvent', { el: () => document.getElementById('dbdBadge'), pad: 6, icon: `<span class="ct-emo">${esc(badge.textContent || '')}</span>`, title: t("Today's event"), text: t('Every day brings its own event. Tap here to read it again.') });
     if (!seen.mBolt && p.bolts > 0) return void tip('mBolt', { icon: '<span class="ct-emo">⚡</span>', title: t('Lightning'), text: t('Your crits throw lightning at crops nearby.') });
     // the HUD: the chain bonus, the power bar, a harvest rush
     const h = engine().hud();
