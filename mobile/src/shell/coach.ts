@@ -691,9 +691,14 @@ export class Coach {
         const tick = () => {
           if (my !== this.token) return rej(new Stop());
           const now = performance.now();
-          const c = this.tips.place(o);
+          let c = this.tips.place(o);
           if (o.progress) this.tips.setProgress(o);
-          // the ghost hand
+          // the ghost hand: on the spotlight's middle, or on the thing `handOn` names (none while it is missing)
+          if (o.handOn) {
+            const he = o.handOn();
+            const hr = he ? he.getBoundingClientRect() : null;
+            c = hr && hr.width > 0 ? { cx: hr.left + hr.width / 2, cy: hr.top + hr.height / 2 } : null;
+          }
           if (hand && c) {
             const k = ((now - t0) % 1400) / 1400;
             if (hand === 'tap') {
@@ -801,6 +806,10 @@ export interface TipOpts {
   progress?: () => { text: string; share: number } | null;
   /** A ghost hand on the thing: tapping it, or dragging across it. */
   hand?: 'tap' | 'drag';
+  /** The hand on this instead of the spotlight's middle (no hand while it is missing). */
+  handOn?: () => Element | null;
+  /** A second thing lit and pressable with `el` (the spotlight takes in both). */
+  also?: () => Element | null;
   /** Hold the field still while the tip is up (default: for 'tap' tips). */
   hold?: boolean;
   /** Dim everything around the spotlight (default: not for 'play' tips). */
@@ -850,7 +859,9 @@ export class Tips {
     d.hidden = !o.text;
     const who = this.who;
     if (o.arthur) {
-      who.innerHTML = `<canvas class="ct-arthur" data-w="64" data-h="64" data-tall="58"></canvas>`;
+      // 0.16.1 (Navid, 19 Nov: "the circle is only show hat and top of arthur's face. not his whole face or body"):
+      // all of his face, hat to bow tie, inside the circle
+      who.innerHTML = `<canvas class="ct-arthur" data-w="48" data-h="48" data-tall="42"></canvas>`;
       who.hidden = false;
       who.className = 'ct-who arthur';
       arthur(who.querySelector('canvas') as HTMLCanvasElement);
@@ -895,7 +906,13 @@ export class Tips {
       const r = el.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) {
         const pad = o.pad ?? 8;
-        box = { l: r.left - pad, t: r.top - pad, w: r.width + pad * 2, h: r.height + pad * 2, round: !!o.round };
+        let [l, tp, rt, bt] = [r.left, r.top, r.right, r.bottom];
+        // a second thing (0.16.1: the chest's Upgrade button beside the chest): one spotlight around both
+        const a2 = o.also ? o.also() : null;
+        const r2 = a2 ? a2.getBoundingClientRect() : null;
+        const two = !!r2 && r2.width > 0 && r2.height > 0;
+        if (r2 && two) [l, tp, rt, bt] = [Math.min(l, r2.left), Math.min(tp, r2.top), Math.max(rt, r2.right), Math.max(bt, r2.bottom)];
+        box = { l: l - pad, t: tp - pad, w: rt - l + pad * 2, h: bt - tp + pad * 2, round: !!o.round && !two };
       }
     } else if (o.at) {
       const p = o.at();
@@ -1027,11 +1044,34 @@ export class Tips {
     const h = (e: Event) => {
       e.preventDefault();
       e.stopPropagation();
+      const pe = e as PointerEvent;
+      if (pe.isTrusted) swallowClick(pe.clientX, pe.clientY);
       fn();
     };
     this.catcher.addEventListener('pointerdown', h);
     return () => this.catcher.removeEventListener('pointerdown', h);
   }
+}
+
+/** 0.16.1 (Navid, 19 Nov: the first chest's perk "doesn't show the first chosen perk ... it bugged and selected another
+ *  one"): a phone sends its click after the finger lifts, and by then the tip is gone, so the click landed on whatever
+ *  was under it (a card, a button). A tap that moves a tip on presses nothing else: that click is dropped. */
+function swallowClick(x: number, y: number): void {
+  const t0 = performance.now();
+  const eat = (ev: MouseEvent) => {
+    if (performance.now() - t0 < 900 && Math.hypot(ev.clientX - x, ev.clientY - y) < 48) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+    }
+    off();
+  };
+  const off = () => {
+    window.removeEventListener('click', eat, true);
+    clearTimeout(timer);
+  };
+  const timer = setTimeout(off, 900);
+  window.addEventListener('click', eat, true);
 }
 
 /** The live crop nearest to a screen point. */

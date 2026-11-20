@@ -3,7 +3,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { COUNTRIES, ROUTE, type CountryCode, cityById, countryOf, isBossCity, routeIndex } from '../game/world';
-import { GROW_FAST, PRACTICE_CROP_HP, PRACTICE_SPAWN, cropName, goldCredit, niceMoney, paceMul, planFor, toughnessFor, updatePace, winCredit, type BillKind, type CityPlan, avgDay } from '../game/plan';
+import { GROW_FAST, PRACTICE_CHAIN_GRACE, PRACTICE_CROP_HP, PRACTICE_SOIL, PRACTICE_SPAWN, PRACTICE_SPAWN_LESSON, cropName, goldCredit, niceMoney, paceMul, planFor, toughnessFor, updatePace, winCredit, type BillKind, type CityPlan, avgDay } from '../game/plan';
 import { CROP_LEVEL_MAX, cropLevel, cropLevelProgress, cropPay, cropPayTable } from '../game/road';
 import { bestPower } from '../game/power';
 import {
@@ -805,7 +805,9 @@ export class GameApp {
   /** The plan the engine plays: the city's plan with crops as tough as this run's build calls for, and (0.15) the
    *  bills set for the player's pace when the town started (they never change while it runs). */
   private farmPlan(run: RunInfo): CityPlan {
-    const plan = planFor(run.cityId, run.scale ?? 1);
+    // 0.16.1: the bills are the same for every player (Navid: "let's make it a fixed amount"); a run started in 0.16.0
+    // with the player's pace gets the fixed bills too
+    const plan = planFor(run.cityId, 1);
     return run.tough && run.tough !== 1 ? { ...plan, hp: plan.hp * run.tough } : plan;
   }
 
@@ -818,7 +820,9 @@ export class GameApp {
   /** 0.15 (Navid, 15 Nov: bills "based on their own earning"): the bill scale for a town started now, from the
    *  player's pace (1 until they have days behind them). */
   private paceScale(): number {
-    return paceMul(this.g.pace);
+    // 0.16.1 (Navid, 19 Nov: "it is a bit unfair ... we are making the bills based on how much player is earning"):
+    // fixed bills for everyone; the pace is still kept (stats only)
+    return 1;
   }
 
   private beginRun(cityId: string): void {
@@ -1198,7 +1202,7 @@ export class GameApp {
     // (0.15.1: and its crops ripen quickly, as all did before)
     // 0.16: practice's carrots take 2 cuts (PRACTICE_CROP_HP)
     const cropHp = { ...plan.cropHp, [plan.runaway || 'carrot']: PRACTICE_CROP_HP / Math.max(0.01, plan.hp) };
-    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: { ...emptyLevels(), soil: 16 }, plan: { ...plan, grow: GROW_FAST, spawn: PRACTICE_SPAWN, cropHp }, tools: [tool] })) {
+    if (!e.beginCity({ cityId, country: plan.country, cash: 0, shed: { ...emptyLevels(), soil: PRACTICE_SOIL }, plan: { ...plan, grow: GROW_FAST, spawn: PRACTICE_SPAWN_LESSON, cropHp, chainGrace: PRACTICE_CHAIN_GRACE }, tools: [tool] })) {
       this.restoreFarm(snap, sound);
       return this.show('world');
     }
@@ -1382,10 +1386,12 @@ export class GameApp {
     const ct = cityById(run.cityId)!;
     const p = this.g.cities[run.cityId];
     const missed = !!(p && p.fails);
-    const goal = (cls: string, icon: string, label: string, i: number) =>
-      `<div class="gl-goal${cls}" style="animation-delay: ${(0.12 + 0.15 * i).toFixed(2)}s">${ICON.star(false, 30)}<span class="gl-ic">${icon}</span><b>${label}</b></div>`;
+    // 0.16.1 (Navid, 19 Nov: "i don't understand what the heck is a big day:22$ and what the heck is catch it on the
+    // first try?????"): each goal says what to do, with a short line on how
+    const goal = (cls: string, icon: string, label: string, how: string, i: number) =>
+      `<div class="gl-goal${cls}" style="animation-delay: ${(0.12 + 0.15 * i).toFixed(2)}s">${ICON.star(false, 30)}<span class="gl-ic">${icon}</span><b>${label}</b><small>${how}</small></div>`;
     this.openModal('goals', `<div class="gl-head"><span class="eyebrow">${esc(ct.short.toUpperCase())}</span><h2 class="m-title">${t('Win 3 stars here')}</h2></div>
-      <div class="gl-goals">${goal('', spriteImg(plan.runaway, 42, ''), t('Catch the runaway'), 0)}${goal('', ICON.coin(38), t('A big day: {amt}', { amt: money(plan.bigDay) }), 1)}${goal(missed ? ' miss' : '', '<i class="gl-1st">1</i>', t('Catch it on the first try'), 2)}</div>
+      <div class="gl-goals">${goal('', spriteImg(plan.runaway, 42, ''), t('Catch the runaway'), t("Pay the town's last bill"), 0)}${goal('', ICON.coin(38), t('Earn {amt} in one day', { amt: money(plan.bigDay) }), t('Your best day counts'), 1)}${goal(missed ? ' miss' : '', ICON.house(38), t('Never lose the farm'), t("Don't let the bank take it"), 2)}</div>
       <button type="button" class="st-btn gold btn-md" data-act="goals-ok">${t("Let's go!")}</button>`, 440);
   }
 
@@ -1595,7 +1601,23 @@ export class GameApp {
       return void tip('mGoat', { at: spotAt(p.goat.x, p.goat.y - 24), r: 62, icon: '<span class="ct-emo">🐐</span>', title: t('The goat'), text: t("Don't touch it! A bumped goat gets angry and costs you daylight.") });
     if (!seen.mGoatPet && treaty && p.goat)
       return void tip('mGoatPet', { at: spotAt(p.goat.x, p.goat.y - 24), r: 62, icon: '<span class="ct-emo">🐐</span>', title: t('A friendly goat'), text: t('Touch it with your sickle: it tips you cash.') });
-    const crow = (p.crows || [])[0];
+    // 0.16.1 (Navid, 19 Nov: "why on earth it shows it to the far most left top part of screen where nothing yet
+    // seen??"): the tip waits until the bird is in the open: well inside the screen and clear of the cards at the top
+    const inOpen = (x: number, y: number) =>
+      x > 90 &&
+      x < innerWidth - 90 &&
+      y > 40 &&
+      y < innerHeight - 40 &&
+      !Array.from(document.querySelectorAll('#dbdHud .grp')).some(e => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && x > r.left - 14 && x < r.right + 14 && y < r.bottom + 14;
+      });
+    const crow = seen.mThief
+      ? null
+      : (p.crows || []).find(c => {
+          const s = co.toScreen(c.x, c.y);
+          return inOpen(s.x, s.y);
+        });
     if (!seen.mThief && crow)
       return void tip('mThief', { at: spotAt(crow.x, crow.y), r: 50, icon: this.thiefIcon(40), title: t('A thief {bird}', { bird: inner(t(this.thiefName())) }), text: t('It steals coins from your jar. Swipe it before it flies off and you get them back.') });
     // 0.16 (Navid, 18 Nov: "i though it gives me 4 new vegetable. but instead it only gave me a dollar amount ... no
@@ -1715,6 +1737,8 @@ export class GameApp {
         box.classList.remove('picked');
         box.classList.add('one-left');
         this.clearPerkSel();
+        // taken looks taken (pale, a blue ring), not still picked out in gold
+        btn?.classList.remove('chosen');
         btn?.classList.add('taken');
         btn?.setAttribute('aria-disabled', 'true');
         const sub = box.querySelector('.chest-sub');
@@ -2977,9 +3001,9 @@ export class GameApp {
       const best = Math.max(0, r.best ?? 0);
       const starRow = [
         `<div class="star-row ok" style="animation-delay: .25s">${ICON.star(true, 26)}<span>${t('Caught the runaway')}</span></div>`,
-        `<div class="star-row big-row${r.spare ? ' ok' : ''}" style="animation-delay: .5s">${ICON.star(r.spare, 26)}<span>${t('A big day: {amt}', { amt: money(goal) })}</span>
+        `<div class="star-row big-row${r.spare ? ' ok' : ''}" style="animation-delay: .5s">${ICON.star(r.spare, 26)}<span>${t('Earned {amt} in one day', { amt: money(goal) })}</span>
           <span class="sp-amt">${t('Best: {amt}', { amt: money(best) })}</span></div>`,
-        `<div class="star-row try-row${r.firstTry ? ' ok' : ''}" style="animation-delay: .75s">${ICON.star(r.firstTry, 26)}<span>${t('Caught on the first try')}</span></div>`,
+        `<div class="star-row try-row${r.firstTry ? ' ok' : ''}" style="animation-delay: .75s">${ICON.star(r.firstTry, 26)}<span>${t('Never lost the farm')}</span></div>`,
       ].join('');
       // the first win's credit says what it is for
       const gains = r.credit
@@ -3036,8 +3060,9 @@ export class GameApp {
   private showChest(c: ChestInfo, again = false): void {
     if (!c || !c.perks || !c.perks.length) return;
     if (this.scr !== 'farmhouse' && !(this.scr === 'sundown' && this.afterChest === 'day')) this.show('farmhouse');
-    this.perkSel = '';
+    // the chest already up stays as it is, its picked-out card too (0.16.1: this cleared the pick but left it lit)
     if (!again && this.modal.dataset.kind === 'perks' && !this.modal.hidden) return;
+    this.perkSel = '';
     const st = engine().state();
     const picks = Math.max(1, c.picks || 1);
     const two = c.tier >= 4;
@@ -3067,13 +3092,22 @@ export class GameApp {
       this.save();
       const box = () => this.modal.querySelector<HTMLElement>('.chest-box');
       const perksUp = () => this.modal.hidden || this.modal.dataset.kind !== 'perks';
+      // 0.16.1 (Navid, 19 Nov: "it doesn't show the first chosen perk. also again when i tried to select that perk
+      // again, it bugged and selected another one on the left side"): the cards are never under a tap-to-go-on tip
+      // (it took the first tap), and the ghost hand only ever taps the card the player picked out
+      const cards = () => (perksUp() ? null : this.modal.querySelector('.chest-cards'));
+      const sel = () => (perksUp() ? null : this.modal.querySelector('.perk-card.sel'));
+      const taken = () => perksUp() || !!this.modal.querySelector('.perk-card.taken');
       void this.coach.tour([
         () => this.coach.wait(900),
         {
           el: () => this.modal.querySelector('.ch-stage'),
+          // the ad's Upgrade stays pressable on the first chest too
+          also: () => this.modal.querySelector('.chest-up'),
           round: true,
           mode: 'press',
           hand: 'tap',
+          handOn: () => this.modal.querySelector('.ch-stage'),
           icon: ICON.chest(36),
           title: t('A chest for paying a bill!'),
           text: t('Every bill you pay brings one. Tap it to open it.'),
@@ -3081,18 +3115,19 @@ export class GameApp {
         },
         () => this.coach.wait(1500),
         {
-          el: () => (perksUp() ? null : this.modal.querySelector('.chest-cards')),
+          el: cards,
+          mode: 'press',
           title: t('Pick a perk'),
           text: t('A perk helps you on this farm, until you catch its runaway.'),
-          done: perksUp,
+          done: () => taken() || !!sel(),
         },
         {
-          el: () => (perksUp() ? null : this.modal.querySelector('.chest-cards')),
+          el: cards,
           mode: 'press',
           hand: 'tap',
-          title: t('Tap a card, then tap it again'),
-          text: t('The second tap takes it.'),
-          done: () => perksUp() || !!this.modal.querySelector('.perk-card.taken'),
+          handOn: () => (perksUp() ? null : this.modal.querySelector('.perk-card.sel .pk-ok')),
+          title: t('Tap it again to take it'),
+          done: taken,
         },
       ]);
     }

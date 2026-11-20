@@ -461,7 +461,7 @@
   @keyframes dbdChestGlow { 0% { opacity: 0; transform: scale(.3); } 35% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.25); } }
   .chest-box.open .ch-coin { animation: dbdChestCoin .8s cubic-bezier(.2, .8, .4, 1) both; animation-delay: var(--dl); }
   @keyframes dbdChestCoin { 0% { opacity: 1; transform: translate(0, 0) scale(.6); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); } }
-  .chest-box.open .perk-card { animation: dbdCardIn .5s cubic-bezier(.2, 1.5, .4, 1) both; animation-delay: calc(.18s + var(--i) * .12s); }
+  .chest-box.open .perk-card { animation: dbdCardIn .5s cubic-bezier(.2, 1.5, .4, 1) backwards; animation-delay: calc(.18s + var(--i) * .12s); }
   .chest-box.one-left .perk-card { animation: none; }
   /* an ad upgrade: the chest shakes, glows white, and the better one pops in */
   .chest-box.upgrading:not(.open) .ch-svg { animation: dbdChestShake .9s ease-in both; transform-origin: 50% 90%; }
@@ -951,7 +951,7 @@ button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tab
 .ct-who { flex: none; display: grid; place-items: center; width: 54px; height: 54px; box-sizing: border-box; border-radius: 50%; background: #FFF4DC;
   border: 3px solid var(--dbd-ink); overflow: hidden; }
 .ct-who.arthur { background: #DCEBFA; }
-.ct-who canvas { display: block; width: 64px; height: 64px; margin-top: 10px; }
+.ct-who canvas { display: block; width: 48px; height: 48px; margin-top: 0; }
 .ct-who img, .ct-who > svg { display: block; width: 36px; height: 36px; object-fit: contain; }
 .ct-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ct-t { font: 400 20px/1.08 var(--ui-display); }
@@ -1100,7 +1100,8 @@ button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tab
   .chest-box.opening .ch-rays { animation-duration: 1.4s; }
   .chest-box.opening .ch-glow { opacity: .9; transform: scale(.9); transition: opacity .5s, transform .5s; }
   .chest-box.open .ch-flash { animation: chFlash .55s ease-out both; }
-  .chest-box.open .perk-card { animation: chCardOut .62s cubic-bezier(.2, 1.3, .4, 1) both; animation-delay: calc(.2s + var(--i) * .13s); }
+  /* 0.16.1: backwards, not both, so a landed card can still lift when it is picked out (.sel) and be pressed */
+  .chest-box.open .perk-card { animation: chCardOut .62s cubic-bezier(.2, 1.3, .4, 1) backwards; animation-delay: calc(.2s + var(--i) * .13s); }
 }
 @keyframes chRays { to { transform: rotate(360deg); } }
 @keyframes chSpark { 0%, 100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(.3) rotate(0); } 50% { opacity: 1; transform: translate(var(--x), var(--y)) scale(1.15) rotate(45deg); } }
@@ -1126,6 +1127,7 @@ button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tab
 .gl-ic { height: 44px; display: flex; align-items: center; justify-content: center; }
 .gl-ic img { filter: drop-shadow(0 2px 0 rgba(43, 23, 8, .3)); }
 .gl-goal b { font: 900 13.5px/1.2 var(--ui-body); color: var(--dbd-ink); }
+.gl-goal small { margin-top: -2px; font: 700 11.5px/1.25 var(--ui-body); color: var(--dbd-muted); }
 .gl-1st { display: grid; place-items: center; width: 38px; height: 38px; border: 3px solid var(--dbd-ink); border-radius: 50%; background: #7CC4F0; box-sizing: border-box;
   font: 400 24px/1 var(--ui-display); font-style: normal; color: #fff; -webkit-text-stroke: 4px var(--dbd-ink); paint-order: stroke fill; }
 .gl-goal.miss { opacity: .5; }

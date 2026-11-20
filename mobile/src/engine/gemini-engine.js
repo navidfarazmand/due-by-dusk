@@ -16907,7 +16907,9 @@ export function startGeminiEngine() {
       cm: Math.max(n('heavy') ? 3.3 : 2.8, [0, 3.2, 3.6, 4][Math.min(3, tfx('b3'))]),
       gold: (0.015 + FX.gold * shed.clover + 0.02 * n('gold') + (T.gold || 0)) * (1 + Math.min(2, tfx('f5'))),
       comboCap: 2,
-      chainGrace: n('combo') ? 1.2 : 0.9,
+      // 0.16.1: a plan can give more time between two cuts of a chain (practice: Navid, 19 Nov: "i cannot make a 5
+      // chain. at most it makes 3 ... increase chain time, and add more carrots for the tutorial")
+      chainGrace: Math.max(pl.chainGrace || 0, n('combo') ? 1.2 : 0.9),
       radishSlow: n('whisper') || T.frost ? 0.5 : 1,
       radishBonus: n('whisper') ? 1.3 : 1,
       treaty: n('treaty') > 0 || hasSkill('gold_treaty') || hasSkill('gold_herd'),
@@ -18900,12 +18902,15 @@ export function startGeminiEngine() {
   /* Thief crows (v0.12, Navid 5 Nov: on every farm). A crow flies to the coin jar, steals some of the cash and carries
      it low across the field to the far side. Swipe it on the way in and it flees with nothing; swipe it while it
      carries the bag and the coins come back. If it gets away, the coins are gone. */
+  /* 0.16.1 (Navid, 19 Nov: "for the next couple of second crow will be hidden under the jar money and everything on
+     top left"): the crow comes in over the field and lands under the jar's card, in the open, where a swipe reaches it
+     (it flew along the top before, under the cards). */
   function jarSpot() {
     try {
-      const [x, y] = hudPoint();
-      return [FarmScene_clamp(x, 40, worldW - 40), Math.max(70, y + 34)];
+      const [x] = hudPoint();
+      return [FarmScene_clamp(x, 60, worldW - 60), FIELD_TOP + 34];
     } catch (e) {
-      return [worldW * 0.16, 90];
+      return [worldW * 0.16, FIELD_TOP + 34];
     }
   }
   function spawnCrow() {
@@ -18915,7 +18920,7 @@ export function startGeminiEngine() {
     const [jx, jy] = jarSpot();
     crows.push({
       x: fromLeft ? -30 : worldW + 30,
-      y: 45 + R() * 55,
+      y: FIELD_TOP + 20 + R() * 70,
       tx: jx,
       ty: jy,
       vx: 0,
@@ -25530,6 +25535,8 @@ export function startGeminiEngine() {
         if (o.crow) {
           crows.push({ x: worldW / 2, y: 80, tx: worldW / 2, ty: 80, vx: 0, vy: 0, t: 0, side: -1, state: o.crow, loot: o.loot || 0, scared: false });
         }
+        // a crow as the field sends one (from a side, to the jar)
+        if (o.spawnCrow) spawnCrow();
         if (o.bomb) bombs.push({ x: o.bomb[0], y: o.bomb[1], sx: 0, sy: 0, tx: o.bomb[0], ty: o.bomb[1], fly: 1, t: 0, fuse: 99 });
         if (o.goat) goat = { x: worldW / 2, y: FIELD_TOP + 90, dir: 1, speed: 0, t: 0, bumped: false, petted: true, angerFlash: 0, hop: 0 };
         if (o.ranch != null) updateRanch(o.ranch);

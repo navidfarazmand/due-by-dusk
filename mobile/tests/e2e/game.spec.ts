@@ -230,7 +230,7 @@ test('boss farm: the big bill waits until the boss is knocked out', async ({ pag
   // 0.14: the big bill paid, the town's runaway is caught
   await expect(page.locator('.scr-won .r-caught')).toContainText('Caught');
   // 0.15: rivals are gone; the third star is a first-try catch (the bank never came here)
-  await expect(page.locator('.scr-won .try-row.ok')).toContainText('Caught on the first try');
+  await expect(page.locator('.scr-won .try-row.ok')).toContainText('Never lost the farm');
   await expect(page.locator('.scr-won .r-boss')).toContainText("Canada's boss is out cold");
   expect(errors).toEqual([]);
 });
@@ -543,7 +543,7 @@ test('a new player: the story, the practice farm (each tip on the thing it expla
   expect(st.cash).toBe(0);
   // 0.16 (Navid, 19 Nov: "when can we see ... we can win another star?"): the town's three stars, then its first bill
   await expect(page.locator('.scr-modal .gl-goals')).toContainText('Catch the runaway');
-  await expect(page.locator('.scr-modal .gl-goals')).toContainText('A big day: $');
+  await expect(page.locator('.scr-modal .gl-goals')).toContainText('Earn $');
   await closeGoals(page);
   await expect(tip).toContainText('Your first bill');
   await tapTip(page);
@@ -654,6 +654,81 @@ test('an ad upgrades a closed chest; a diamond chest gives two of four gold perk
   const ads = await page.evaluate(() => (window as any).__DBD_APP.g.ads.chests);
   expect(ads).toBe(1);
   expect(errors).toEqual([]);
+});
+
+// 0.16.1 (Navid, 19 Nov: "it doesn't show the first chosen perk. also again when i tried to select that perk again, it
+// bugged and selected another one on the left side")
+test('the first chest and its tips: the Upgrade still answers under the tip, the first tap on a card picks it out and the second takes it (0.16.1)', async ({ page }) => {
+  const errors = await boot(page, seeded([], 0), true);
+  await page.evaluate(s => { (window as any).__DBD_APP.g.seen = { ...s, lessonPerks: true, lessonPen: true, lessonTools: true, lessonSkill: true }; }, SEEN_ALL);
+  await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+  await closeGoals(page);
+  await page.evaluate(() => {
+    const w = window as any;
+    w.__DBD_CHEST_ROLL = 0;
+    w.__DBD_UPGRADE_ROLL = 0.3; // wooden to silver
+    w.__DBD_ENGINE.addCash(400);
+    w.__DBD_ENGINE.devDue();
+    w.__DBD_APP.payBill();
+  });
+  const tip = page.locator('#dbdCoach .ct-tip .ct-t');
+  await expect(tip).toHaveText('A chest for paying a bill!', { timeout: 6000 });
+  // the chest and its Upgrade are lit together: the ad's button is not under a blocker
+  await act(page, 'ad-chest');
+  await expect(page.locator('.scr-modal .chest-box.ch-t2')).toBeVisible({ timeout: 6000 });
+  await expect(tip).toHaveText('A chest for paying a bill!');
+  await act(page, 'chest-open');
+  await expect(tip).toHaveText('Pick a perk', { timeout: 6000 });
+  // no tap-to-go-on catcher over the cards (it took the first tap)
+  await expect(page.locator('#dbdCoach .ct-catch')).toBeHidden();
+  const card = page.locator('.scr-modal [data-act="perk"]').nth(2);
+  const id = await card.getAttribute('data-arg');
+  await card.click();
+  await expect(card).toHaveClass(/\bsel\b/);
+  await expect(page.locator('.scr-modal .perk-card.sel')).toHaveCount(1);
+  await expect(tip).toHaveText('Tap it again to take it');
+  // the ghost hand taps the card that was picked out, no other
+  await page.waitForTimeout(300);
+  const hand = await page.locator('#dbdCoach .co-hand[data-i="0"]').boundingBox();
+  const cb = (await card.boundingBox())!;
+  expect(hand).not.toBeNull();
+  const hx = hand!.x + hand!.width / 2;
+  expect(hx).toBeGreaterThan(cb.x);
+  expect(hx).toBeLessThan(cb.x + cb.width + 12);
+  await card.click();
+  await expect(page.locator('.scr-modal')).toBeHidden();
+  expect(await page.evaluate(() => (window as any).__DBD_ENGINE.state().perks)).toEqual([id]);
+  await expect(page.locator('#dbdCoach .ct-tip')).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test.describe('on a touch screen', () => {
+  test.use({ hasTouch: true });
+  test('a tap that moves a tip on presses nothing under it: the click a phone sends after the finger lifts is dropped (0.16.1)', async ({ page }) => {
+    const errors = await boot(page, seeded([], 0), true);
+    await page.evaluate(s => { (window as any).__DBD_APP.g.seen = { ...s, chest: true, lessonPerks: false, lessonPen: true, lessonTools: true, lessonSkill: true }; }, SEEN_ALL);
+    await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_charlottetown'));
+    await closeGoals(page);
+    await page.evaluate(() => { (window as any).__DBD_ENGINE.devPerks(['coffee2']); (window as any).__DBD_APP.show('farmhouse'); });
+    await expect(page.locator('#dbdCoach .ct-tip .ct-t')).toHaveText('Your perks are here', { timeout: 6000 });
+    await page.waitForTimeout(600);
+    const tile = (await page.locator('.scr-farmhouse [data-act="panel"][data-arg="perks"]').boundingBox())!;
+    const cdp = await page.context().newCDPSession(page);
+    // a thumb: down, held a moment (the tip goes in that moment), then up
+    const thumb = async (x: number, y: number) => {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] } as any);
+      await page.waitForTimeout(120);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] } as any);
+    };
+    await thumb(tile.x + tile.width / 2, tile.y + tile.height / 2);
+    await expect(page.locator('#dbdCoach .ct-tip')).toBeHidden();
+    await page.waitForTimeout(500);
+    await expect(page.locator('.scr-modal')).toBeHidden();
+    // the next tap on the tile opens the farm's perks
+    await thumb(tile.x + tile.width / 2, tile.y + tile.height / 2);
+    await expect(page.locator('.scr-modal[data-kind="panel"]')).toBeVisible();
+    expect(errors).toEqual([]);
+  });
 });
 
 test('a chest mixes its cards: mostly its own grade, now and then one higher or lower; a diamond chest is all epic (0.16.1)', async ({ page }) => {
@@ -791,31 +866,25 @@ test('a caught town is not played again: a toast says so, and its card opens the
   expect(errors).toEqual([]);
 });
 
-test("bills follow the player's own days (0.15): a strong pace makes a town's bills bigger, in clean amounts, set once per town", async ({ page }) => {
+test("bills are the same for every player (0.16.1): a strong pace no longer raises them, in clean amounts", async ({ page }) => {
+  // Navid, 19 Nov: "it is a bit unfair and also bad that we are making the bills based on how much player is earning"
   const errors = await boot(page, seeded(['ca_charlottetown'], 0, { pace: 1.6 }));
-  const exp = await page.evaluate(() => {
-    const P = (window as any).__DBD_PLANS;
-    const s = P.paceMul(1.6);
-    return { scale: s, base: P.planFor('ca_gatineau').bills.map((b: any) => b.amt), strong: P.planFor('ca_gatineau', s).bills.map((b: any) => b.amt) };
-  });
-  expect(exp.scale).toBeGreaterThan(1.2);
-  for (let i = 0; i < exp.base.length; i++) expect(exp.strong[i]).toBeGreaterThan(exp.base[i]);
-  // the map's card shows the big bill this player would get there
+  const base = await page.evaluate(() => (window as any).__DBD_PLANS.planFor('ca_gatineau').bills.map((b: any) => b.amt));
+  for (const a of base) expect(String(a)).toMatch(/^[1-9][0-9]?0*$/);
+  // the map's card shows the same big bill as for anyone
   await page.evaluate(() => (window as any).__DBD_APP.show('world'));
   await act(page, 'enter', 'CA');
   await act(page, 'city', 'ca_gatineau');
-  await expect(page.locator('.scr-country .city-card')).toContainText('$' + exp.strong[exp.strong.length - 1].toLocaleString('en-US'));
-  // starting the town sets its bills for the whole run
+  await expect(page.locator('.scr-country .city-card')).toContainText('$' + base[base.length - 1].toLocaleString('en-US'));
   await page.evaluate(() => (window as any).__DBD_APP.farmHere('ca_gatineau'));
-  expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.scale)).toBe(exp.scale);
-  expect((await E(page, 'bills')).map((b: any) => b.amt)).toEqual(exp.strong);
-  await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('$' + exp.strong[0].toLocaleString('en-US'));
-  // a day moves the pace (a day with nothing cut pulls it down), but this town's bills stay as they were
+  expect((await E(page, 'bills')).map((b: any) => b.amt)).toEqual(base);
+  await expect(page.locator('.scr-farmhouse .dc-bill')).toContainText('$' + base[0].toLocaleString('en-US'));
+  // a day still moves the pace (stats), and the bills stay as they are
   await act(page, 'start');
   await fast(page);
   await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
   expect(await page.evaluate(() => (window as any).__DBD_APP.g.pace)).toBeLessThan(1.6);
-  expect((await E(page, 'bills')).map((b: any) => b.amt)).toEqual(exp.strong);
+  expect((await E(page, 'bills')).map((b: any) => b.amt)).toEqual(base);
   expect(errors).toEqual([]);
 });
 

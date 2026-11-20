@@ -76,6 +76,8 @@ export interface CityPlan {
   spawn: number;
   /** 0.15.1: crops grow this many times as fast as on a bare field (practice and the intro: GROW_FAST). */
   grow?: number;
+  /** 0.16.1: at least this many seconds between two cuts of a chain (practice: PRACTICE_CHAIN_GRACE). */
+  chainGrace?: number;
   /** Seconds of daylight before upgrades, and extra seconds on later farms. */
   dayBase: number;
   dayBonus: number;
@@ -197,6 +199,13 @@ export const GROW_FAST = 5;
 /** 0.15.1: and they sprout three times as fast as their town's field would (a bare field sprouts one every 5 s), so
  *  practice's six carrots and chain of six still come in a few seconds. */
 export const PRACTICE_SPAWN = 3;
+/** 0.16.1 (Navid, 19 Nov: "i cannot pass the tutorial ... there is not enough carrot i cannot make a 5 chain. at most it
+ *  makes 3. so two things, increase chain time, and add more carrots for the tutorial"): practice sprouts twice as fast
+ *  again (PRACTICE_SPAWN_LESSON), its field holds about 13 carrots (Richer soil 24) and a chain waits 4 s between two
+ *  carrots (0.9 s on a real field): a carrot takes two cuts, and a bot swiping every 1.7 s never chained 5 with 3 s. */
+export const PRACTICE_SPAWN_LESSON = 6;
+export const PRACTICE_SOIL = 24;
+export const PRACTICE_CHAIN_GRACE = 4;
 /** 0.16: the second star's big day, in an average player's days there. */
 export const BIG_DAY = 1.5;
 /** 0.16: practice's carrots take 2 cuts, as the first town's do (a one-cut carrot was "wrong"). */
@@ -496,11 +505,18 @@ export function avgDay(k: number, d: number): number {
  * town, 0.8 in the second, 0.85 in the third and 0.9 from the fourth. Ads (the day doubled, free coins) now buy the
  * skills, which cost far more (tree.ts), and help when a surprise or a bad day comes.
  */
-export const BILL_RATE = 0.9;
+// 0.16.1 (Navid, 19 Nov 18:01: "it is a bit unfair and also bad that we are making the bills based on how much player
+// is earning ... let's make it a fixed amount"; 22:43: "making it fixed but with a bit lower numbers like 50%, 60%,
+// 70% and 80% forward. because it is my town 2 and i have to watch every single one video to be able to just pay the
+// bill"): bills are an average player's day there times this share, the same for every player (the app no longer
+// scales them by the player's pace). Bots on the 0.16 field (no power bar bought, 2-cut crops) earn about the model's
+// average day in towns 2 to 5 (Gatineau 66 against 64, Toronto 75 against 76, Saskatoon 141 against 159, Kelowna 282
+// against 237).
+export const BILL_RATE = 0.8;
 export function billPressure(k: number): number {
-  if (k <= 0) return 0.6;
-  if (k === 1) return 0.8;
-  if (k === 2) return 0.85;
+  if (k <= 0) return 0.5;
+  if (k === 1) return 0.6;
+  if (k === 2) return 0.7;
   return BILL_RATE;
 }
 

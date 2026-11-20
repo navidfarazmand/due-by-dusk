@@ -131,13 +131,14 @@ describe('city plans', () => {
   it('asks a little less than a day of every town, a little more each town up to the fourth (0.16)', () => {
     // A bill asks this share of an average day; under one leaves money for skills, the surprises add about 8%.
     // 0.16 (Navid, 19 Nov: "maybe make it a bit easier for everyone for the bill?"): 0.6, 0.8, 0.85, then 0.9
-    expect(billPressure(0)).toBe(0.6);
+    expect(billPressure(0)).toBe(0.5);
     expect(billPressure(2)).toBeGreaterThan(billPressure(1));
     expect(billPressure(3)).toBeGreaterThan(billPressure(2));
     expect(billPressure(3)).toBe(BILL_RATE);
     expect(billPressure(27)).toBe(BILL_RATE);
-    expect(BILL_RATE).toBe(0.9);
-    expect([billPressure(1), billPressure(2)]).toEqual([0.8, 0.85]);
+    // 0.16.1 (Navid, 19 Nov: "fixed but with a bit lower numbers like 50%, 60%, 70% and 80% forward")
+    expect(BILL_RATE).toBe(0.8);
+    expect([billPressure(1), billPressure(2)]).toEqual([0.6, 0.7]);
   });
 
   it('sizes the surprises: none in the first town, a tax of about half a day and a repair a little under one', () => {

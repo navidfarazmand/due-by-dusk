@@ -1202,8 +1202,7 @@ const dict: Record<string, string> = {
   "Every bill you pay brings one. Tap it to open it.": "Jede bezahlte Rechnung bringt eine. Tippe sie an, um sie zu öffnen.",
   "Pick a perk": "Wähle einen Vorteil",
   "A perk helps you on this farm, until you catch its runaway.": "Ein Vorteil hilft dir auf dieser Farm, bis du ihren Ausreißer fängst.",
-  "Tap a card, then tap it again": "Tippe eine Karte an und dann noch einmal",
-  "The second tap takes it.": "Das zweite Tippen nimmt sie.",
+  "Tap it again to take it": "Tippe sie noch einmal an, um sie zu nehmen",
   "The story": "Die Geschichte",
   "Drag your finger over the carrot": "Zieh deinen Finger über die Karotte",
   "Move the mouse over the carrot": "Fahr mit der Maus über die Karotte",
@@ -1250,5 +1249,12 @@ const dict: Record<string, string> = {
   "Every day brings its own event. Tap here to read it again.": "Jeder Tag bringt sein eigenes Ereignis. Tippe hier, um es noch mal zu lesen.",
   "A thief {bird}": "Ein Dieb: {bird}",
   "The {bird} took {amt} from your jar": "Der Dieb ({bird}) hat {amt} aus deinem Glas genommen",
+  "Pay the town's last bill": "Zahl die letzte Rechnung der Stadt",
+  "Earn {amt} in one day": "Verdiene {amt} an einem Tag",
+  "Your best day counts": "Dein bester Tag zählt",
+  "Never lose the farm": "Verlier nie den Hof",
+  "Don't let the bank take it": "Lass ihn dir nicht von der Bank nehmen",
+  "Earned {amt} in one day": "{amt} an einem Tag verdient",
+  "Never lost the farm": "Hof nie verloren",
 };
 export default dict;
