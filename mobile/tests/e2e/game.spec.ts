@@ -1783,12 +1783,13 @@ test('tree tricks, the ranch and the bank: each does what its text says (0.13)',
   await E(page, 'devSwing', mid, 80, 0);
   expect((await earned()) - before).toBeCloseTo(Math.round(one * 0.02), 6);
   expect((await T()).combo).toBe(5);
-  // Farm dog: every 8 s it chases a crow off and brings back what it took; not sooner
+  // Farm dog: every 20 s it chases a crow off and brings back what it took; not sooner (0.16.2: it was 8 s, every
+  // crow as it came in)
   await fx(page, { a4: 1 });
   await page.waitForTimeout(400);
   await crow(25);
   before = await cash();
-  await E(page, 'devClock', { ranch: 5 });
+  await E(page, 'devClock', { ranch: 17 });
   expect((await cash()) - before).toBeCloseTo(0, 6);
   await E(page, 'devClock', { ranch: 3.5 });
   expect((await cash()) - before).toBeCloseTo(25, 6);

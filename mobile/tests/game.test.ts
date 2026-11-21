@@ -590,7 +590,9 @@ describe('the upgrade tree (0.13: the one upgrade system)', () => {
     try {
       // an own day of $5,000 (an average day there times a pace of 2)
       setTreeMoney(5000, 2);
-      const sc = TREE.find(n => n.name === 'Scarecrow')!;
+      // (a ring-2 trick of three levels: Scarecrow was one until 0.16.2 moved it to the last ring)
+      const sc = TREE.find(n => n.name === 'Retained counsel')!;
+      expect([sc.d, sc.kind, sc.levels]).toEqual([2, 'trick', 3]);
       // 0.16 (Navid, 18 Nov: "why on earth upgrades are soooo cheap"; "make each skill that is a layer after the other,
       // much more expensive"): rings of 2, 4, 7, 12, 20, 30 days, a keystone 50, a bridge 16, each further level of a
       // trick 1.7 times the one before, and never under the ring's floor ($50 to $150,000) times the pace
@@ -661,13 +663,28 @@ describe('the upgrade tree (0.13: the one upgrade system)', () => {
     for (const n of TREE) for (const p of n.parents) expect(ids.has(p)).toBe(true);
   });
 
-  it('puts the goat\'s Pasture accord and Mulch, the growth skill, in the middle of their branches (0.15.1; Navid, 18 Nov)', () => {
+  it('puts the skills that end a pest at the end of their lane, and a skill that needs another after it (0.15.1, 0.16.2; Navid, 18 and 20 Nov)', () => {
     const a1 = treeNode('a1')!, a6 = treeNode('a6')!, f14 = treeNode('f14')!;
-    expect([a1.d, a1.s, a1.kind]).toEqual([4, 0, 'trick']);
-    expect(a1.parents.sort()).toEqual(['a3', 'a4']);
-    // Barn owl opens the Rancher branch now, and Scarecrow follows it
+    // the goat: Goat treats (not built yet), then Pasture accord, then Loyal goat herd (which also makes it friendly)
+    expect([a1.d, a1.s, a1.kind]).toEqual([5, 0, 'trick']);
+    expect(a1.parents).toEqual(['a9']);
+    expect(treeNode('a14')!.parents).toEqual(['a1']);
+    // Barn owl opens the Rancher branch, the Rooster follows it
     expect(a6.parents).toEqual(['trunk']);
-    expect(treeNode('a2')!.parents).toEqual(['a6']);
+    expect(treeNode('a3')!.parents).toEqual(['a6']);
+    // (Navid, 20 Nov: "if I just pay 450 for lvl 2 scarecrow, I don't need to pay for that farm dog for 800!"): the
+    // crows' lane is Farm dog, Crow bounty, Sheepdog (not built yet), and Scarecrow on the last ring
+    const a2 = treeNode('a2')!, a4 = treeNode('a4')!;
+    expect([a4.d, a4.parents]).toEqual([3, ['a3']]);
+    expect(treeNode('a7')!.parents).toEqual(['a4']);
+    expect(treeNode('a12')!.parents).toEqual(['a7']);
+    expect([a2.d, a2.parents]).toEqual([6, ['a12']]);
+    expect(a4.effect).toBe('Every 20 s the dog chases a crow off and brings back what it took.');
+    // a skill that needs another comes after it: Honey after the Beehive, Afterimage after the Ghost sickle
+    expect(treeNode('a10')!.parents).toEqual(['a5']);
+    expect(treeNode('r12')!.parents).toEqual(['r10']);
+    expect(treeNode('r10')!.parents).toEqual(['r7']);
+    for (const id of ['a2', 'a1', 'a14']) expect(treeNode(id)!.d).toBeGreaterThan(treeNode('a4')!.d);
     // Mulch: a track of 20 in the middle of the Field branch, priced from its ring (0.16: 12 days, 20% more a level)
     expect([f14.d, f14.s, f14.kind, f14.levels]).toEqual([4, 0, 'track', 20]);
     expect(f14.parents.sort()).toEqual(['f3', 'f4']);
@@ -703,13 +720,18 @@ describe('the upgrade tree (0.13: the one upgrade system)', () => {
     // everything built is bought but the partner of each keystone pair taken first
     const left = TREE.filter(n => n.kind !== 'trunk' && nodeLive(n.id) && !own(n.id));
     for (const n of left) expect([n.id, canBuyNode(g, n)]).toEqual([n.id, { ok: false, why: 'pair' }]);
-    // Duck pond sits behind Goat treats, which is not built yet, and so opens with Pasture accord
+    // Pasture accord sits behind Goat treats, which is not built yet, and so opens with the Beehive or the Farm dog;
+    // Scarecrow sits behind Sheepdog (not built yet either) and opens with Crow bounty
     const h = holder();
-    h.tree = { a6: 1, a2: 1, a3: 1 };
-    expect(canBuyNode(h, treeNode('a13')!)).toEqual({ ok: false, why: 'locked' });
-    h.tree.a1 = 1;
+    h.tree = { a6: 1, a3: 1 };
     expect(nodeLive('a9')).toBe(false);
-    expect(canBuyNode(h, treeNode('a13')!).ok).toBe(true);
+    expect(canBuyNode(h, treeNode('a1')!)).toEqual({ ok: false, why: 'locked' });
+    h.tree.a4 = 1;
+    expect(canBuyNode(h, treeNode('a1')!).ok).toBe(true);
+    expect(nodeLive('a12')).toBe(false);
+    expect(canBuyNode(h, treeNode('a2')!)).toEqual({ ok: false, why: 'locked' });
+    h.tree.a7 = 1;
+    expect(canBuyNode(h, treeNode('a2')!).ok).toBe(true);
   });
 
   it("sells the Workshop's level tracks at the Workshop's own prices, caps and build times", () => {

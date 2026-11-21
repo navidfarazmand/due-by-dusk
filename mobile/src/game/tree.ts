@@ -172,7 +172,7 @@ const ROWS: Record<TreeBranch, Row[]> = {
     ['goat', 'Pasture accord', 1, 'The goat never headbutts; it tips you instead.'],
     ['hat', 'Scarecrow', 2, 'Thief crows take half as much.', ['Thief crows take half as much.', 'Thief crows take nothing: they only come to look.']],
     ['comb', 'Rooster', 1, 'Each day starts with a 2 s Harvest Rush.'],
-    ['paw', 'Farm dog', 1, 'Every 8 s the dog chases a crow off and brings back what it took.'],
+    ['paw', 'Farm dog', 1, 'Every 20 s the dog chases a crow off and brings back what it took.'],
     ['bee', 'Beehive', 2, 'Every {v} s a bee lands on a crop: it pays ×2.', [3, 2]],
     ['owl', 'Barn owl', 1, "In the last 3 s of the day crows can't land."],
     ['feather', 'Crow bounty', 1, "A crow you chase off drops coins: 2% of today's harvest."],
@@ -189,14 +189,28 @@ const ROWS: Record<TreeBranch, Row[]> = {
 };
 
 /** Nodes that sit in another place of their branch than their row (row index: slot index). Ids stay what the row
- *  gives them, so saves and the engine (tfx, hasSkill) keep working. 0.15.1 (Navid, 18 Nov: "The goat skill can be
- *  very easily bought ... by putting it further away maybe in the middle of branch we keep its challenge until later
- *  in game"): Pasture accord (a1) goes to the middle of the Rancher branch and Barn owl (a6) takes its place by the
- *  trunk; Mulch (f14), now the growth skill, goes to the middle of the Field branch and Deep roots (f6, not built
- *  yet) out to Mulch's old place. */
+ *  gives them, so saves and the engine (tfx, hasSkill) keep working; a node a save owns stays owned.
+ *  0.15.1 (Navid, 18 Nov: "The goat skill can be very easily bought ... by putting it further away maybe in the
+ *  middle of branch we keep its challenge until later in game"): Pasture accord (a1) to the middle of the Rancher
+ *  branch, Barn owl (a6) by the trunk; Mulch (f14), now the growth skill, to the middle of the Field branch and Deep
+ *  roots (f6, not built yet) out to Mulch's old place.
+ *  0.16.2 (Navid, 20 Nov: "scarecrow lvl 2: thief crows take nothing ... So if I just pay 450 for lvl 2 scarecrow, I
+ *  don't need to pay for that farm dog for 800! This is exactly like goat ... It should not be one of the first
+ *  skills in the skill tree, but one of the outer layers"): a skill that ends a pest sits at the end of its line,
+ *  and a skill that needs another comes after it. The Rancher branch, by lanes from the trunk:
+ *    Barn owl (crows can't land at dusk), Rooster (a rush at dawn), then
+ *    bees and hens: Beehive, Honey (needs the bees), Hen house, Pigeon post;
+ *    the goat: Goat treats (not built), Pasture accord (no more headbutts), Loyal goat herd (also a friendly goat),
+ *      Duck pond beside it;
+ *    crows: Farm dog (chases one crow every 20 s), Crow bounty, Sheepdog (not built), Scarecrow (crows take half,
+ *      then nothing), the last ring;
+ *    keystones: Barn cat (after Pigeon post or Duck pond), Goat army (after Loyal goat herd or Scarecrow).
+ *  Reach: Afterimage (the ghost sickle's hits can crit) comes after Ghost sickle (it sat after Second wind, so it
+ *  could be bought without a ghost sickle); Featherweight takes its old place. */
 const MOVED: Partial<Record<TreeBranch, Record<number, number>>> = {
-  ranch: { 0: 5, 5: 0 },
+  ranch: { 5: 0, 2: 1, 4: 2, 9: 4, 8: 5, 0: 8, 11: 9, 12: 11, 13: 12, 1: 13 },
   field: { 13: 5, 5: 13 },
+  reach: { 11: 13, 13: 11 },
 };
 
 /** Between each branch and the next one round the trunk. */
@@ -204,7 +218,9 @@ const BRIDGES: Row[] = [
   ['bolt', 'Charged edge', 1, 'During Harvest Rush, every swing is a crit.'],
   ['chevrons', 'Momentum', 1, 'During Harvest Rush, swings are 30% faster.'],
   ['basket', 'Clearing', 1, 'A swing that cuts 3 or more crops at once leaves a fertilizer bag (one every 3 s at most).'],
-  ['tag', 'Organic label', 1, 'Twins and crops that sprout again pay 50% more.'],
+  // 0.16.2: a bridge can be reached from either branch, so it brings its own twins (without Twin germination or
+  // Perennial bloom it did nothing)
+  ['tag', 'Organic label', 1, 'One new crop in ten sprouts with a twin. Twins and crops that sprout again pay 50% more.'],
   ['milk', 'Goat milk', 1, 'The goat drops coins every 10 s it is on the field.'],
   ['bow', 'Crow hunter', 1, 'Crows you chase off count as cuts for your chain.'],
 ];

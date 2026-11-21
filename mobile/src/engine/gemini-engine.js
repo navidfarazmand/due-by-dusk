@@ -18494,10 +18494,12 @@ export function startGeminiEngine() {
   }
   /** The ranch's helpers, every frame of a day. */
   function updateRanch(dt) {
-    // Farm dog (a4): every 8 s it chases a crow off and brings back what it took
+    // Farm dog (a4): every 20 s it chases a crow off and brings back what it took. 0.16.2: it was every 8 s, and with
+    // a crow every 8.5 to 13.5 s that was every crow as it came in, the end of the crows from the third ring (Scarecrow,
+    // the last ring of the crows' lane, ends them now)
     if (tfx('a4')) {
       dogT += dt;
-      if (dogT >= 8) {
+      if (dogT >= 20) {
         const cr = crows.find((c) => !c.scared);
         if (cr) {
           dogT = 0;
@@ -21188,7 +21190,9 @@ export function startGeminiEngine() {
           break;
         }
         spawnCrop(0);
-        if (hasSkill('soil_twin') && crops.length < cur.max && Math.random() < 0.2 && spawnCrop(0.05))
+        // Twin germination (f3): one in five comes with a twin; Organic label (x4, 0.16.2) brings one in ten of its own
+        const twinP = hasSkill('soil_twin') ? 0.2 : tfx('x4') ? 0.1 : 0;
+        if (twinP && crops.length < cur.max && Math.random() < twinP && spawnCrop(0.05))
           crops[crops.length - 1].organic = true;
         spawnAcc -= spawnInterval;
         spawned++;

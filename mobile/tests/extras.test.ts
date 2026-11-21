@@ -21,7 +21,9 @@ describe('diamonds are retired: an older save moves into the upgrade tree (0.13)
   }
 
   it('derives the rate from the 12 skill nodes: the middle of first-level price over diamonds is $1,000', () => {
-    const ratios = Object.entries(TREE_SKILL).map(([node, skill]) => treeNode(node)!.price[0] / OLD_SKILLS[skill].cost).sort((a, b) => a - b);
+    // (Pasture accord, a1, as priced until 0.16.2 moved it out one ring: an old save's diamond keeps its rate)
+    const before: Record<string, number> = { a1: 3000 };
+    const ratios = Object.entries(TREE_SKILL).map(([node, skill]) => (before[node] ?? treeNode(node)!.price[0]) / OLD_SKILLS[skill].cost).sort((a, b) => a - b);
     expect(ratios).toHaveLength(12);
     expect((ratios[5] + ratios[6]) / 2).toBe(DIAMOND_CREDIT);
     // every skill of the old map is accounted for: 19 skills, 55 diamonds
