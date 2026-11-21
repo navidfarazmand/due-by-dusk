@@ -1146,3 +1146,14 @@ button.tr-chip { cursor: pointer; background: #FFF0C2; font-variant-numeric: tab
 .ct-bird { display: inline-flex; flex: none; }
 .ct-bird svg { display: block; }
 .sd-fee.sd-crow { display: flex; align-items: center; justify-content: center; gap: 6px; }
+
+/* 0.16.2 (Navid, 20 Nov: "on my xiaomi i can play with dark theme which is very cool! but the issue is that some text
+   now doesn't show!"): the phone's dark mode repainted the page itself (dark text went light on the light signs and
+   cards). The game now keeps its own colours (here, in index.html and in the app: no algorithmic darkening), and in dark
+   mode dims everything evenly instead, so every text keeps its contrast. The app sets html.dbd-night from the
+   phone's setting; a browser goes by prefers-color-scheme. */
+:root { color-scheme: only light; }
+html.dbd-night body::after { content: ''; position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; background: rgba(10, 8, 28, .34); }
+@media (prefers-color-scheme: dark) {
+  body::after { content: ''; position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; background: rgba(10, 8, 28, .34); }
+}

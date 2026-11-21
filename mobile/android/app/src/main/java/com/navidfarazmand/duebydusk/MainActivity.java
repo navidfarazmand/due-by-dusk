@@ -1,15 +1,20 @@
 package com.navidfarazmand.duebydusk;
 
+import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
+import android.webkit.WebView;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.webkit.WebSettingsCompat;
+import androidx.webkit.WebViewFeature;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.WebViewListener;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -21,6 +26,15 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ExternalLinksPlugin.class);
         super.onCreate(savedInstanceState);
         lockTextSize();
+        keepOwnColours();
+        if (getBridge() != null) {
+            getBridge().addWebViewListener(new WebViewListener() {
+                @Override
+                public void onPageLoaded(WebView webView) {
+                    syncNight();
+                }
+            });
+        }
         enterImmersiveMode();
     }
 
@@ -28,8 +42,53 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         lockTextSize();
+        syncNight();
         // Apply after the bridge's lifecycle tasks, without resizing the game.
         getWindow().getDecorView().post(this::enterImmersiveMode);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // the phone's dark mode switched while the game is open (uiMode is in the activity's configChanges)
+        syncNight();
+    }
+
+    /**
+     * 0.16.2 (Navid, 20 Nov: "on my xiaomi i can play with dark theme which is very cool! but the issue is that some
+     * text now doesn't show!"): in the phone's dark mode the WebView repainted the game (algorithmic darkening): dark
+     * text went light on the game's light signs and cards. The game keeps its own colours; it dims itself evenly
+     * instead (html.dbd-night, shell.css).
+     */
+    private void keepOwnColours() {
+        try {
+            if (getBridge() == null || getBridge().getWebView() == null) return;
+            WebView webView = getBridge().getWebView();
+            WebSettings settings = webView.getSettings();
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, false);
+            }
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+                // older WebViews (Android 10 to 12 phones that have not updated it)
+                WebSettingsCompat.setForceDark(settings, WebSettingsCompat.FORCE_DARK_OFF);
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) webView.setForceDarkAllowed(false);
+        } catch (Exception ignored) {
+            // the game still runs
+        }
+    }
+
+    /** Tells the game whether the phone is in dark mode: the game dims itself then. */
+    private void syncNight() {
+        try {
+            if (getBridge() == null || getBridge().getWebView() == null) return;
+            int mode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+            boolean night = mode == Configuration.UI_MODE_NIGHT_YES;
+            getBridge().getWebView().evaluateJavascript(
+                "document.documentElement.classList.toggle('dbd-night', " + night + ")", null);
+        } catch (Exception ignored) {
+            // no dimming
+        }
     }
 
     @Override
