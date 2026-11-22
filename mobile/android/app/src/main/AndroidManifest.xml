@@ -26,6 +26,18 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="news" />
 
+        <!-- 0.17.1: Analytics starts with its ad signals off; platform/analytics.ts turns them on only where
+             Google's consent message is not required (outside the EEA, the UK and Switzerland) -->
+        <meta-data
+            android:name="google_analytics_default_allow_ad_storage"
+            android:value="false" />
+        <meta-data
+            android:name="google_analytics_default_allow_ad_user_data"
+            android:value="false" />
+        <meta-data
+            android:name="google_analytics_default_allow_ad_personalization_signals"
+            android:value="false" />
+
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
