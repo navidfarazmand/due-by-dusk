@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 0.17: notifications' accent (the game's gold) -->
+    <color name="dbd_gold">#FFC23D</color>
+</resources>

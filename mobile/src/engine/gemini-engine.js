@@ -17755,9 +17755,15 @@ export function startGeminiEngine() {
       }
       const ps = getComputedStyle(safeProbe);
       v = Math.max(v, parseFloat(ps.paddingLeft) || 0, parseFloat(ps.paddingRight) || 0);
+      // 0.17: which side the camera is on (a repair's closed strip goes there)
+      const l = Math.max(parseFloat(cs.getPropertyValue('--safe-area-inset-left')) || 0, parseFloat(ps.paddingLeft) || 0),
+        r = Math.max(parseFloat(cs.getPropertyValue('--safe-area-inset-right')) || 0, parseFloat(ps.paddingRight) || 0);
+      cutRight = r > l + 1;
     } catch (e) {}
     return v;
   }
+  /** 0.17: the phone's camera cutout is on the right (it is turned the other way): the closed strip goes there. */
+  var cutRight = false;
   /** Both sides get the same margin (the phone may be turned either way): 3.5% of the field plus 30 units,
    * or the cutout plus a crop's width, whichever is more. */
   function updatePad() {
@@ -18033,12 +18039,14 @@ export function startGeminiEngine() {
   }
   /* 0.16.3 (Navid, 21 Nov: "i did not see any visible effect not in game screen (like a broken tractor in the
      background or in the field)"): while a repair waits, the far end of the field is roped off, with what broke lying
-     in it, and nothing grows there. */
+     in it, and nothing grows there. 0.17 (Navid, 21 Nov: "make the part that is not accessible to be the left side of the
+     screen because many phone have a camera island ... so at least we use that space"): the left end. */
   function repairMul() {
     const r = window.__DBD_REPAIR;
     return r > 0 && r < 1 ? r : 1;
   }
-  /** The width of the roped-off strip at the right end of the field (0 with no repair waiting). */
+  /** The width of the roped-off strip at the left end of the field, or the right one when the camera is there (0 with
+   *  no repair waiting). */
   function closedW() {
     const r = repairMul();
     return r < 1 && worldW ? Math.round((worldW - PAD * 2) * (1 - r)) : 0;
@@ -18050,15 +18058,17 @@ export function startGeminiEngine() {
     let x = 0,
       y = 0,
       ok = false;
-    const xMax = worldW - PAD - closedW();
+    const cw = closedW(),
+      xMin = PAD + (cutRight ? 0 : cw),
+      xMax = worldW - PAD - (cutRight ? cw : 0);
     for (let i = 0; i < 14 && !ok; i++) {
       if (at) {
         const a = R() * Math.PI * 2,
           d = (at.d || 90) * (0.75 + R() * 0.6);
-        x = FarmScene_clamp(at.x + Math.cos(a) * d, PAD, xMax);
+        x = FarmScene_clamp(at.x + Math.cos(a) * d, xMin, xMax);
         y = FarmScene_clamp(at.y + Math.sin(a) * d * 0.55, FIELD_TOP + 32, HW - 22);
       } else {
-        x = PAD + R() * (xMax - PAD);
+        x = xMin + R() * (xMax - xMin);
         y = FIELD_TOP + 32 + R() * (HW - FIELD_TOP - 54);
       }
       const rr = def.r * depth(y);
@@ -18916,7 +18926,7 @@ export function startGeminiEngine() {
     if (fieldProps.length >= 2) return;
     const R = fieldRng('prop');
     const kind = goat && !cur.treaty && R() < 0.45 ? 'treat' : 'fertilizer';
-    const x = PAD + 40 + R() * Math.max(0, worldW - PAD * 2 - 80 - closedW());
+    const x = PAD + 40 + (cutRight ? 0 : closedW()) + R() * Math.max(0, worldW - PAD * 2 - 80 - closedW());
     const y = FIELD_TOP + 45 + R() * (HW - FIELD_TOP - 80);
     fieldProps.push({ kind, x, y, ds: depth(y), age: 0, life: 9.5 });
   }
@@ -22951,11 +22961,11 @@ export function startGeminiEngine() {
   }
   /* 0.16.3: the roped-off end of the field while a repair waits (closedW): dry, cracked ground behind a row of stakes
      with a rope and red pennants, a wrench sign, and what broke lying in it (the shell sets window.__DBD_REPAIR_KIND:
-     tractor, fence, well or roof). */
+     tractor, fence, well or roof). 0.17: the left end, from the screen's edge to the rope at x1. */
   function drawRepairZone() {
     const cw = closedW();
     if (!cw) return;
-    const x0 = worldW - PAD - cw,
+    const x1 = PAD + cw,
       y0 = FIELD_TOP - 4,
       t = reduceMotion ? 0 : tNow;
     const hash = (i) => {
@@ -22963,16 +22973,21 @@ export function startGeminiEngine() {
       return s - Math.floor(s);
     };
     ctx.save();
+    // (on a phone turned the other way the camera is on the right: the same picture, mirrored)
+    if (cutRight) {
+      ctx.translate(worldW, 0);
+      ctx.scale(-1, 1);
+    }
     // dry, dusty ground
     ctx.fillStyle = 'rgba(116, 92, 66, 0.42)';
-    ctx.fillRect(x0, y0, worldW - x0 + 30, HW - y0 + 10);
+    ctx.fillRect(-30, y0, x1 + 30, HW - y0 + 10);
     // cracks
     ctx.strokeStyle = 'rgba(43, 23, 8, 0.42)';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     const n = Math.max(8, Math.round((cw * (HW - FIELD_TOP)) / 7000));
     for (let i = 0; i < n; i++) {
-      let cx = x0 + 22 + hash(i) * (worldW - x0 - 40),
+      let cx = 14 + hash(i) * (x1 - 34),
         cy = FIELD_TOP + 16 + hash(i + 50) * (HW - FIELD_TOP - 30);
       const ds = depth(cy);
       ctx.lineWidth = 1.8 * ds;
@@ -22998,7 +23013,7 @@ export function startGeminiEngine() {
     const pts = [];
     for (let i = 0; i < posts; i++) {
       const py = top + ((bot - top) * i) / (posts - 1);
-      pts.push([x0 + (i % 2 ? 2 : -2) * depth(py), py, depth(py)]);
+      pts.push([x1 + (i % 2 ? 2 : -2) * depth(py), py, depth(py)]);
     }
     const ropeAt = (p) => [p[0], p[1] - 26 * p[2]];
     ctx.strokeStyle = '#2B1708';
@@ -23010,12 +23025,12 @@ export function startGeminiEngine() {
       ctx.lineWidth = 2.6 * pts[i][2];
       ctx.beginPath();
       ctx.moveTo(ax, ay);
-      ctx.quadraticCurveTo((ax + bx) / 2 + 5 * pts[i][2], (ay + by) / 2 + 3, bx, by);
+      ctx.quadraticCurveTo((ax + bx) / 2 - 5 * pts[i][2], (ay + by) / 2 + 3, bx, by);
       ctx.stroke();
       // three pennants on each span, fluttering into the closed end
       for (let k = 1; k <= 3; k++) {
         const f = k / 4,
-          px = ax + (bx - ax) * f + 5 * pts[i][2] * 2 * f * (1 - f),
+          px = ax + (bx - ax) * f - 5 * pts[i][2] * 2 * f * (1 - f),
           py = ay + (by - ay) * f,
           s = pts[i][2],
           fl = Math.sin(t * 6 + i * 1.7 + k) * 2.2 * s;
@@ -23023,7 +23038,7 @@ export function startGeminiEngine() {
         ctx.lineWidth = 1.4 * s;
         ctx.beginPath();
         ctx.moveTo(px, py - 5 * s);
-        ctx.lineTo(px + 13 * s, py + fl);
+        ctx.lineTo(px - 13 * s, py + fl);
         ctx.lineTo(px, py + 5 * s);
         ctx.closePath();
         ctx.fill();
@@ -23045,7 +23060,7 @@ export function startGeminiEngine() {
     }
     // what broke, in the middle of the closed end, and a wrench sign beside it
     const kind = window.__DBD_REPAIR_KIND || 'tractor',
-      ix = x0 + cw * 0.56,
+      ix = x1 * 0.46,
       iy = FIELD_TOP + (HW - FIELD_TOP) * 0.56,
       k = depth(iy) * 1.45;
     ctx.save();
@@ -23068,7 +23083,7 @@ export function startGeminiEngine() {
         circ(ctx, ix + (27 + ph * 8 + Math.sin(ph * 6 + j) * 3) * k, iy + (-42 - ph * 46) * k, (4 + ph * 9) * k);
       }
     }
-    const sx = x0 + cw * 0.22,
+    const sx = x1 * 0.8,
       sy = FIELD_TOP + (HW - FIELD_TOP) * 0.3,
       ss = depth(sy) * 1.15;
     ctx.save();
@@ -25895,6 +25910,7 @@ export function startGeminiEngine() {
         // 0.16.3: seconds the goat stays calm after a clover treat, and the closed end of the field while a repair waits
         goatCalm: Math.round(goatCalmT * 100) / 100,
         closedW: closedW(),
+        closedRight: cutRight,
         spawnEvery: cur ? cur.spawn : 0,
         crows: crows.map((c) => ({ x: c.x, y: c.y })),
         props: fieldProps.map((p) => ({ kind: p.kind, x: p.x, y: p.y })),

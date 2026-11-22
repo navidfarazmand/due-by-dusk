@@ -1,6 +1,7 @@
 import { App } from '@capacitor/app';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { AdMob, AdmobConsentStatus, RewardAdPluginEvents } from '@capacitor-community/admob';
+import { startAnalytics } from './analytics';
 
 /**
  * Optional rewarded ads through Google AdMob (Android only for now).
@@ -53,6 +54,8 @@ export async function initializeAds(): Promise<void> {
     }
     // The plugin does not export this enum; its value is the string 'REQUIRED'.
     privacyOptionsRequired = String(consent.privacyOptionsRequirementStatus) === 'REQUIRED';
+    // 0.17: Analytics' consent signals follow the same answer (platform/analytics.ts)
+    startAnalytics({ consentRequired: consent.status !== AdmobConsentStatus.NOT_REQUIRED });
     announce();
     if (!consent.canRequestAds) return;
 
@@ -62,6 +65,7 @@ export async function initializeAds(): Promise<void> {
   } catch (error) {
     // Ads are optional. A missing network, form or SDK must never block the farm.
     console.warn('[ads] AdMob could not start', error);
+    startAnalytics({ consentRequired: true });
   }
 }
 

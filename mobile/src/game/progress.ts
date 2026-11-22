@@ -10,6 +10,7 @@ import { newFlair, parseFlair, type FlairState } from './flair';
 import { newDaily, type DailyState } from './daily';
 import { addWorker, parsePen, type PenState } from './pen';
 import { RUNAWAY } from './road';
+import { parseLogin, type LoginState } from './login';
 
 export const GAME_SAVE_KEY = 'dbd-game-v3';
 
@@ -162,7 +163,11 @@ export interface GameSave {
   ads: AdCounters;
   settings: Settings;
   seen: Record<string, boolean>;
-  totals: { days: number; crops: number; earned: number };
+  totals: { days: number; crops: number; earned: number; ads?: number };
+  /** 0.17: the daily sign-in bonus (login.ts). */
+  login?: LoginState;
+  /** 0.17: reminders (notify.ts): whether the player was asked, and whether they said yes. */
+  notif?: { asked: boolean; on: boolean };
   /** Set by the v0.10 migration for one message; not saved again once shown. */
   migratedRefund?: number;
   migratedFarm?: boolean;
@@ -365,8 +370,11 @@ export function parseGame(raw: string | null): GameSave {
   }
   if (o.seen && typeof o.seen === 'object') for (const k of Object.keys(o.seen)) g.seen[k] = !!o.seen[k];
   if (o.totals && typeof o.totals === 'object') {
-    g.totals = { days: num(o.totals.days), crops: num(o.totals.crops), earned: num(o.totals.earned) };
+    g.totals = { days: num(o.totals.days), crops: num(o.totals.crops), earned: num(o.totals.earned), ads: Math.max(0, Math.floor(num(o.totals.ads))) };
   }
+  const login = parseLogin(o.login);
+  if (login) g.login = login;
+  if (o.notif && typeof o.notif === 'object') g.notif = { asked: !!o.notif.asked, on: !!o.notif.on };
   // ribbons arrived in v0.8.1: older saves get them for the stars, crowns and bosses they already have
   if (typeof o.ribbons === 'number' && Number.isFinite(o.ribbons)) g.ribbons = Math.max(0, Math.floor(o.ribbons));
   else {

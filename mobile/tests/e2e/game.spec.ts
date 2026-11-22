@@ -26,6 +26,8 @@ async function boot(page: Page, save?: Save, coach = false): Promise<string[]> {
     if (!c) (window as any).__DBD_NO_COACH = true;
     // 0.14: a morning's tax or repair is a card over the farmhouse; only the surprise tests let them come
     if (!(window as any).__DBD_SURPRISE) (window as any).__DBD_NO_SURPRISES = true;
+    // 0.17: the daily bonus opens by itself on the menu; only its own test lets it
+    if (!(window as any).__DBD_BONUS) (window as any).__DBD_NO_BONUS = true;
     if (sessionStorage.getItem('dbd-e2e')) return;
     localStorage.clear();
     if (s) localStorage.setItem('dbd-game-v3', s);
@@ -1025,10 +1027,13 @@ test('surprises: a tax comes out of the jar at sunrise, a short jar leaves the c
     const e = (window as any).__DBD_ENGINE;
     for (const type of ['carrot', 'radish', 'cabbage', 'onion', 'potato', 'carrot']) e.devCrop(type);
     const p = e.peek();
-    return { w: p.closedW, field: p.worldW - 2 * p.pad, open: p.worldW - p.pad - p.closedW, maxX: Math.max(...p.crops.map((c: { x: number }) => c.x)) };
+    return { w: p.closedW, right: p.closedRight, field: p.worldW - 2 * p.pad, open: p.pad + p.closedW, minX: Math.min(...p.crops.map((c: { x: number }) => c.x)) };
   });
+  expect(closed.right).toBe(false);
+  // (0.17, Navid: "make the part that is not accessible to be the left side of the screen because many phone have a
+  // camera island"): the strip is the field's left end
   expect(closed.w).toBeCloseTo(0.3 * closed.field, -1);
-  expect(closed.maxX).toBeLessThanOrEqual(closed.open + 0.5);
+  expect(closed.minX).toBeGreaterThanOrEqual(closed.open - 0.5);
   await expect(page.locator('#dbdRepair')).toBeVisible();
   await page.locator('#dbdRepair').click();
   await expect(page.locator('#dbdBanner')).toContainText('30% fewer crops grow until you fix it. Fix it in the farmhouse.');
@@ -2179,6 +2184,101 @@ test('the story: the runaways run off the screen or vanish in a puff of dust, no
   expect(seen).toBe(0);
   await page.locator('#dbdStory .sty-skip').click();
   await expect(page.locator('#dbdStory')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('the daily bonus: once a day by itself on the menu, a week that grows, an ad doubles it, and a reminder for the next one (0.17)', async ({ page }) => {
+  // Navid, 21 Nov: "also can you add a daily sign in bonus?" and "also can we add a push notificiation?"
+  await page.addInitScript(() => {
+    (window as any).__DBD_BONUS = true;
+    (window as any).__DBD_FAKE_NOTIF = true;
+  });
+  const errors = await boot(page, seeded(CA.slice(0, 2), 500, { totals: { days: 4, crops: 30, earned: 600 }, login: { last: '2020-01-01', streak: 5, total: 5 } }));
+  const card = page.locator('.scr-modal[data-kind="login"]');
+  // a missed day starts the week again: day 1 is lit
+  await expect(card).toBeVisible();
+  await expect(card.locator('.lg-day')).toHaveCount(7);
+  await expect(card.locator('.lg-day.lg-now .lg-n')).toHaveText('Day 1');
+  const amts = await card.locator('.lg-day b').allTextContents();
+  const val = (x: string) => Number(x.replace(/[^0-9.]/g, ''));
+  for (let i = 1; i < 7; i++) expect(val(amts[i])).toBeGreaterThan(val(amts[i - 1]));
+  // an ad doubles it, into the savings between towns
+  const before = await page.evaluate(() => (window as any).__DBD_APP.g.wallet);
+  await card.locator('[data-act="login-ad"]').click();
+  await expect.poll(() => page.evaluate(() => (window as any).__DBD_APP.g.wallet), { timeout: 6000 }).toBe(before + 2 * val(amts[0]));
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.login)).toMatchObject({ streak: 1, total: 6 });
+  // the first claim asks about reminders; a yes sets one for tomorrow, between 9:00 and 21:00
+  await expect(page.locator('.scr-modal[data-kind="notif"]')).toBeVisible({ timeout: 4000 });
+  await page.locator('.scr-modal [data-act="notif-yes"]').click();
+  const rem = await page.evaluate(() => (window as any).__DBD_REMINDERS.bonus);
+  const at = new Date(rem.at), now = Date.now();
+  expect(rem.at).toBeGreaterThan(now + 8 * 3_600_000);
+  expect(rem.at).toBeLessThan(now + 48 * 3_600_000);
+  expect(at.getHours()).toBeGreaterThanOrEqual(9);
+  expect(at.getHours()).toBeLessThan(21);
+  expect(rem.body).toContain('Day 2');
+  // once a day: the gift on the menu has no badge now, and opens the week with today ticked
+  await expect(page.locator('.scr-menu .sp-gift .dock-badge')).toHaveCount(0);
+  await page.locator('.scr-menu .sp-gift').click();
+  await expect(card.locator('.lg-day.done')).toHaveCount(1);
+  await expect(card.locator('[data-act="login-claim"]')).toHaveCount(0);
+  await card.locator('[data-act="close"]').click();
+  // Settings has the reminders' switch, on
+  await act(page, 'settings');
+  await expect(page.locator('.scr-modal [data-act="reminders"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('.scr-modal [data-act="close"]').last().click();
+  // tomorrow is day 2
+  await page.evaluate(() => {
+    const g = (window as any).__DBD_APP.g;
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    g.login.last = (window as any).__DBD_PROGRESS.todayKey(d);
+  });
+  await page.locator('.scr-menu .sp-gift').click();
+  await expect(card.locator('.lg-day.lg-now .lg-n')).toHaveText('Day 2');
+  await card.locator('[data-act="login-claim"]').click();
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.login.streak)).toBe(2);
+  // Analytics saw the offer, the ad and the bonus, with the ad's place and counts
+  const ev: Array<{ name: string; params: Record<string, string | number> }> = await page.evaluate(() => (window as any).__DBD_EVENTS);
+  const names = ev.map(e => e.name);
+  expect(names).toContain('game_open');
+  expect(names).toContain('daily_bonus_shown');
+  const reward = ev.find(e => e.name === 'ad_reward')!;
+  expect(reward.params).toMatchObject({ placement: 'login', ads_session: 1, ads_total: 1, screen: 'm_login' });
+  expect(ev.filter(e => e.name === 'daily_bonus').map(e => [e.params.bonus_day, e.params.doubled])).toEqual([[1, 1], [2, 0]]);
+  expect(names).toContain('notif_permission');
+  expect(await page.evaluate(() => (window as any).__DBD_APP.g.totals.ads)).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('Analytics: a town started, a day played, the ads watched and leaving the game, with the town, the day and the screen (0.17)', async ({ page }) => {
+  // Navid, 21 Nov: "my most things i want to know is how much a user watch an ad, when and after how many it exits the game"
+  const errors = await trickDay(page);
+  // (a day that earned something, so Sundown offers to double it)
+  await cut(page, 'carrot');
+  await cut(page, 'carrot');
+  await E(page, 'devClock', { stop: false, endDay: true });
+  await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
+  // an ad doubles the day
+  await page.locator('.scr-sundown [data-act="ad-double"]').click();
+  await expect.poll(async () => (await page.evaluate(() => (window as any).__DBD_EVENTS.filter((e: any) => e.name === 'ad_reward').length)), { timeout: 6000 }).toBe(1);
+  // the game goes to the background
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  const ev: Array<{ name: string; params: Record<string, string | number> }> = await page.evaluate(() => (window as any).__DBD_EVENTS);
+  const get = (n: string) => ev.filter(e => e.name === n);
+  expect(get('level_start')[0].params).toMatchObject({ level_name: 'ca_toronto', town: 'ca_toronto', town_n: 3, attempt: 1 });
+  expect(get('day_start')[0].params).toMatchObject({ town: 'ca_toronto', day: 1 });
+  expect(get('day_end')[0].params.town).toBe('ca_toronto');
+  expect(get('ad_tap')[0].params).toMatchObject({ placement: 'double', screen: 'sundown', town: 'ca_toronto' });
+  expect(get('ad_reward')[0].params).toMatchObject({ placement: 'double', ads_session: 1 });
+  const pause = get('app_pause')[0].params;
+  expect(pause).toMatchObject({ ads_session: 1, last_screen: 'sundown', town: 'ca_toronto' });
+  expect(Number(pause.session_sec)).toBeGreaterThan(0);
+  expect(ev.filter(e => e.name === 'screen').map(e => e.params.screen)).toEqual(expect.arrayContaining(['menu', 'farmhouse', 'farm', 'sundown']));
+  expect(await page.evaluate(() => (window as any).__DBD_USERPROPS)).toMatchObject({ town: 'ca_toronto', ads_band: '1-4' });
   expect(errors).toEqual([]);
 });
 

@@ -70,8 +70,8 @@ const CAPTIONS: Array<[string, string]> = [
   ["Pay a town's last, big bill to catch its runaway.", 'Caught runaways work for you in the Pen.'],
 ];
 
-/** Plays the story; resolves when it is over or skipped. */
-export function playStory(): Promise<void> {
+/** Plays the story; resolves when it is over or skipped, with how many scenes were seen (0.17: for Analytics). */
+export function playStory(): Promise<{ seen: number; skipped: boolean }> {
   return new Promise(resolve => {
     const root = document.createElement('div');
     root.id = 'dbdStory';
@@ -89,14 +89,14 @@ export function playStory(): Promise<void> {
       done = false,
       raf = 0;
     let arthur: ArthurView | null = null;
-    const finish = () => {
+    const finish = (skipped = false) => {
       if (done) return;
       done = true;
       cancelAnimationFrame(raf);
       root.classList.add('out');
       setTimeout(() => {
         root.remove();
-        resolve();
+        resolve({ seen: Math.min(CAPTIONS.length, i + 1), skipped });
       }, 320);
     };
     const loop = (ms: number) => {
@@ -143,7 +143,7 @@ export function playStory(): Promise<void> {
     });
     (root.querySelector('.sty-skip') as HTMLElement).addEventListener('click', e => {
       e.stopPropagation();
-      finish();
+      finish(true);
     });
     next();
     raf = requestAnimationFrame(loop);

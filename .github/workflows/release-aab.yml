@@ -101,6 +101,16 @@ jobs:
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
       - name: Install Android build tools
         run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Write the Firebase config (google-services.json, 0.17)
+        env:
+          GSJ: ${{ secrets.DBD_GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GSJ" ]; then
+            printf '%s' "$GSJ" | base64 --decode > android/app/google-services.json
+            echo "Firebase config written."
+          else
+            echo "::warning::DBD_GOOGLE_SERVICES_JSON is not set: this build has no Analytics and no Firebase messages."
+          fi
       - name: Restore the upload key
         env:
           STORE: ${{ secrets.DBD_UPLOAD_KEYSTORE_BASE64 }}

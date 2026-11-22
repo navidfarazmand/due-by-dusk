@@ -12,6 +12,11 @@ const config: CapacitorConfig = {
       insetsHandling: 'css',
       initialViewportFitValueHint: 'cover',
     },
+    // 0.17: the game's reminders (platform/notify.ts) wear its own small icon in its gold
+    LocalNotifications: {
+      smallIcon: 'ic_stat_dbd',
+      iconColor: '#FFC23D',
+    },
   },
   android: {
     allowMixedContent: false,

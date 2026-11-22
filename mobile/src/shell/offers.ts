@@ -4,14 +4,15 @@
 
 import { rewardedAdReady, showRewardedAd, ADS_CHANGED_EVENT } from '../platform/ads';
 import { todayKey, type GameSave } from '../game/progress';
+import { adEvent } from '../platform/analytics';
 
-export type OfferKind = 'double' | 'coins' | 'finish' | 'extraDay' | 'ribbon' | 'daily' | 'chest' | 'pen';
+export type OfferKind = 'double' | 'coins' | 'finish' | 'extraDay' | 'ribbon' | 'daily' | 'chest' | 'pen' | 'login';
 
 /** Daily caps (the daily farm keeps its own count). Doubles were six until 0.14 and twelve in 0.15.
  * 0.16.1 (Navid, 19 Nov: "we made the game so hard to let people watch ad, but then you limit the number of ads people
  * see! so now after i don't know like 10 ads ... i couldn't see ads and double my money"): no daily cap on any offer;
  * free coins keep their 20 minutes between two ads (COINS_COOLDOWN_MIN). */
-export const CAPS: Record<OfferKind, number> = { double: Infinity, coins: Infinity, finish: Infinity, extraDay: Infinity, ribbon: 3, daily: 99, chest: Infinity, pen: Infinity };
+export const CAPS: Record<OfferKind, number> = { double: Infinity, coins: Infinity, finish: Infinity, extraDay: Infinity, ribbon: 3, daily: 99, chest: Infinity, pen: Infinity, login: Infinity };
 /** Minutes between two free-coin ads. */
 export const COINS_COOLDOWN_MIN = 20;
 
@@ -78,9 +79,14 @@ function fakeAd(): Promise<boolean> {
   });
 }
 
-/** Shows the ad; resolves true only when the reward was earned. Counts it against today's cap. */
+/** Shows the ad; resolves true only when the reward was earned. Counts it against today's cap.
+ *  0.17: each offer pressed, watched or closed early goes to Analytics (platform/analytics.ts, adEvent). */
 export async function watch(g: GameSave, kind: OfferKind): Promise<boolean> {
-  if (!canOffer(g, kind)) return false;
+  adEvent('tap', kind);
+  if (!canOffer(g, kind)) {
+    adEvent('none', kind);
+    return false;
+  }
   // the game's music steps aside while the ad plays its own sound
   window.dispatchEvent(new Event('dbd:ad-open'));
   let ok = false;
@@ -89,7 +95,12 @@ export async function watch(g: GameSave, kind: OfferKind): Promise<boolean> {
   } finally {
     window.dispatchEvent(new Event('dbd:ad-close'));
   }
-  if (!ok) return false;
+  if (!ok) {
+    adEvent('closed', kind);
+    return false;
+  }
+  g.totals.ads = (g.totals.ads || 0) + 1;
+  adEvent('reward', kind);
   const c = counters(g);
   if (kind === 'double') c.doubles++;
   else if (kind === 'finish') c.finishes++;

@@ -39,6 +39,9 @@ import { attachTreeGestures, zoomTreeBy, type TreeZoomHost } from './treezoom';
 import { hapticImpact } from '../platform/mobile';
 import { addWorker, collectPen, newPen, penFill, penRate, penStored, workerCount, workerLevel, workerRate as workerRateOf, PEN_CAP_HOURS } from '../game/pen';
 import { TREE_SKILL, buildingNode, buyNode, setTreeMoney, setTreePower, settleTree, treeLevel as treeLevelOf, treeNode, treeReady } from '../game/tree';
+import { adEvent, screen as anScreen, setAdsWatched, setContext, track, userProp, watchSessions } from '../platform/analytics';
+import { disablePush, enableNotifications, niceHour, notifAllowed, onNotificationOpen, registerPush, remind, unremind } from '../platform/notify';
+import { LOGIN_DAYS, claimLogin, loginStatus } from '../game/login';
 
 type Screen = 'menu' | 'world' | 'country' | 'farmhouse' | 'farm' | 'sundown' | 'won' | 'lost' | 'tree' | 'barn' | 'daily' | 'duel' | 'side' | 'pen';
 
@@ -116,6 +119,9 @@ function billIcon(kind: BillKind | undefined, size: number): string {
 
 /** 0.16: the things to grab on the field, as the field draws them (gemini-engine.js, drawPropsCrowsAndWeather), for
  *  their tips: a fertilizer bag (a sack with a sprout, +4), a clover treat (a four-leaf clover on a gold coin), an egg. */
+/** 0.17: the daily bonus's gift (menu button, day 7) and the reminders' bell. */
+const GIFT_ICON = `<svg class="gift-ic" width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><rect x="4" y="13" width="24" height="16" rx="3" fill="#E5484D" stroke="#2B1708" stroke-width="2.6"/><rect x="2.5" y="8.5" width="27" height="7" rx="2.5" fill="#F26B6F" stroke="#2B1708" stroke-width="2.6"/><rect x="13.5" y="8.5" width="5" height="20.5" fill="#FFC23D" stroke="#2B1708" stroke-width="2.2"/><path d="M16 8.5 C11 1 5 4 9 8.5 Z M16 8.5 C21 1 27 4 23 8.5 Z" fill="#FFC23D" stroke="#2B1708" stroke-width="2.2" stroke-linejoin="round"/></svg>`;
+const BELL_ICON = `<svg width="52" height="52" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4 C10 4 8 9 8 13 L8 19 L5 23 L27 23 L24 19 L24 13 C24 9 22 4 16 4 Z" fill="#FFC23D" stroke="#2B1708" stroke-width="2.4" stroke-linejoin="round"/><path d="M12.5 25 C13 28 19 28 19.5 25" fill="none" stroke="#2B1708" stroke-width="2.4" stroke-linecap="round"/><circle cx="16" cy="3.5" r="1.8" fill="#2B1708"/></svg>`;
 const PROP_ICON: Record<'fertilizer' | 'clover' | 'egg', string> = {
   fertilizer: `<svg width="40" height="44" viewBox="-20 -44 40 48" aria-hidden="true"><path d="M-12 -2 Q-15 -20 -7 -24 L7 -24 Q15 -20 12 -2 Q0 2 -12 -2 Z" fill="#C89B5E" stroke="#2B1708" stroke-width="2"/><rect x="-8" y="-28" width="16" height="5" rx="2" fill="#A7783F" stroke="#2B1708" stroke-width="2"/><path d="M0 -28 V-36" stroke="#166534" stroke-width="2"/><ellipse cx="-5" cy="-38" rx="5" ry="3" transform="rotate(-29 -5 -38)" fill="#4ade80" stroke="#2B1708" stroke-width="1.4"/><ellipse cx="5" cy="-39" rx="5" ry="3" transform="rotate(29 5 -39)" fill="#4ade80" stroke="#2B1708" stroke-width="1.4"/><circle cx="0" cy="-12" r="7.5" fill="#16a34a" stroke="#2B1708" stroke-width="1.4"/><text x="0" y="-9" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff" font-family="sans-serif">+4</text></svg>`,
   clover: `<svg width="36" height="36" viewBox="-16 -29 32 32" aria-hidden="true"><circle cx="0" cy="-13" r="13" fill="#FFC23D" stroke="#2B1708" stroke-width="2"/><g fill="#22c55e" stroke="#2B1708" stroke-width="1.4"><circle cx="-4.2" cy="-17.2" r="4.6"/><circle cx="4.2" cy="-17.2" r="4.6"/><circle cx="-4.2" cy="-8.8" r="4.6"/><circle cx="4.2" cy="-8.8" r="4.6"/></g><circle cx="0" cy="-13" r="2.4" fill="#FFE27A"/></svg>`,
@@ -255,6 +261,7 @@ export class GameApp {
   start(): void {
     const e = engine();
     this.wireEngine();
+    this.wireAnalytics();
     e.setSfxVolume(volGain(this.volume('sound')));
     e.setTouchLift(this.touchLift());
     this.wirePauseCard();
@@ -419,6 +426,7 @@ export class GameApp {
   private wireEngine(): void {
     on('dayStart', d => {
       this.pendingEvent = d.event;
+      track('day_start', { event: d.event?.id || '', side: this.side ? this.side.kind : this.intro ? (this.intro.practice ? 'practice' : 'intro') : '' });
       this.day = null;
       if (this.intro) {
         this.hud.dayStarted(d.event, true);
@@ -432,6 +440,11 @@ export class GameApp {
     on('crowBack', () => this.hud.arthurCrow(false));
     on('billPaid', () => {
       if (!this.side && !this.intro) this.hud.arthurBillPaid();
+      try {
+        track('bill_paid', { bill: engine().state().billsPaid });
+      } catch {
+        /* engine not ready */
+      }
     });
     on('bossDown', () => {
       this.hud.arthurShock();
@@ -439,6 +452,10 @@ export class GameApp {
     });
     on('dayEnd', d => {
       this.hud.dayEnded();
+      track('day_end', {
+        earned: Math.round(d.today.earned), crops: d.today.count,
+        side: this.side ? this.side.kind : this.intro ? (this.intro.practice ? 'practice' : 'intro') : '',
+      });
       if (this.intro) return;
       if (this.side) {
         this.side.score = Math.round(d.today.earned);
@@ -524,6 +541,8 @@ export class GameApp {
     this.g.wallet += banked;
     p.paid = paidAfterRun(run, banked);
     this.g.run = null;
+    track('level_end', { level_name: run.cityId, town: run.cityId, success: true, days: d.days, stars: res.stars, first_win: firstWin, earned: Math.round(d.earned) });
+    userProp('towns_won', ROUTE.filter(c => this.g.cities[c.id]?.won).length);
     this.result = {
       kind: 'won', cityId: run.cityId, stars: res.stars, spare: res.big, goal: plan.bigDay, best: run.bestDay, firstTry: res.firstTry, firstWin, credit,
       days: d.days, earned: d.earned, harvested: d.harvested, wallet: this.g.wallet, banked, mark: run.mark, kept: Math.round(d.cash), own: !!run.own,
@@ -545,6 +564,7 @@ export class GameApp {
     // 0.15: this town can no longer be caught on the first try (the third star)
     p.fails = (p.fails || 0) + 1;
     this.g.run = null;
+    track('level_end', { level_name: run.cityId, town: run.cityId, success: false, days: d.days, bill: d.bill, short: Math.round(d.short), kept: insured });
     this.result = {
       kind: 'lost', cityId: run.cityId, stars: 0, spare: false, firstTry: false, firstWin: false, credit: 0,
       days: d.days, earned: 0, harvested: 0, wallet: left, banked: insured, mark: run.mark, short: d.short, bill: d.bill, bossKept: !!d.bossKept,
@@ -557,6 +577,7 @@ export class GameApp {
 
   private show(s: Screen): void {
     this.scr = s;
+    anScreen(s);
     if (!this.intro) this.coach.cancel();
     this.closeModal();
     for (const [k, el] of Object.entries(this.sections)) el.hidden = k !== s;
@@ -580,6 +601,7 @@ export class GameApp {
       }
       if (!chest && !this.showGoals()) this.pointAtStart();
     } else if (s === 'tree') this.treeLesson();
+    else if (s === 'menu') this.maybeBonus();
     // the first win's credit: where it goes
     if (s === 'won' && this.result && this.result.credit && !this.g.seen.gains && this.coachOn) {
       this.g.seen.gains = true;
@@ -699,7 +721,13 @@ export class GameApp {
       case 'report': this.openReport(); break;
       case 'report-send': void this.submitReport(); break;
       case 'shakeReport': this.g.settings.shakeReport = this.g.settings.shakeReport === false; this.save(); this.openSettings(); break;
-      case 'update-now': this.closeModal(); if (this.updateOffer) void startUpdate(this.updateOffer); break;
+      case 'reminders': void this.setReminders(!this.g.notif?.on, true); break;
+      case 'login': this.openLogin(); break;
+      case 'login-claim': this.claimBonus(false); break;
+      case 'login-ad': void this.claimBonus(true); break;
+      case 'notif-yes': this.closeModal(); void this.setReminders(true, false); break;
+      case 'notif-no': this.closeModal(); this.g.notif = { asked: true, on: false }; track('notif_card', { answer: 'no' }); this.saveNow(); break;
+      case 'update-now': this.closeModal(); track('update_now'); if (this.updateOffer) void startUpdate(this.updateOffer); break;
       case 'replay-practice': this.closeModal(); void this.playPractice(true); break;
       case 'replay-story': this.closeModal(); void playStory(); break;
       case 'replay-intro': this.closeModal(); void this.playIntro(true); break;
@@ -845,6 +873,9 @@ export class GameApp {
     this.g.run = run;
     this.applyRepair();
     p.plays++;
+    // 0.17: Analytics' level_start (the town, its place on the road, which try)
+    track('level_start', { level_name: cityId, town: cityId, day: 1, town_n: routeIndex(cityId) + 1, attempt: (p.fails || 0) + 1, jar });
+    userProp('town', cityId);
     this.citySel = cityId;
     this.fhTab = 'tools';
     this.saveNow();
@@ -891,6 +922,190 @@ export class GameApp {
     }
   }
 
+  // ------------------------------------------------------------------ the daily bonus and reminders (0.17)
+
+  /** The daily bonus waits until the player has played a real day (not on the first launch, before the story). */
+  private bonusOpen(): boolean {
+    return this.g.totals.days > 0 || !!this.g.run || totalStars(this.g) > 0;
+  }
+
+  /** A day of the week's bonus: a share of an average day in the player's town (LOGIN_DAYS), in a clean amount. */
+  private bonusFor(day: number): number {
+    const cityId = this.g.run ? this.g.run.cityId : nextCity(this.g);
+    const p = this.planOf(cityId);
+    let d = 1;
+    try {
+      if (this.g.run) d = engine().state().day;
+    } catch {
+      /* engine not ready */
+    }
+    const avg = avgDay(p.index, d) * p.billMul * p.scale;
+    return Math.max(20, niceMoney(avg * LOGIN_DAYS[Math.max(0, Math.min(6, day - 1))]));
+  }
+
+  private bonusShown = '';
+  /** Opens the bonus by itself once a day, the first time the menu shows with one waiting. */
+  private maybeBonus(): void {
+    const key = todayKey();
+    if (this.bonusShown === key || !this.bonusOpen() || !loginStatus(this.g.login, key).ready) return;
+    // (the browser tests keep it shut unless a test is about it)
+    if ((window as unknown as { __DBD_NO_BONUS?: boolean }).__DBD_NO_BONUS) return;
+    this.bonusShown = key;
+    setTimeout(() => {
+      if (this.scr === 'menu' && this.modal.hidden && !this.coach.busy && !document.getElementById('dbdStory')) this.openLogin(true);
+    }, 650);
+  }
+
+  /** The week of the daily bonus: seven tiles, today's lit, the ones claimed ticked; Claim, or an ad to double it. */
+  private openLogin(auto = false): void {
+    const key = todayKey();
+    const st = loginStatus(this.g.login, key);
+    const tiles = LOGIN_DAYS.map((_, i) => {
+      const day = i + 1;
+      // (not "today": the engine's old stylesheet styles that class)
+      const cls = day < st.day || (!st.ready && day === st.day) ? 'done' : day === st.day ? 'lg-now' : 'later';
+      return `<div class="lg-day ${cls}${day === 7 ? ' big' : ''}"><span class="lg-n">${t('Day {n}', { n: day })}</span>${day === 7 ? GIFT_ICON : ICON.coin(22)}<b class="money">${money(this.bonusFor(day))}</b>${cls === 'done' ? '<i class="lg-tick">✓</i>' : ''}</div>`;
+    }).join('');
+    const amt = this.bonusFor(st.day);
+    const adOk = canOffer(this.g, 'login');
+    const buttons = st.ready
+      ? `<button type="button" class="st-btn btn-md flex1" data-act="login-claim">${t('Claim {amt}', { amt: money(amt) })}</button>` +
+        `<button type="button" class="st-btn gold btn-md flex1 ad-btn${adOk ? '' : ' off'}" data-act="login-ad"${adOk ? '' : ' disabled'}>${ICON.play()}<span>${adOk ? t('Claim {amt}', { amt: money(amt * 2) }) : t('No ad right now')}</span></button>`
+      : `<button type="button" class="st-btn gold btn-md flex1" data-act="close">${t('See you tomorrow')}</button>`;
+    this.openModal('login', `<h2 class="m-title">${t('Daily bonus')}</h2>
+      <p class="m-text lg-sub">${st.ready ? t('Come back every day: day 7 pays the most.') : t('Your next bonus is ready tomorrow.')}</p>
+      <div class="lg-days">${tiles}</div><div class="m-row">${buttons}</div>`, 520);
+    if (auto) track('daily_bonus_shown', { bonus_day: st.day });
+  }
+
+  /** Takes today's bonus (an ad doubles it) into the jar on a farm, or the savings between towns. */
+  private async claimBonus(double: boolean): Promise<void> {
+    const key = todayKey();
+    const st = loginStatus(this.g.login, key);
+    if (!st.ready || this.busy) return;
+    let amt = this.bonusFor(st.day);
+    if (double) {
+      this.busy = true;
+      const ok = await watch(this.g, 'login');
+      this.busy = false;
+      if (!ok) return this.openLogin();
+      amt *= 2;
+      // (the day may have turned while the ad played)
+      if (!loginStatus(this.g.login, todayKey()).ready) return;
+    }
+    this.g.login = claimLogin(this.g.login, todayKey());
+    if (this.g.run) engine().addCash(amt);
+    else this.g.wallet += amt;
+    this.saveNow();
+    track('daily_bonus', { bonus_day: st.day, amt, doubled: double, total: this.g.login.total });
+    try {
+      engine().uiSound?.('buy');
+    } catch {
+      /* engine not ready */
+    }
+    void hapticImpact('medium');
+    this.closeModal();
+    this.toast(t('+{amt} daily bonus!', { amt: money(amt) }));
+    this.refresh();
+    void this.remindBonus();
+    // the first bonus: would the player like a reminder when the next one is ready?
+    if (!this.g.notif?.asked && (Capacitor.isNativePlatform() || (window as unknown as { __DBD_FAKE_NOTIF?: boolean }).__DBD_FAKE_NOTIF))
+      setTimeout(() => {
+        if (this.modal.hidden && this.scr !== 'farm') this.askReminders();
+      }, 900);
+  }
+
+  /** A small card before the phone's own question (Android 13 and newer): reminders, yes or no. */
+  private askReminders(): void {
+    this.openModal('notif', `<span class="nf-bell">${BELL_ICON}</span><h2 class="m-title">${t('Reminders?')}</h2>
+      <p class="m-text">${t('We can tell you when your next bonus is ready and when the Pen is full.')}</p>
+      <div class="m-row"><button type="button" class="st-btn btn-md flex1" data-act="notif-no">${t('No thanks')}</button><button type="button" class="st-btn gold btn-md flex1" data-act="notif-yes">${t('Yes, remind me')}</button></div>`, 400);
+    track('notif_card', { answer: 'shown' });
+  }
+
+  /** Turns the reminders and Firebase messages on (the phone asks first) or off. */
+  private async setReminders(on: boolean, fromSettings: boolean): Promise<void> {
+    if (!on) {
+      this.g.notif = { asked: true, on: false };
+      void unremind('bonus');
+      void unremind('pen');
+      void disablePush();
+      userProp('notif', 'off');
+      track('notif_card', { answer: 'off' });
+      this.saveNow();
+      if (fromSettings) this.openSettings();
+      return;
+    }
+    const ok = await enableNotifications({ lang: lang(), channels: { reminders: t('Reminders'), news: t('News') } });
+    this.g.notif = { asked: true, on: ok };
+    userProp('notif', ok ? 'on' : 'off');
+    track('notif_card', { answer: ok ? 'yes' : 'denied' });
+    this.saveNow();
+    if (ok) {
+      void this.remindBonus();
+      this.toast(t('Reminders on.'));
+    } else this.toast(t('Notifications are off for the game in your phone settings.'), 3400);
+    if (fromSettings) this.openSettings();
+  }
+
+  /** The next bonus's reminder: tomorrow at about the hour of today's claim (between 9:00 and 21:00). */
+  private async remindBonus(): Promise<void> {
+    if (!this.g.notif?.on || !(await notifAllowed())) return;
+    const st = loginStatus(this.g.login, todayKey());
+    if (st.ready) return;
+    const next = (st.day % 7) + 1;
+    const at = new Date();
+    at.setDate(at.getDate() + 1);
+    at.setMinutes(0, 0, 0);
+    void remind('bonus', niceHour(at), t('Your daily bonus is ready'), t('Day {n} of your week: {amt} is waiting.', { n: next, amt: money(this.bonusFor(next)) }));
+  }
+
+  /** When the game goes to the background: the Pen's reminder for when it is full (if it has workers and room). */
+  private remindPen(): void {
+    const pen = this.g.pen;
+    if (!this.g.notif?.on || !pen || workerCount(pen) === 0) return;
+    const now = Date.now(), fill = penFill(pen, now);
+    if (fill >= 0.98) return;
+    const at = niceHour(new Date(now + (1 - fill) * PEN_CAP_HOURS * 3_600_000));
+    void remind('pen', at, t('Your Pen is full'), t('Your runaways filled the Pen with coins. Come and collect them!'));
+  }
+
+  // ------------------------------------------------------------------ analytics (0.17)
+
+  /** Where the player is for every event, the player's user properties, and the game going away and coming back. */
+  private wireAnalytics(): void {
+    setContext(() => {
+      let day = 0;
+      try {
+        if (this.g.run || this.side) day = engine().state().day;
+      } catch {
+        /* engine not ready */
+      }
+      return { screen: this.modal.hidden ? this.scr : 'm_' + (this.modal.dataset.kind || ''), town: this.side ? this.side.kind : this.g.run ? this.g.run.cityId : '', day };
+    });
+    const won = ROUTE.filter(c => this.g.cities[c.id]?.won).length;
+    setAdsWatched(this.g.totals.ads || 0);
+    userProp('towns_won', won);
+    userProp('lang', lang());
+    userProp('notif', this.g.notif?.on ? 'on' : 'off');
+    if (this.g.run) userProp('town', this.g.run.cityId);
+    track('game_open', { towns_won: won, ads_total: this.g.totals.ads || 0, days_played: this.g.totals.days, bonus_streak: this.g.login?.streak || 0, lang: lang() });
+    watchSessions(() => {
+      let mode = '', jar = Math.round(this.g.wallet);
+      try {
+        const st = engine().state();
+        mode = st.mode;
+        if (this.g.run) jar = Math.round(st.cash);
+      } catch {
+        /* engine not ready */
+      }
+      this.remindPen();
+      return { mode, jar, towns_won: ROUTE.filter(c => this.g.cities[c.id]?.won).length };
+    });
+    onNotificationOpen((kind, extra) => track('notif_open', { kind, ...(extra ? { msg: String(extra.title || extra.id || '') } : {}) }));
+    if (this.g.notif?.on) void registerPush(lang());
+  }
+
   // ------------------------------------------------------------------ the Pen (0.14)
 
   /** A town's big bill is paid: its runaway goes to work in the Pen. */
@@ -930,6 +1145,9 @@ export class GameApp {
       amt = penStored(pen, Date.now(), this.penDay(), this.g.cropCuts) * 2;
     }
     collectPen(pen, Date.now(), this.penDay(), this.g.cropCuts);
+    track('pen_collect', { amt, doubled: double, workers: workerCount(pen) });
+    // (the Pen is empty again: its reminder waits for it to fill)
+    void unremind('pen');
     if (this.g.run) {
       try {
         engine().addCash(amt);
@@ -1078,6 +1296,7 @@ export class GameApp {
       const owed = tax - paid;
       if (owed > 0) run.debt = (run.debt || 0) + Math.round(owed * 1.2);
       this.saveNow();
+      track('surprise', { kind: 'tax', amt: tax, short: owed });
       // 0.16 (Navid, 19 Nov: "i just saw a tax day, this as well as repair also should be explained. why? what
       // happened?"): the card says who took it, from where, and why the jar should keep some cash
       this.surpriseCard(
@@ -1096,6 +1315,7 @@ export class GameApp {
       run.repair = { what, amt: plan.repair };
       this.applyRepair();
       this.saveNow();
+      track('surprise', { kind: 'repair', amt: plan.repair, what: GameApp.REPAIR_KIND[what] || what });
       const can = this.wallet() >= plan.repair;
       this.surpriseCard(
         'repair',
@@ -1148,7 +1368,10 @@ export class GameApp {
   private payRepair(): boolean {
     const run = this.g.run;
     if (!run || !run.repair) return false;
-    if (!this.spend(run.repair.amt)) {
+    this.spendWhat = 'repair_' + (GameApp.REPAIR_KIND[run.repair.what] || 'other');
+    const paid = this.spend(run.repair.amt);
+    this.spendWhat = '';
+    if (!paid) {
       this.toast(t('Not enough money.'));
       return false;
     }
@@ -1180,7 +1403,11 @@ export class GameApp {
     if (fresh && !this.g.seen.story) {
       this.g.seen.story = true;
       this.saveNow();
-      return void playStory().then(() => this.playPractice(false));
+      track('tutorial_begin', { part: 'story' });
+      return void playStory().then(r => {
+        track('story_end', { scenes: r.seen, skipped: r.skipped });
+        void this.playPractice(false);
+      });
     }
     if (fresh) return void this.playPractice(false);
     if (this.g.run) {
@@ -1355,6 +1582,7 @@ export class GameApp {
     const it = this.intro;
     if (!it) return;
     this.intro = null;
+    if (it.practice && !it.replay) track('tutorial_complete', { part: 'practice' });
     this.coach.cancel();
     $('dbdHud').classList.remove('intro');
     let soundNow = it.sound;
@@ -1582,6 +1810,7 @@ export class GameApp {
     const tip = (key: string, o: TipOpts) => {
       seen[key] = true;
       this.save();
+      track('tip_shown', { tip: key });
       this.carding = true;
       void co
         .run(async () => {
@@ -1744,6 +1973,7 @@ export class GameApp {
     const box = this.modal.querySelector<HTMLElement>('.chest-box');
     const done = () => {
       this.picking = false;
+      track('perk_take', { perk: id });
       const info = engine().perkInfo(id);
       const before = engine().pendingChest();
       const finished = engine().choosePerk(id);
@@ -1816,8 +2046,12 @@ export class GameApp {
       run.spent += rest;
     }
     this.g.wallet -= fromSavings;
+    // 0.17: what the money went on (Analytics' spend_virtual_currency)
+    if (this.spendWhat) track('spend_virtual_currency', { virtual_currency_name: 'cash', value: cost, item_name: this.spendWhat });
     return true;
   }
+  /** What the next spend() pays for, for Analytics (set just before it by the buyer). */
+  private spendWhat = '';
 
   private applyTool(): void {
     try {
@@ -1841,7 +2075,10 @@ export class GameApp {
     const T = this.g.tools;
     if (!isToolId(id) || T.owned.includes(id) || !toolLock(this.g, id).open) return;
     const def = toolDef(id);
-    if (!this.spend(def.price)) return;
+    this.spendWhat = 'tool_' + id;
+    const paid = this.spend(def.price);
+    this.spendWhat = '';
+    if (!paid) return;
     T.owned.push(id);
     T.equipped = id;
     this.applyTool();
@@ -1855,7 +2092,11 @@ export class GameApp {
     const T = this.g.tools;
     if (!isToolId(tool) || !T.owned.includes(tool)) return;
     const l = modLevel(T, tool, mod), cost = modCost(tool, mod, l);
-    if (cost == null || !this.spend(cost)) return;
+    if (cost == null) return;
+    this.spendWhat = `mod_${tool}_${mod}_${l + 1}`;
+    const paid = this.spend(cost);
+    this.spendWhat = '';
+    if (!paid) return;
     T.mods[key] = l + 1;
     this.applyTool();
     this.saveNow();
@@ -2035,7 +2276,9 @@ export class GameApp {
     const n = treeNode(id);
     if (!n) return;
     this.syncTreeMoney();
+    this.spendWhat = 'skill_' + id;
     const res = buyNode(this.g, n, Date.now(), cost => this.payTree(cost));
+    this.spendWhat = '';
     if (!res.ok) {
       // 'cash' with the veil up: the tonight's-bill question is being asked (spend)
       if (res.why === 'cash' && !document.querySelector('.dbd-veil')) this.toast(t('Not enough money for {name}.', { name: t(n.name) }));
@@ -2091,7 +2334,11 @@ export class GameApp {
   private barnBuy(id: string): void {
     // 0.15 (Navid): looks are bought with cash, and dear
     const item = flairById(id);
-    if (!item || this.g.flair.owned.includes(id) || !this.spend(item.price)) return;
+    if (!item || this.g.flair.owned.includes(id)) return;
+    this.spendWhat = 'look_' + id;
+    const paid = this.spend(item.price);
+    this.spendWhat = '';
+    if (!paid) return;
     buyFlair(this.g.flair, item.price, id);
     this.applyLook();
     this.saveNow();
@@ -2205,6 +2452,7 @@ export class GameApp {
       return false;
     }
     this.side = { kind, def, snap, sound, turn, score: 0, date: todayKey() };
+    track('side_start', { kind, turn });
     const du = this.duel;
     // the bank chip shows the next medal (or, for the second duel player, the score to beat)
     if (kind === 'duel' && du && turn === 1) this.hud.setGoal(() => ({ name: t('To beat'), amt: Math.max(1, du.scores[0] + 1) }));
@@ -2281,6 +2529,8 @@ export class GameApp {
         this.sideOut = { kind: 'duel-end', score, def: sr.def, scores: [...du.scores] as [number, number], names: du.names };
       }
     }
+    const out = this.sideOut as { kind: string; score: number; medal?: number } | null;
+    if (out) track('side_end', { kind: out.kind, score: out.score, medal: out.medal ?? -1 });
     this.saveNow();
     this.show('side');
   }
@@ -2374,6 +2624,7 @@ export class GameApp {
     const e = engine();
     if (this.intro?.practice) return this.endPractice();
     if (e.state().mode !== 'day' || this.intro) return;
+    track('quit_day', { time_left: Math.round(e.state().time), side: this.side ? this.side.kind : '' });
     if (this.side) {
       e.setPaused(false);
       e.endDayNow();
@@ -2510,6 +2761,7 @@ export class GameApp {
     const dl = this.dailyState();
     const dailyMark = dl.medal ? `<i class="side-mark medal">${t(MEDAL_NAME[dl.medal]).charAt(0)}</i>` : dl.plays ? '' : `<i class="side-mark">${t('NEW')}</i>`;
     const gems = this.upgradesReady();
+    const loginReady = this.bonusOpen() && loginStatus(this.g.login, todayKey()).ready;
     const plank = this.g.run
       ? t('{farm} · Day {day}', { farm: esc(next.short), day: engine().state().day })
       : t('Farm {n} · {farm}', { n, farm: esc(next.short) });
@@ -2524,7 +2776,7 @@ export class GameApp {
         ${this.menuSprite('lavender', 96, 230, 70, 'bob2')}${this.menuSprite('pei_russet', 168, 268, 100, 'bob')}
         ${this.menuSprite('carrot', 300, 236, 62, 'bob2')}${this.menuSprite('artichaut', 372, 272, 100, 'bob')}</div>
       <div class="grp tl" style="width: 440px; height: 130px"><div class="menu-title sp-title"><h1 class="ink-title">${t('Due by Dusk')}</h1><p class="pill-dark">${t('A little farm. A very big debt.')}</p></div></div>
-      <div class="grp tr" style="width: 64px; height: 70px"><button type="button" class="st-btn sp-gear" data-act="settings" aria-label="${t('Settings')}">${ICON.gear()}</button></div>
+      <div class="grp tr" style="width: 128px; height: 70px"><button type="button" class="st-btn sp-gift${loginReady ? ' ready' : ''}" data-act="login" aria-label="${t('Daily bonus')}">${GIFT_ICON}${loginReady ? '<i class="dock-badge">!</i>' : ''}</button><button type="button" class="st-btn sp-gear" data-act="settings" aria-label="${t('Settings')}">${ICON.gear()}</button></div>
       <div class="grp mr" style="width: 340px; height: 350px"><div class="signpost">
         <i class="sp-post" aria-hidden="true"></i><i class="sp-mound" aria-hidden="true"></i>
         <button type="button" class="sp-plank" data-act="continue" aria-label="${t('World map')}">${ICON.pin(18)}<span>${plank}</span><span class="sp-map">${t('Map')}</span></button>
@@ -3064,6 +3316,7 @@ export class GameApp {
 
   private openModal(kind: string, inner: string, width = 380): void {
     if (kind !== 'tracks') this.music.setPreview(null);
+    anScreen('m_' + kind);
     this.modal.dataset.kind = kind;
     delete this.modal.dataset.chest;
     this.modal.innerHTML = `<div class="grp mc" style="width: ${width}px; height: 330px"><div class="st-chip modal-card" style="width: ${width}px">${inner}</div></div>`;
@@ -3072,6 +3325,7 @@ export class GameApp {
   }
 
   private closeModal(): void {
+    if (!this.modal.hidden) anScreen(this.scr);
     this.modal.hidden = true;
     this.modal.dataset.kind = '';
     delete this.modal.dataset.chest;
@@ -3085,6 +3339,7 @@ export class GameApp {
     if (this.scr !== 'farmhouse' && !(this.scr === 'sundown' && this.afterChest === 'day')) this.show('farmhouse');
     // the chest already up stays as it is, its picked-out card too (0.16.1: this cleared the pick but left it lit)
     if (!again && this.modal.dataset.kind === 'perks' && !this.modal.hidden) return;
+    if (!again) track('chest_open', { tier: c.tier });
     this.perkSel = '';
     const st = engine().state();
     const picks = Math.max(1, c.picks || 1);
@@ -3265,6 +3520,9 @@ export class GameApp {
     setLang(id as Lang);
     this.localizeStatic();
     this.saveNow();
+    track('lang_change', { lang: id });
+    userProp('lang', id);
+    if (this.g.notif?.on) void registerPush(id);
     // everything on screen is drawn again in the new language
     if (this.scr !== 'farm') this.render(this.scr);
     this.openLanguages();
@@ -3300,6 +3558,7 @@ export class GameApp {
       <button type="button" class="music-row" data-act="music-picker"><span class="mr-k">${t('Tracks')}</span><span class="mr-v">${t('Field:')} <b>${esc(ft ? ft.title : '')}</b> ${t('· Menus:')} <b>${esc(mt ? mt.title : '')}</b></span>${ICON.next()}</button>
       ${musicTrouble ? `<p class="m-text mus-status">${t('Music now:')} <b>${esc(t(mst))}</b></p>` : ''}
       ${vol('sound', t('Sound effects'), sound, t('Sound effects volume'))}${row('haptics', t('Vibration'), s.haptics)}
+      ${Capacitor.isNativePlatform() || (window as unknown as { __DBD_FAKE_NOTIF?: boolean }).__DBD_FAKE_NOTIF ? row('reminders', t('Reminders'), !!this.g.notif?.on) : ''}
       ${liftRow}${touchy || (navigator.maxTouchPoints || 0) > 0 ? row('shakeReport', t('Shake to report a problem'), s.shakeReport !== false) : ''}
       <button type="button" class="st-btn btn-md report-btn" data-act="report">${t('Report a problem')}</button>
       <div class="m-links"><a id="linkPrivacyPolicy" href="https://khoreh.com/due-by-dusk/privacy.html">${t('Privacy policy')}</a>
@@ -3398,6 +3657,7 @@ export class GameApp {
     this.closeModal();
     await new Promise<void>(res => requestAnimationFrame(() => requestAnimationFrame(() => res())));
     const how = await sendReport(t('What happened?'), details);
+    track('report_problem', { how });
     if (how !== 'email') this.toast(how === 'copied' ? t('Report copied. Paste it in a message to the developer.') : t("Couldn't send the report. Please try again."), 3200);
   }
 
@@ -3420,6 +3680,7 @@ export class GameApp {
       }
       this.updateAsked = true;
       this.updateOffer = offer;
+      track('update_offer', { version: offer.version || '' });
       this.openModal('update', `<h2 class="m-title">${t('A new version is ready!')}</h2>
         <p class="m-text">${t('Update Due by Dusk to enjoy the full experience: the newest farms, fixes and surprises. It only takes a moment, and your farm is saved.')}</p>
         <div class="m-row"><button type="button" class="st-btn" data-act="close">${t('Later')}</button><button type="button" class="st-btn gold" data-act="update-now">${t('Update now')}</button></div>`, 400);

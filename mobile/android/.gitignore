@@ -63,7 +63,8 @@ keystore.properties
 .cxx/
 
 # Google Services (e.g. APIs or Firebase)
-# google-services.json
+# 0.17: Firebase's config is written by the build from a repository secret (DBD_GOOGLE_SERVICES_JSON), not kept in this public repo
+app/google-services.json
 
 # Freeline
 freeline.py
