@@ -10,8 +10,9 @@ import { ConsentStatus, ConsentType, FirebaseAnalytics } from '@capacitor-fireba
  * - On the phone every event goes to Firebase (the project's google-services.json is written by the build); in a browser
  *   nothing leaves the page, and the events are kept in window.__DBD_EVENTS for the tests.
  * - Each event carries where the player is: the screen, the town and its day (context()).
- * - Ads: ad_tap (an offer pressed), ad_reward (watched to the end), ad_closed (shown, closed early), ad_none (pressed with
- *   no ad loaded); each with the placement and the count this session, today and in all.
+ * - Ads: ad_tap (an offer pressed), ad_watched (watched to the end; Analytics keeps the name ad_reward for itself),
+ *   ad_closed (shown, closed early), ad_none (pressed with no ad loaded); each with the placement and the count this
+ *   session, today and in all.
  * - Leaving: app_pause when the game goes to the background (seconds played this session, ads watched this session, the
  *   screen and the town), app_resume with the time away. A session ends after 30 minutes away, as Analytics' own does.
  * - Analytics never blocks or slows the game: every call is fire-and-forget.
@@ -128,7 +129,7 @@ export function adEvent(kind: 'tap' | 'reward' | 'closed' | 'none', placement: s
     adsAll++;
     userProp('ads_band', adsBand(adsAll));
   }
-  const name = kind === 'tap' ? 'ad_tap' : kind === 'reward' ? 'ad_reward' : kind === 'closed' ? 'ad_closed' : 'ad_none';
+  const name = kind === 'tap' ? 'ad_tap' : kind === 'reward' ? 'ad_watched' : kind === 'closed' ? 'ad_closed' : 'ad_none';
   track(name, {
     placement,
     ads_session: adsSession,

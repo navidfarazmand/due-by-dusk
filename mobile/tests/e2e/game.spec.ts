@@ -2243,7 +2243,7 @@ test('the daily bonus: once a day by itself on the menu, a week that grows, an a
   const names = ev.map(e => e.name);
   expect(names).toContain('game_open');
   expect(names).toContain('daily_bonus_shown');
-  const reward = ev.find(e => e.name === 'ad_reward')!;
+  const reward = ev.find(e => e.name === 'ad_watched')!;
   expect(reward.params).toMatchObject({ placement: 'login', ads_session: 1, ads_total: 1, screen: 'm_login' });
   expect(ev.filter(e => e.name === 'daily_bonus').map(e => [e.params.bonus_day, e.params.doubled])).toEqual([[1, 1], [2, 0]]);
   expect(names).toContain('notif_permission');
@@ -2261,7 +2261,7 @@ test('Analytics: a town started, a day played, the ads watched and leaving the g
   await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
   // an ad doubles the day
   await page.locator('.scr-sundown [data-act="ad-double"]').click();
-  await expect.poll(async () => (await page.evaluate(() => (window as any).__DBD_EVENTS.filter((e: any) => e.name === 'ad_reward').length)), { timeout: 6000 }).toBe(1);
+  await expect.poll(async () => (await page.evaluate(() => (window as any).__DBD_EVENTS.filter((e: any) => e.name === 'ad_watched').length)), { timeout: 6000 }).toBe(1);
   // the game goes to the background
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });
@@ -2273,7 +2273,7 @@ test('Analytics: a town started, a day played, the ads watched and leaving the g
   expect(get('day_start')[0].params).toMatchObject({ town: 'ca_toronto', day: 1 });
   expect(get('day_end')[0].params.town).toBe('ca_toronto');
   expect(get('ad_tap')[0].params).toMatchObject({ placement: 'double', screen: 'sundown', town: 'ca_toronto' });
-  expect(get('ad_reward')[0].params).toMatchObject({ placement: 'double', ads_session: 1 });
+  expect(get('ad_watched')[0].params).toMatchObject({ placement: 'double', ads_session: 1 });
   const pause = get('app_pause')[0].params;
   expect(pause).toMatchObject({ ads_session: 1, last_screen: 'sundown', town: 'ca_toronto' });
   expect(Number(pause.session_sec)).toBeGreaterThan(0);
