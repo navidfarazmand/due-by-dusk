@@ -297,6 +297,8 @@ export const TREE_NEW_LIVE = [
   'a4', 'a6', 'a7', 'a11', 'a13', 'a15', 'x3', 'x5', 'x6', 'm5', 'm9', 'm12', 'm15',
   // batch 5: bleeding, splinters, the boss's armour, bees, the hen, the ghost sickle, the tax lawyer (0.15; was the crown's bonus)
   'b4', 'b7', 'b14', 'r7', 'r12', 'a5', 'a8', 'a10', 'm10',
+  // 0.16.3: Goat treats (a clover treat keeps the goat calm for 10 s instead of 5)
+  'a9',
 ];
 
 const NODE: Record<string, TreeNode> = {};

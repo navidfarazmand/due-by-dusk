@@ -32,6 +32,11 @@ export function eventIcon(id: string): string {
   return EVENT_ICON[id] || '📰';
 }
 
+/** A white wrench, for the repair badge (0.16.3). */
+const REPAIR_ICON = `<svg width="18" height="18" viewBox="-12 -12 24 24" aria-hidden="true"><g transform="rotate(-45)"><rect x="-2.8" y="-2" width="5.6" height="13" rx="2.6" fill="#FFF8EC"/><circle cx="0" cy="-5" r="6.4" fill="#FFF8EC"/><rect x="-2.3" y="-12.6" width="4.6" height="8" rx="1" fill="#E5484D"/></g></svg>`;
+/** The repair card's icon: the wrench on the badge's red. */
+const REPAIR_CARD_ICON = `<svg width="36" height="36" viewBox="-18 -18 36 36" aria-hidden="true"><circle r="17" fill="#E5484D"/><g transform="rotate(-45) scale(1.35)"><rect x="-2.8" y="-2" width="5.6" height="13" rx="2.6" fill="#FFF8EC"/><circle cx="0" cy="-5" r="6.4" fill="#FFF8EC"/><rect x="-2.3" y="-12.6" width="4.6" height="8" rx="1" fill="#E5484D"/></g></svg>`;
+
 /** Phone players never see keyboard or mouse instructions: on a phone a finger held still charges the cleave. */
 export function deviceText(t: string): string {
   return touchy
@@ -56,6 +61,7 @@ export const HUD_HTML = `<div id="dbdHud" hidden>
       </svg>
     </div>
     <button type="button" class="hb-badge" id="dbdBadge" hidden aria-label="Today's event">🐐</button>
+    <button type="button" class="hb-repair" id="dbdRepair" hidden aria-label="Repair">${REPAIR_ICON}</button>
     <div class="hb-chain" id="dbdChain">
       <span class="hb-mult" id="dbdMult">×1</span><span class="hb-clbl" id="dbdChainLbl">Chain 0</span>
       <span class="hb-cbar"><i id="dbdChainFill"></i></span><span class="hb-next" id="dbdNext">×1.25 at 8</span><i class="hb-ctimer" id="dbdChainTimer"></i>
@@ -109,7 +115,7 @@ export class FarmHud {
   constructor(stage: HTMLElement, private onSound: () => void) {
     stage.insertAdjacentHTML('beforeend', HUD_HTML);
     this.root = document.getElementById('dbdHud') as HTMLElement;
-    for (const k of ['Bank', 'Cash', 'BillFill', 'BillName', 'BillAmt', 'Jar', 'JarGold', 'Badge', 'Chain', 'Mult', 'ChainLbl', 'ChainFill', 'Next', 'ChainTimer',
+    for (const k of ['Bank', 'Cash', 'BillFill', 'BillName', 'BillAmt', 'Jar', 'JarGold', 'Badge', 'Repair', 'Chain', 'Mult', 'ChainLbl', 'ChainFill', 'Next', 'ChainTimer',
       'Arc', 'Sun', 'Secs', 'Boss', 'BossName', 'BossFill', 'Rush', 'RushLbl', 'RushFill', 'Sound', 'Pause', 'Banner', 'BannerIc', 'BannerT', 'BannerD', 'BannerH',
       'Arthur']) {
       this.E[k] = document.getElementById('dbd' + k) as HTMLElement & SVGElement;
@@ -118,6 +124,10 @@ export class FarmHud {
     this.E.Sound.addEventListener('click', () => this.onSound());
     // the day's event: tapping its badge stops the field and shows the card until the next tap (Navid, 3 Nov)
     this.E.Badge.addEventListener('click', () => this.showInfo());
+    // 0.16.3: a repair waiting to be paid (its card on a tap, like the day's event)
+    this.E.Repair.addEventListener('click', () => {
+      if (this.repair) void this.showCard(REPAIR_CARD_ICON, t(this.repair.what), t('{p}% fewer crops grow until you fix it. Fix it in the farmhouse.', { p: this.repair.p }));
+    });
     (window as any).__dbdCoin = () => this.coin();
     this.arthur = new ArthurView(this.E.Arthur as unknown as HTMLCanvasElement, 96, 88, 60, 6);
   }
@@ -170,6 +180,24 @@ export class FarmHud {
 
   setGoal(g: HudGoal | null): void {
     this.goal = g;
+  }
+
+  /* 0.16.3 (Navid, 21 Nov: "if that is happening, i would like to see it as a red alarm thing (though small) like event
+     of the day"): a small red badge with a wrench under the event's, while a repair waits; a tap shows what broke. */
+  private repair: { what: string; p: number } | null = null;
+  setRepair(r: { what: string; p: number } | null): void {
+    const was = !!this.repair;
+    this.repair = r;
+    const b = this.E.Repair;
+    b.hidden = !r;
+    if (r) {
+      b.setAttribute('aria-label', t(r.what));
+      if (!was) {
+        b.classList.remove('pop');
+        void b.getBoundingClientRect();
+        b.classList.add('pop');
+      }
+    }
   }
 
   show(on: boolean): void {

@@ -1,8 +1,7 @@
-New in 0.16.2:
-• Dark mode: the game dims itself evenly, so every text stays readable
-• The day's event card sits above the field, not over your crops
-• Skills that stop the crows or the goat are now in the outer rings of the skill tree
-• Scarecrow is on the Rancher's last ring; Farm dog chases a crow every 20 s
-• Honey comes after the Beehive, Afterimage after the Ghost sickle
-• Organic label grows its own twins
-• A skill you already own stays yours
+New in 0.16.3:
+• A repair now shows on the field: what broke sits in a roped-off strip where nothing grows
+• A small red badge on the field says what broke; tap it for the details
+• Until you fix it, crops really grow 30% slower
+• A clover treat keeps the goat calm for 5 s; Goat treats makes it 10 s
+• A new look for the menu's signs, one per row
+• In the story, the runaway vegetables vanish in a puff of dust

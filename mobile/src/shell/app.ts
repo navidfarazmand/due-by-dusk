@@ -309,6 +309,9 @@ export class GameApp {
       this.saveNow();
     }
     const run = this.g.run;
+    // 0.16.3: a repair still waiting from the last session keeps its field closed (it was only set when it came up,
+    // so after a restart it did nothing until it was paid)
+    this.repairVars();
     if (run) {
       const st = e.state();
       const plan = this.farmPlan(run);
@@ -1019,10 +1022,24 @@ export class GameApp {
   /** How many crops a field grows while a repair waits (0.7: about one row in three closed). */
   private static readonly REPAIR_MUL = 0.7;
 
+  /** What broke, for the engine's picture of it in the closed end of the field (0.16.3). */
+  private static readonly REPAIR_KIND: Record<string, string> = {
+    'The fence broke': 'fence', 'The well cracked': 'well', 'The barn roof leaks': 'roof', 'The tractor broke down': 'tractor',
+  };
+
+  /** A repair waiting to be paid, for the engine (fewer crops, the closed end of the field and what broke in it) and
+   *  the HUD (its red badge). Side farms have none (clearTreeFx). */
+  private repairVars(): void {
+    const r = this.g.run ? this.g.run.repair : null;
+    const w = window as unknown as { __DBD_REPAIR?: number; __DBD_REPAIR_KIND?: string };
+    w.__DBD_REPAIR = r ? GameApp.REPAIR_MUL : 1;
+    w.__DBD_REPAIR_KIND = r ? GameApp.REPAIR_KIND[r.what] || 'tractor' : '';
+    this.hud?.setRepair(r ? { what: r.what, p: Math.round((1 - GameApp.REPAIR_MUL) * 100) } : null);
+  }
+
   /** The engine grows fewer crops while a repair waits to be paid. */
   private applyRepair(): void {
-    const run = this.g.run;
-    (window as unknown as { __DBD_REPAIR?: number }).__DBD_REPAIR = run && run.repair ? GameApp.REPAIR_MUL : 1;
+    this.repairVars();
     try {
       engine().setShed(this.g.workshop.levels);
     } catch {
@@ -1631,7 +1648,7 @@ export class GameApp {
           ? [t('A fertilizer bag'), t('Swipe it: 4 new crops sprout on the field.')]
           : kind === 'egg'
             ? [t('An egg'), t('Swipe it for coins.')]
-            : [t('A clover treat'), t('Swipe it for coins. It calms the goat too.')];
+            : [t('A clover treat'), t('Swipe it for coins. Then the goat stays calm for a few seconds.')];
       return void tip(key, { at: spotAt(f.x, f.y - 18), r: 46, icon: PROP_ICON[kind], title: words[0], text: words[1] });
     }
     // 0.16.1 (Navid, 19 Nov: "please also add the epxlantion for tutourail as well"): the day's event, once its card has
@@ -1949,6 +1966,10 @@ export class GameApp {
   private clearTreeFx(): void {
     (window as any).__DBD_TREEFX = {};
     (window as any).__DBD_CROPLV = {};
+    // (0.16.3: and no repair: it is the town's, not the practice farm's or a side farm's; restoreFarm puts it back)
+    (window as any).__DBD_REPAIR = 1;
+    (window as any).__DBD_REPAIR_KIND = '';
+    this.hud.setRepair(null);
   }
 
   /** What each vegetable pays for its level (0.13, the road), for the engine. */
@@ -2212,6 +2233,7 @@ export class GameApp {
     e.setSound(sound);
     this.hud.syncSound(sound);
     this.applySkills();
+    this.repairVars();
     e.setShed(this.g.workshop.levels);
     this.applyTool();
     this.hud.setGoal(null);
@@ -2492,7 +2514,8 @@ export class GameApp {
       ? t('{farm} · Day {day}', { farm: esc(next.short), day: engine().state().day })
       : t('Farm {n} · {farm}', { n, farm: esc(next.short) });
     // Design 4, the signpost (Navid picked it, 3 Nov): Play is the big board; the plank above it is the next farm and
-    // opens the world map; three arrow signs go to the daily farm, duels and the barn (upgrades and the Bling Barn).
+    // opens the world map; arrow signs go to the daily farm, duels, the barn (upgrades and the Bling Barn) and the Pen,
+    // one a row, left and right in turn (0.16.3).
     // Language and sound live in Settings (the gear).
     const shape = (d: string) =>
       `<svg class="sp-shape" viewBox="0 0 100 50" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" vector-effect="non-scaling-stroke"/></svg>`;

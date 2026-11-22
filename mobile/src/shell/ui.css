@@ -53,6 +53,16 @@ header.bar, aside.ledger, #fieldSign, #eventLabel, #hud, .dbd-badge, .dbd-btns, 
   box-shadow: 0 3px 0 var(--dbd-ink); display: grid; place-items: center; font-size: 19px; line-height: 1; padding: 0; pointer-events: auto; cursor: pointer; }
 .hb-badge.pop { animation: dbdBadgePop .35s ease-out; }
 @keyframes dbdBadgePop { 0% { transform: scale(.4); } 60% { transform: scale(1.22); } 100% { transform: scale(1); } }
+/* 0.16.3: a repair waiting to be paid: a small red alarm under the day's event badge */
+.hb-repair { position: absolute; left: 263px; top: 59px; width: 30px; height: 30px; box-sizing: border-box; border: 3px solid var(--dbd-ink); border-radius: 50%; background: #E5484D;
+  box-shadow: 0 2px 0 var(--dbd-ink); display: grid; place-items: center; padding: 0; pointer-events: auto; cursor: pointer; }
+.hb-repair svg { display: block; }
+.hb-repair::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid #E5484D; opacity: 0; pointer-events: none; }
+.hb-repair.pop { animation: dbdBadgePop .35s ease-out; }
+@media (prefers-reduced-motion: no-preference) {
+  .hb-repair::after { animation: dbdAlarm 1.6s ease-out infinite; }
+}
+@keyframes dbdAlarm { 0% { transform: scale(1); opacity: .85; } 70%, 100% { transform: scale(1.7); opacity: 0; } }
 .hb-chain { position: absolute; left: 0; top: 63px; width: 250px; height: 23px; border-radius: 12px; background: var(--dbd-ink); color: var(--dbd-cream); transform-origin: 20px 50%; }
 .hb-chain.bump { animation: dbdMultBump .35s ease-out; }
 @keyframes dbdMultBump { 0% { transform: scale(1); } 45% { transform: scale(1.12); } 100% { transform: scale(1); } }

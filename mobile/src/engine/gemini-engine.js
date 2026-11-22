@@ -16892,7 +16892,7 @@ export function startGeminiEngine() {
     // (0.15.1: the town's density only; the screen's size used to change a field's crops and sprouting by up to 30%)
     const dens = pl.density || 1;
     // v0.14: a repair waiting to be paid closes part of the field (the shell sets window.__DBD_REPAIR)
-    const repair = window.__DBD_REPAIR > 0 && window.__DBD_REPAIR < 1 ? window.__DBD_REPAIR : 1;
+    const repair = repairMul();
     return {
       dmg: dmg < 10 ? Math.round(dmg * 100) / 100 : Math.round(dmg * 10) / 10,
       tick,
@@ -16900,7 +16900,9 @@ export function startGeminiEngine() {
       day,
       // (a repair waiting to be paid closes part of a field that holds more than one)
       max: Math.max(1, Math.round(maxCrops * dens * FIELD.count * repair)),
-      spawn: spawnRate / dens / (pl.spawn || 1) / FIELD.spawn,
+      // 0.16.3 (Navid, 21 Nov: "i don't think it actually reduced 30% of my crop production"): it only lowered how many
+      // crops the field holds, which a field that is cut quickly never reaches; crops now sprout 30% slower too
+      spawn: spawnRate / dens / (pl.spawn || 1) / FIELD.spawn / repair,
       grow,
       vm,
       cc: Math.min(0.65, 0.04 + FX.crit * shed.clover + 0.02 * n('clover') + 0.04 * n('clover2') + (T.crit || 0)),
@@ -17866,6 +17868,9 @@ export function startGeminiEngine() {
     crows = [],
     bolts = [];
   let propTimer = 4.5,
+    /** Seconds the goat stays calm after a clover treat (0.16.3), and how long that was when it started. */
+    goatCalmT = 0,
+    goatCalmMax = 5,
     crowTimer = 7.0,
     chargeT = 0,
     chargeReady = false,
@@ -18026,6 +18031,18 @@ export function startGeminiEngine() {
     }
     return clumps;
   }
+  /* 0.16.3 (Navid, 21 Nov: "i did not see any visible effect not in game screen (like a broken tractor in the
+     background or in the field)"): while a repair waits, the far end of the field is roped off, with what broke lying
+     in it, and nothing grows there. */
+  function repairMul() {
+    const r = window.__DBD_REPAIR;
+    return r > 0 && r < 1 ? r : 1;
+  }
+  /** The width of the roped-off strip at the right end of the field (0 with no repair waiting). */
+  function closedW() {
+    const r = repairMul();
+    return r < 1 && worldW ? Math.round((worldW - PAD * 2) * (1 - r)) : 0;
+  }
   function spawnCrop(delay, at) {
     const R = fieldRng('crop');
     const type = at && at.type && CROP[at.type] ? at.type : pickType(R),
@@ -18033,14 +18050,15 @@ export function startGeminiEngine() {
     let x = 0,
       y = 0,
       ok = false;
+    const xMax = worldW - PAD - closedW();
     for (let i = 0; i < 14 && !ok; i++) {
       if (at) {
         const a = R() * Math.PI * 2,
           d = (at.d || 90) * (0.75 + R() * 0.6);
-        x = FarmScene_clamp(at.x + Math.cos(a) * d, PAD, worldW - PAD);
+        x = FarmScene_clamp(at.x + Math.cos(a) * d, PAD, xMax);
         y = FarmScene_clamp(at.y + Math.sin(a) * d * 0.55, FIELD_TOP + 32, HW - 22);
       } else {
-        x = PAD + R() * (worldW - PAD * 2);
+        x = PAD + R() * (xMax - PAD);
         y = FIELD_TOP + 32 + R() * (HW - FIELD_TOP - 54);
       }
       const rr = def.r * depth(y);
@@ -18126,6 +18144,7 @@ export function startGeminiEngine() {
     parts = [];
     texts = [];
     fieldProps = [];
+    goatCalmT = 0;
     crows = [];
     bolts = [];
     bombs = [];
@@ -18897,7 +18916,7 @@ export function startGeminiEngine() {
     if (fieldProps.length >= 2) return;
     const R = fieldRng('prop');
     const kind = goat && !cur.treaty && R() < 0.45 ? 'treat' : 'fertilizer';
-    const x = PAD + 40 + R() * (worldW - PAD * 2 - 80);
+    const x = PAD + 40 + R() * Math.max(0, worldW - PAD * 2 - 80 - closedW());
     const y = FIELD_TOP + 45 + R() * (HW - FIELD_TOP - 80);
     fieldProps.push({ kind, x, y, ds: depth(y), age: 0, life: 9.5 });
   }
@@ -18981,6 +19000,11 @@ export function startGeminiEngine() {
             goat.speed = 60;
             goat.hop = 1.0;
           }
+          // 0.16.3 (Navid, 21 Nov: "did you make the clover in a way whenever we get it, the goat will not ram for couple
+          // of seconds? is it part of a skill?"): it only calmed a goat that was already angry; now the goat stays calm
+          // for 5 s (a swipe through it does nothing), 10 s with Goat treats (a9)
+          goatCalmMax = tfx('a9') ? 10 : 5;
+          goatCalmT = goatCalmMax;
           addText(`CLOVER TREAT! +$${bonus}`, fp.x, fp.y - 32, '#fde047', 24, -42, 1.0);
         }
       }
@@ -20685,6 +20709,8 @@ export function startGeminiEngine() {
       return;
     }
     if (goat.bumped) return;
+    // (0.16.3: calm after a clover treat: a swipe through it does nothing)
+    if (goatCalmT > 0) return;
     goat.bumped = true;
     goat.angerFlash = 1.0;
     goat.hop = 1.0;
@@ -21218,6 +21244,7 @@ export function startGeminiEngine() {
         dbdEvent('idle', { day: farm.day });
       }
     }
+    if (goatCalmT > 0 && mode === 'day') goatCalmT = Math.max(0, goatCalmT - dt);
     if (goat) {
       goat.t += dt;
       goat.hop = Math.max(0, (goat.hop || 0) - dt * 2.8);
@@ -22740,7 +22767,7 @@ export function startGeminiEngine() {
     ctx.save();
     ctx.translate(18, -26);
     ctx.rotate(angry ? 0.25 : 0.05);
-    ctx.fillStyle = cur && cur.treaty ? '#22c55e' : angry ? '#dc2626' : '#3b82f6';
+    ctx.fillStyle = (cur && cur.treaty) || goatCalmT > 0 ? '#22c55e' : angry ? '#dc2626' : '#3b82f6';
     ctx.beginPath();
     ctx.roundRect(-3, -6, 6, 15, 3);
     ctx.fill();
@@ -22881,6 +22908,37 @@ export function startGeminiEngine() {
     }
     ctx.restore();
     ctx.restore();
+    // 0.16.3: calm after a clover treat: a clover over its head, its ring running down until it can headbutt again
+    if (goatCalmT > 0 && !(cur && cur.treaty)) {
+      const bx = gt.x,
+        by = gt.y - 76 * ds - hopY,
+        r = 12 * ds,
+        f = FarmScene_clamp(goatCalmT / Math.max(0.1, goatCalmMax), 0, 1);
+      ctx.save();
+      ctx.fillStyle = '#FFF8EC';
+      ctx.strokeStyle = '#2B1708';
+      ctx.lineWidth = 2.2 * ds;
+      ctx.beginPath();
+      ctx.arc(bx, by, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 3 * ds;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(bx, by, r + 3.2 * ds, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * f);
+      ctx.stroke();
+      ctx.fillStyle = '#22c55e';
+      ctx.strokeStyle = '#2B1708';
+      ctx.lineWidth = 1 * ds;
+      for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        ctx.beginPath();
+        ctx.arc(bx + dx * 3.3 * ds, by + dy * 3.3 * ds, 3.6 * ds, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
   function drawPuddles() {
     for (const p of parts) {
@@ -22890,6 +22948,390 @@ export function startGeminiEngine() {
       ell(ctx, p.x, p.y, p.rx, p.ry);
     }
     ctx.globalAlpha = 1;
+  }
+  /* 0.16.3: the roped-off end of the field while a repair waits (closedW): dry, cracked ground behind a row of stakes
+     with a rope and red pennants, a wrench sign, and what broke lying in it (the shell sets window.__DBD_REPAIR_KIND:
+     tractor, fence, well or roof). */
+  function drawRepairZone() {
+    const cw = closedW();
+    if (!cw) return;
+    const x0 = worldW - PAD - cw,
+      y0 = FIELD_TOP - 4,
+      t = reduceMotion ? 0 : tNow;
+    const hash = (i) => {
+      const s = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+      return s - Math.floor(s);
+    };
+    ctx.save();
+    // dry, dusty ground
+    ctx.fillStyle = 'rgba(116, 92, 66, 0.42)';
+    ctx.fillRect(x0, y0, worldW - x0 + 30, HW - y0 + 10);
+    // cracks
+    ctx.strokeStyle = 'rgba(43, 23, 8, 0.42)';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const n = Math.max(8, Math.round((cw * (HW - FIELD_TOP)) / 7000));
+    for (let i = 0; i < n; i++) {
+      let cx = x0 + 22 + hash(i) * (worldW - x0 - 40),
+        cy = FIELD_TOP + 16 + hash(i + 50) * (HW - FIELD_TOP - 30);
+      const ds = depth(cy);
+      ctx.lineWidth = 1.8 * ds;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      let a = hash(i + 90) * Math.PI * 2;
+      for (let k = 0; k < 4; k++) {
+        a += (hash(i * 7 + k) - 0.5) * 1.6;
+        cx += Math.cos(a) * 11 * ds;
+        cy += Math.sin(a) * 5 * ds;
+        ctx.lineTo(cx, cy);
+        if (k === 1) {
+          ctx.lineTo(cx + Math.cos(a + 1.2) * 8 * ds, cy + Math.sin(a + 1.2) * 4 * ds);
+          ctx.moveTo(cx, cy);
+        }
+      }
+      ctx.stroke();
+    }
+    // stakes, the rope and its pennants along the edge
+    const posts = 6,
+      top = FIELD_TOP + 20,
+      bot = HW - 14;
+    const pts = [];
+    for (let i = 0; i < posts; i++) {
+      const py = top + ((bot - top) * i) / (posts - 1);
+      pts.push([x0 + (i % 2 ? 2 : -2) * depth(py), py, depth(py)]);
+    }
+    const ropeAt = (p) => [p[0], p[1] - 26 * p[2]];
+    ctx.strokeStyle = '#2B1708';
+    ctx.lineWidth = 2.4;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [ax, ay] = ropeAt(pts[i]),
+        [bx, by] = ropeAt(pts[i + 1]);
+      ctx.strokeStyle = '#2B1708';
+      ctx.lineWidth = 2.6 * pts[i][2];
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.quadraticCurveTo((ax + bx) / 2 + 5 * pts[i][2], (ay + by) / 2 + 3, bx, by);
+      ctx.stroke();
+      // three pennants on each span, fluttering into the closed end
+      for (let k = 1; k <= 3; k++) {
+        const f = k / 4,
+          px = ax + (bx - ax) * f + 5 * pts[i][2] * 2 * f * (1 - f),
+          py = ay + (by - ay) * f,
+          s = pts[i][2],
+          fl = Math.sin(t * 6 + i * 1.7 + k) * 2.2 * s;
+        ctx.fillStyle = (i + k) % 2 ? '#F4EEDD' : '#E5484D';
+        ctx.lineWidth = 1.4 * s;
+        ctx.beginPath();
+        ctx.moveTo(px, py - 5 * s);
+        ctx.lineTo(px + 13 * s, py + fl);
+        ctx.lineTo(px, py + 5 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+    for (const [px, py, s] of pts) {
+      ctx.fillStyle = 'rgba(30,22,14,.3)';
+      ell(ctx, px + 2 * s, py + 1, 6 * s, 2.2 * s);
+      ctx.fillStyle = '#C68A4E';
+      ctx.strokeStyle = '#2B1708';
+      ctx.lineWidth = 2 * s;
+      ctx.beginPath();
+      ctx.roundRect(px - 3.5 * s, py - 30 * s, 7 * s, 31 * s, 2 * s);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#E5484D';
+      ctx.fillRect(px - 2.4 * s, py - 28 * s, 4.8 * s, 6 * s);
+    }
+    // what broke, in the middle of the closed end, and a wrench sign beside it
+    const kind = window.__DBD_REPAIR_KIND || 'tractor',
+      ix = x0 + cw * 0.56,
+      iy = FIELD_TOP + (HW - FIELD_TOP) * 0.56,
+      k = depth(iy) * 1.45;
+    ctx.save();
+    ctx.translate(ix, iy);
+    ctx.scale(k, k);
+    ctx.strokeStyle = '#2B1708';
+    ctx.lineWidth = 2.4;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    if (kind === 'fence') drawBrokenFence();
+    else if (kind === 'well') drawCrackedWell();
+    else if (kind === 'roof') drawLeakyRoof(t);
+    else drawBrokenTractor();
+    ctx.restore();
+    if (kind === 'tractor' || !['fence', 'well', 'roof'].includes(kind)) {
+      // dark smoke from the engine
+      for (let j = 0; j < 4; j++) {
+        const ph = (t * 0.55 + j / 4) % 1;
+        ctx.fillStyle = `rgba(78, 76, 82, ${(1 - ph) * 0.55})`;
+        circ(ctx, ix + (27 + ph * 8 + Math.sin(ph * 6 + j) * 3) * k, iy + (-42 - ph * 46) * k, (4 + ph * 9) * k);
+      }
+    }
+    const sx = x0 + cw * 0.22,
+      sy = FIELD_TOP + (HW - FIELD_TOP) * 0.3,
+      ss = depth(sy) * 1.15;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(ss, ss);
+    ctx.rotate(Math.sin(t * 1.3) * 0.03);
+    ctx.fillStyle = 'rgba(30,22,14,.3)';
+    ell(ctx, 2, 1, 9, 3);
+    ctx.fillStyle = '#C68A4E';
+    ctx.strokeStyle = '#2B1708';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.roundRect(-3, -40, 6, 41, 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#E5484D';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.arc(0, -46, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    drawWrench(0, -46, 1, '#FFF8EC');
+    ctx.restore();
+    ctx.restore();
+  }
+  /** A wrench (the repair sign), centred on x, y. */
+  function drawWrench(x, y, s, col) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(-Math.PI / 4);
+    ctx.scale(s, s);
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.roundRect(-2.6, -2, 5.2, 13, 2.4);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(0, -5, 6.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#E5484D';
+    ctx.beginPath();
+    ctx.roundRect(-2.2, -12.5, 4.4, 8, 1);
+    ctx.fill();
+    ctx.restore();
+  }
+  function drawBrokenTractor() {
+    ctx.fillStyle = 'rgba(30,22,14,.32)';
+    ell(ctx, 2, 1, 42, 8);
+    // the front wheel came off and lies flat beside it
+    ctx.fillStyle = '#2B1708';
+    ell(ctx, 38, 3, 11, 4.5);
+    ctx.fillStyle = '#FFC23D';
+    ell(ctx, 38, 2.4, 4.4, 1.8);
+    ctx.save();
+    // the nose sits on the ground
+    ctx.rotate(0.13);
+    ctx.fillStyle = '#E5484D';
+    ctx.beginPath();
+    ctx.roundRect(-6, -28, 36, 15, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#B83A3F';
+    ctx.fillRect(10, -24, 2.4, 8);
+    ctx.fillRect(16, -24, 2.4, 8);
+    ctx.fillRect(22, -24, 2.4, 8);
+    ctx.fillStyle = '#E5484D';
+    ctx.beginPath();
+    ctx.roundRect(-26, -48, 22, 30, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#BFE6F5';
+    ctx.beginPath();
+    ctx.roundRect(-22, -44, 14, 11, 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#5B5B66';
+    ctx.beginPath();
+    ctx.roundRect(19, -42, 5, 15, 1.5);
+    ctx.fill();
+    ctx.stroke();
+    // the bare front axle
+    ctx.fillStyle = '#2B1708';
+    circ(ctx, 24, -10, 3);
+    ctx.restore();
+    // the big back wheel
+    ctx.fillStyle = '#2B1708';
+    circ(ctx, -15, -15, 16);
+    ctx.fillStyle = '#4A3B2E';
+    circ(ctx, -15, -15, 10.5);
+    ctx.fillStyle = '#FFC23D';
+    circ(ctx, -15, -15, 4.6);
+  }
+  function drawBrokenFence() {
+    ctx.fillStyle = 'rgba(30,22,14,.3)';
+    ell(ctx, 0, 2, 40, 7);
+    ctx.fillStyle = '#C68A4E';
+    // the rail on the ground
+    ctx.save();
+    ctx.translate(-4, -2);
+    ctx.rotate(0.12);
+    ctx.beginPath();
+    ctx.roundRect(-26, -3, 50, 6, 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    // the post that still stands, and half its rail, snapped
+    ctx.beginPath();
+    ctx.roundRect(-32, -40, 9, 41, 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-23, -33);
+    ctx.lineTo(-3, -27);
+    ctx.lineTo(-6, -24);
+    ctx.lineTo(-1, -22);
+    ctx.lineTo(-23, -26);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // the post knocked over, its half of the rail hanging down
+    ctx.save();
+    ctx.translate(26, 0);
+    ctx.rotate(0.55);
+    ctx.beginPath();
+    ctx.roundRect(-4.5, -40, 9, 41, 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    ctx.beginPath();
+    ctx.moveTo(14, -27);
+    ctx.lineTo(3, -12);
+    ctx.lineTo(6, -11);
+    ctx.lineTo(2, -7);
+    ctx.lineTo(17, -21);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  function drawCrackedWell() {
+    ctx.fillStyle = 'rgba(30,22,14,.3)';
+    ell(ctx, 0, 2, 34, 7);
+    // the frame and its little roof
+    ctx.fillStyle = '#C68A4E';
+    ctx.beginPath();
+    ctx.roundRect(-22, -62, 5, 40, 1.5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.roundRect(17, -62, 5, 40, 1.5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#B5562F';
+    ctx.beginPath();
+    ctx.moveTo(-30, -58);
+    ctx.lineTo(0, -76);
+    ctx.lineTo(30, -58);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // the rope, and no bucket on it
+    ctx.beginPath();
+    ctx.moveTo(0, -58);
+    ctx.lineTo(0, -38);
+    ctx.stroke();
+    // the stone ring
+    ctx.fillStyle = '#A8A29E';
+    ctx.beginPath();
+    ctx.moveTo(-24, -26);
+    ctx.lineTo(-24, -2);
+    ctx.ellipse(0, -2, 24, 7, 0, Math.PI, 0, true);
+    ctx.lineTo(24, -26);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#C9C3BE';
+    ell(ctx, 0, -26, 24, 7);
+    ctx.beginPath();
+    ctx.ellipse(0, -26, 24, 7, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#3B2A1E';
+    ell(ctx, 0, -26, 16, 4.2);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-24, -14);
+    ctx.lineTo(-8, -13);
+    ctx.moveTo(-16, -14);
+    ctx.lineTo(-16, -3);
+    ctx.moveTo(10, -16);
+    ctx.lineTo(24, -15);
+    ctx.stroke();
+    // the crack
+    ctx.lineWidth = 2.8;
+    ctx.beginPath();
+    ctx.moveTo(4, -20);
+    ctx.lineTo(-1, -14);
+    ctx.lineTo(6, -9);
+    ctx.lineTo(1, -3);
+    ctx.lineTo(4, 3);
+    ctx.stroke();
+    ctx.lineWidth = 2.4;
+    // the empty bucket, tipped over
+    ctx.save();
+    ctx.translate(36, -4);
+    ctx.rotate(1.35);
+    ctx.fillStyle = '#94A3B8';
+    ctx.beginPath();
+    ctx.moveTo(-7, -6);
+    ctx.lineTo(7, -6);
+    ctx.lineTo(5, 7);
+    ctx.lineTo(-5, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawLeakyRoof(t) {
+    ctx.fillStyle = 'rgba(30,22,14,.3)';
+    ell(ctx, 0, 2, 40, 8);
+    // a puddle where the rain got in
+    ctx.fillStyle = 'rgba(96, 165, 250, .55)';
+    ell(ctx, 22, 0, 18, 5);
+    // a fallen sheet of the barn roof, with a hole in it
+    ctx.fillStyle = '#C2453D';
+    ctx.beginPath();
+    ctx.moveTo(-38, -4);
+    ctx.lineTo(-14, -30);
+    ctx.lineTo(18, -24);
+    ctx.lineTo(-4, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    for (let i = 1; i < 5; i++) {
+      const f = i / 5;
+      ctx.moveTo(-38 + 34 * f, -4 + 8 * f);
+      ctx.lineTo(-14 + 32 * f, -30 + 6 * f);
+    }
+    ctx.stroke();
+    ctx.lineWidth = 2.4;
+    ctx.fillStyle = '#2B1708';
+    ctx.beginPath();
+    ctx.moveTo(-14, -16);
+    ctx.lineTo(-8, -20);
+    ctx.lineTo(-2, -16);
+    ctx.lineTo(-6, -11);
+    ctx.lineTo(-12, -12);
+    ctx.closePath();
+    ctx.fill();
+    // a bucket catching the drips
+    ctx.fillStyle = '#94A3B8';
+    ctx.beginPath();
+    ctx.moveTo(26, -18);
+    ctx.lineTo(40, -18);
+    ctx.lineTo(38, -4);
+    ctx.lineTo(28, -4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#60A5FA';
+    for (let j = 0; j < 3; j++) {
+      const ph = (t * 1.2 + j / 3) % 1;
+      ell(ctx, 33, -52 + ph * 34, 1.8, 2.8);
+    }
   }
   function drawParts() {
     for (const p of parts) {
@@ -23741,6 +24183,7 @@ export function startGeminiEngine() {
     }
     drawPuddles();
     drawSnowGround();
+    drawRepairZone();
     const sunX = sx,
       shDx = mode === 'day' ? (-(sunX - worldW / 2) / worldW) * 1.4 : 0,
       shA = (night > 0.5 ? 0.16 : 0.3) * (0.55 + 0.45 * beamVisibility),
@@ -25449,6 +25892,10 @@ export function startGeminiEngine() {
         mode,
         time,
         goat: goat ? { x: goat.x, y: goat.y, angry: !!goat.bumped } : null,
+        // 0.16.3: seconds the goat stays calm after a clover treat, and the closed end of the field while a repair waits
+        goatCalm: Math.round(goatCalmT * 100) / 100,
+        closedW: closedW(),
+        spawnEvery: cur ? cur.spawn : 0,
         crows: crows.map((c) => ({ x: c.x, y: c.y })),
         props: fieldProps.map((p) => ({ kind: p.kind, x: p.x, y: p.y })),
         bolts: bolts.length,
@@ -25543,6 +25990,8 @@ export function startGeminiEngine() {
         if (o.spawnCrow) spawnCrow();
         if (o.bomb) bombs.push({ x: o.bomb[0], y: o.bomb[1], sx: 0, sy: 0, tx: o.bomb[0], ty: o.bomb[1], fly: 1, t: 0, fuse: 99 });
         if (o.goat) goat = { x: worldW / 2, y: FIELD_TOP + 90, dir: 1, speed: 0, t: 0, bumped: false, petted: true, angerFlash: 0, hop: 0 };
+        // (0.16.3: how long the goat stays calm after a clover treat)
+        if (o.calm != null) goatCalmT = o.calm;
         if (o.ranch != null) updateRanch(o.ranch);
         if (o.ghostAt) trail = [{ x: o.ghostAt[0], y: o.ghostAt[1], t: tNow - 1 }];
         if (o.endDay) {

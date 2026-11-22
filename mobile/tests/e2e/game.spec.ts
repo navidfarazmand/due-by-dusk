@@ -1005,10 +1005,46 @@ test('surprises: a tax comes out of the jar at sunrise, a short jar leaves the c
   await page.locator('.scr-modal [data-act="surprise-ok"]').click();
   await expect(page.locator('#dbdHud')).toBeVisible();
   expect((await E(page, 'stats')).max).toBeLessThan(full);
+  // 0.16.3 (Navid, 21 Nov: "i did not see any visible effect ... and also don't think it actually reduced 30% of my crop
+  // production. Also if that is happening, i would like to see it as a red alarm thing (though small) like event of the
+  // day"): crops sprout 30% slower too, the far end of the field is roped off with what broke in it (nothing grows
+  // there), and a small red badge under the day's event says what broke
+  const slow = await page.evaluate(() => {
+    const w = window as any, e = w.__DBD_ENGINE;
+    const r = w.__DBD_REPAIR;
+    w.__DBD_REPAIR = 1;
+    e.refreshStats();
+    const free = e.stats().spawn;
+    w.__DBD_REPAIR = r;
+    e.refreshStats();
+    return { ratio: e.stats().spawn / free, kind: w.__DBD_REPAIR_KIND };
+  });
+  expect(slow.ratio).toBeCloseTo(1 / 0.7, 3);
+  expect(['fence', 'well', 'roof', 'tractor']).toContain(slow.kind);
+  const closed = await page.evaluate(() => {
+    const e = (window as any).__DBD_ENGINE;
+    for (const type of ['carrot', 'radish', 'cabbage', 'onion', 'potato', 'carrot']) e.devCrop(type);
+    const p = e.peek();
+    return { w: p.closedW, field: p.worldW - 2 * p.pad, open: p.worldW - p.pad - p.closedW, maxX: Math.max(...p.crops.map((c: { x: number }) => c.x)) };
+  });
+  expect(closed.w).toBeCloseTo(0.3 * closed.field, -1);
+  expect(closed.maxX).toBeLessThanOrEqual(closed.open + 0.5);
+  await expect(page.locator('#dbdRepair')).toBeVisible();
+  await page.locator('#dbdRepair').click();
+  await expect(page.locator('#dbdBanner')).toContainText('30% fewer crops grow until you fix it. Fix it in the farmhouse.');
+  await page.mouse.click(300, 300);
+  await expect(page.locator('#dbdBanner')).toBeHidden();
   await page.evaluate(() => ((window as any).__DBD_NO_SURPRISES = true));
   await fast(page);
   await expect(page.locator('.scr-sundown .sundown-card')).toBeVisible({ timeout: 20_000 });
   await act(page, 'farmhouse');
+  await expect(page.locator('.scr-farmhouse .dc-repair')).toBeVisible();
+  // (it stays after a restart: it was only set when it came up, so a reload let the field grow in full)
+  await page.reload();
+  await page.waitForFunction(() => !!(window as any).__DBD_APP);
+  expect(await page.evaluate(() => (window as any).__DBD_REPAIR)).toBe(0.7);
+  expect((await E(page, 'stats')).max).toBeLessThan(full);
+  await page.evaluate(() => (window as any).__DBD_APP.show('farmhouse'));
   await expect(page.locator('.scr-farmhouse .dc-repair')).toBeVisible();
   await page.evaluate(r => {
     (window as any).__DBD_ENGINE.addCash(r + 100);
@@ -1018,6 +1054,8 @@ test('surprises: a tax comes out of the jar at sunrise, a short jar leaves the c
   await expect(page.locator('.scr-farmhouse .dc-repair')).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__DBD_APP.g.run.repair)).toBeNull();
   expect((await E(page, 'stats')).max).toBe(full);
+  expect(await page.evaluate(() => [(window as any).__DBD_REPAIR, (window as any).__DBD_REPAIR_KIND])).toEqual([1, '']);
+  await expect(page.locator('#dbdRepair')).toBeHidden();
   expect(errors).toEqual([]);
 });
 
@@ -1857,6 +1895,56 @@ test('tree tricks, the ranch and the bank: each does what its text says (0.13)',
   expect(errors).toEqual([]);
 });
 
+test('a clover treat keeps the goat calm for 5 s, 10 s with Goat treats (0.16.3)', async ({ page }) => {
+  // Navid, 21 Nov: "did you make the clover in a way whenever we get it, the goat will not ram for couple of seconds? is it
+  // part of a skill?": it only calmed a goat that was already angry; now a swipe through the goat does nothing for 5 s
+  const errors = await trickDay(page);
+  const len = (await E(page, 'state')).dayLen;
+  await E(page, 'devClock', { time: len / 2 });
+  await fx(page, {});
+  const goat = async () => (await E(page, 'peek')).goat;
+  const calm = async () => (await E(page, 'peek')).goatCalm;
+  const time = async () => (await E(page, 'peek')).time;
+  const treat = async () => {
+    const w = await page.evaluate(() => (window as any).__DBD_ENGINE.peek().worldW);
+    await E(page, 'devProp', 'treat', w * 0.3, 470);
+    // (a prop is cut a little above where it stands)
+    await E(page, 'devSwing', w * 0.3, 452, 0);
+  };
+  const butt = async () => {
+    const g = await goat();
+    await E(page, 'devSwing', g.x, g.y - 30, 0);
+  };
+  // a goat with no treat headbutts and takes 1.5 s of daylight
+  await E(page, 'devClock', { goat: true });
+  let t0 = await time();
+  await butt();
+  expect((await goat()).angry).toBe(true);
+  expect(t0 - (await time())).toBeCloseTo(1.5, 1);
+  // a treat calms it at once and keeps it calm for 5 s: a swipe through it costs nothing
+  await treat();
+  expect((await goat()).angry).toBe(false);
+  expect(await calm()).toBeGreaterThan(4.6);
+  expect(await calm()).toBeLessThanOrEqual(5);
+  t0 = await time();
+  await butt();
+  expect((await goat()).angry).toBe(false);
+  expect(await time()).toBeCloseTo(t0, 1);
+  // when the 5 s are up it headbutts again
+  await E(page, 'devClock', { calm: 0.01 });
+  await page.waitForTimeout(200);
+  expect(await calm()).toBe(0);
+  await butt();
+  expect((await goat()).angry).toBe(true);
+  // Goat treats (a9): 10 s
+  await fx(page, { a9: 1 });
+  await E(page, 'devClock', { goat: true });
+  await treat();
+  expect(await calm()).toBeGreaterThan(9.6);
+  expect(await page.evaluate(() => (window as any).__DBD_TREE.nodeLive('a9'))).toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test('Good lawyer lowers the late fees, Cashback pays 8% of a bill back the next morning, Insurance keeps three quarters of the jar (0.14)', async ({ page }) => {
   const errors = await boot(page, seeded(CA.slice(0, 2), 0));
   await act(page, 'play');
@@ -2044,6 +2132,24 @@ test('menu: the signpost (Design 4), Barn opens the upgrade tree or the Bling Ba
   const errors = await boot(page);
   await expect(page.locator('.scr-menu .sp-play')).toBeVisible();
   await expect(page.locator('.scr-menu [data-act="crowns"]')).toHaveCount(0);
+  // 0.16.3 (Navid, 21 Nov: "i don't like that two of the signs at the bottom are each back to back"): one sign a row,
+  // pointing left and right in turn, all on the screen
+  const signs = await page.evaluate(() => ({
+    w: innerWidth,
+    h: innerHeight,
+    rows: [...document.querySelectorAll('.scr-menu .sp-sign')]
+      .map(e => {
+        const r = e.getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, l: e.classList.contains('sp-l') };
+      })
+      .sort((a, b) => a.top - b.top),
+  }));
+  expect(signs.rows.map(r => r.l)).toEqual([true, false, true, false]);
+  for (let i = 1; i < signs.rows.length; i++) {
+    const a = signs.rows[i - 1], b = signs.rows[i];
+    expect(b.top).toBeGreaterThan(a.top + 0.7 * (a.bottom - a.top));
+  }
+  for (const r of signs.rows) expect([r.left >= 0, r.right <= signs.w, r.bottom <= signs.h]).toEqual([true, true, true]);
   await act(page, 'barn-menu');
   await page.locator('.scr-modal [data-act="tree"]').click();
   await expect(page.locator('.scr-tree .tr-map')).toBeVisible();
@@ -2052,6 +2158,27 @@ test('menu: the signpost (Design 4), Barn opens the upgrade tree or the Bling Ba
   await expect(page.locator('.scr-menu .sp-play')).toBeVisible();
   await act(page, 'continue');
   await expect(page.locator('.scr-world')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('the story: the runaways run off the screen or vanish in a puff of dust, none stays shaking at an edge (0.16.3)', async ({ page }) => {
+  // Navid, 21 Nov: "vegetables start to escape but they just go to the outer of screen and just vibrates there. maybe if
+  // you want you can make them disappear with some animation too"
+  const errors = await boot(page);
+  await act(page, 'settings');
+  await page.locator('.scr-modal [data-act="replay-story"]').click();
+  await expect(page.locator('#dbdStory .sty-run')).toHaveCount(6);
+  await expect(page.locator('#dbdStory .sty-poof')).toHaveCount(6);
+  await page.waitForTimeout(3600);
+  const seen = await page.evaluate(() =>
+    [...document.querySelectorAll('#dbdStory .sty-run img')].filter(img => {
+      const r = img.getBoundingClientRect();
+      return r.width > 1 && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight;
+    }).length,
+  );
+  expect(seen).toBe(0);
+  await page.locator('#dbdStory .sty-skip').click();
+  await expect(page.locator('#dbdStory')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

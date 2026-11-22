@@ -20,9 +20,13 @@ const INK = '#2B1708';
 const MAP_CROPS: Array<[string, string]> = [
   ['CA', 'carrot'], ['US', 'habanero'], ['BR', 'mandioca'], ['MA', 'chickpea'], ['FR', 'lavender'], ['CN', 'bittermelon'], ['JP', 'kabocha'],
 ];
-/** The vegetables that run off the farm, where they run to (share of the stage) and when they start. */
-const RUNNERS: Array<[string, number, number, number]> = [
-  ['carrot', -0.62, -0.05, 0.15], ['radish', 0.6, -0.12, 0.3], ['cabbage', -0.45, 0.18, 0.45], ['pumpkin', 0.5, 0.2, 0.55], ['onion', 0.1, -0.32, 0.7], ['potato', -0.15, 0.3, 0.85],
+/** The vegetables that run off the farm: where they run to (share of the stage), when they start, and how small they
+ *  are when they get there. 0.16.3 (Navid, 21 Nov: "vegetables start to escape but they just go to the outer of screen
+ *  and just vibrates there. maybe if you want you can make them disappear with some animation too"): four run right off
+ *  the screen, two run off over the fence into the distance; each vanishes in a puff of dust where it gets to. */
+const RUNNERS: Array<[string, number, number, number, number]> = [
+  ['carrot', -0.75, -0.04, 0.15, 1], ['radish', 0.7, -0.06, 0.3, 1], ['cabbage', -0.34, -0.16, 0.45, 0.5],
+  ['pumpkin', 0.8, 0.1, 0.55, 1], ['onion', 0.03, -0.28, 0.7, 0.4], ['potato', -0.82, 0.12, 0.85, 1],
 ];
 
 function img(type: string, h: number, cls = ''): string {
@@ -38,8 +42,8 @@ const PEN = `<svg viewBox="0 0 220 80" aria-hidden="true"><g fill="#C68A4E" stro
 function scene(i: number): string {
   if (i === 0) {
     const runners = RUNNERS.map(
-      ([type, dx, dy, dl], k) =>
-        `<span class="sty-run" style="--dx: ${dx}; --dy: ${dy}; --dl: ${dl}s; left: ${44 + (k % 3) * 5}%; top: ${60 + Math.floor(k / 3) * 8}%"><span class="sty-hop">${img(type, 64)}<i class="sty-bang">!</i></span><i class="sty-dust"></i></span>`,
+      ([type, dx, dy, dl, sc], k) =>
+        `<span class="sty-run" style="--dx: ${dx}; --dy: ${dy}; --dl: ${dl}s; --sc: ${sc}; left: ${44 + (k % 3) * 5}%; top: ${60 + Math.floor(k / 3) * 8}%"><span class="sty-far"><span class="sty-pop"><span class="sty-hop">${img(type, 64)}<i class="sty-bang">!</i></span><i class="sty-dust"></i></span><i class="sty-poof"><b></b><b></b><b></b><b></b><b></b></i></span></span>`,
     ).join('');
     return `<div class="sty-scene s-farm"><img class="sty-bg" src="${ART.menu}" alt="" draggable="false">${runners}</div>`;
   }

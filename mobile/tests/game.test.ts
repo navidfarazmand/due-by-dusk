@@ -665,7 +665,7 @@ describe('the upgrade tree (0.13: the one upgrade system)', () => {
 
   it('puts the skills that end a pest at the end of their lane, and a skill that needs another after it (0.15.1, 0.16.2; Navid, 18 and 20 Nov)', () => {
     const a1 = treeNode('a1')!, a6 = treeNode('a6')!, f14 = treeNode('f14')!;
-    // the goat: Goat treats (not built yet), then Pasture accord, then Loyal goat herd (which also makes it friendly)
+    // the goat: Goat treats, then Pasture accord, then Loyal goat herd (which also makes it friendly)
     expect([a1.d, a1.s, a1.kind]).toEqual([5, 0, 'trick']);
     expect(a1.parents).toEqual(['a9']);
     expect(treeNode('a14')!.parents).toEqual(['a1']);
@@ -720,13 +720,17 @@ describe('the upgrade tree (0.13: the one upgrade system)', () => {
     // everything built is bought but the partner of each keystone pair taken first
     const left = TREE.filter(n => n.kind !== 'trunk' && nodeLive(n.id) && !own(n.id));
     for (const n of left) expect([n.id, canBuyNode(g, n)]).toEqual([n.id, { ok: false, why: 'pair' }]);
-    // Pasture accord sits behind Goat treats, which is not built yet, and so opens with the Beehive or the Farm dog;
-    // Scarecrow sits behind Sheepdog (not built yet either) and opens with Crow bounty
+    // Pasture accord sits behind Goat treats (built in 0.16.3), which opens with the Beehive or the Farm dog;
+    // Scarecrow sits behind Sheepdog (not built yet) and opens with Crow bounty
     const h = holder();
     h.tree = { a6: 1, a3: 1 };
-    expect(nodeLive('a9')).toBe(false);
+    expect(nodeLive('a9')).toBe(true);
+    expect(canBuyNode(h, treeNode('a9')!)).toEqual({ ok: false, why: 'locked' });
     expect(canBuyNode(h, treeNode('a1')!)).toEqual({ ok: false, why: 'locked' });
     h.tree.a4 = 1;
+    expect(canBuyNode(h, treeNode('a9')!).ok).toBe(true);
+    expect(canBuyNode(h, treeNode('a1')!)).toEqual({ ok: false, why: 'locked' });
+    h.tree.a9 = 1;
     expect(canBuyNode(h, treeNode('a1')!).ok).toBe(true);
     expect(nodeLive('a12')).toBe(false);
     expect(canBuyNode(h, treeNode('a2')!)).toEqual({ ok: false, why: 'locked' });
